@@ -1,81 +1,58 @@
 # Conlang Maker
 
-A desktop application for constructing languages (conlangs), built with Tauri + React + TypeScript.
+人工语言全流程创作工具 — 从音系设计到语法建模，从词典管理到语系派生。
 
-## Installation
+📖 **[在线文档](https://wumail.github.io/conlang-maker/)**
 
-### macOS
+## 特性
 
-**方法一：使用安装脚本（推荐）**
+- 🔊 **交互式 IPA 音系设计** — 329 个音素音频，12 种语言风格预设
+- 📖 **智能词典管理** — IPA 自动生成、拼接式 TTS、多义项与词源追踪
+- 📝 **完整语法建模** — 6 种形态操作、条件屈折、派生引擎、范式矩阵
+- 🧪 **翻译沙盒** — 标签屈折与句法重排，实时验证语法规则
+- 🔬 **造词生成器** — 基于音位配列自动生成、Swadesh 100 映射
+- 🌳 **语系树** — 子语言派生、拉取同步、借词管理
+- 🔬 **历时音变引擎** — 字符模式与特征模式，模拟语言演变
+- 📊 **语料库** — 莱比锡标注规范的行间注释
+- 📤 **多格式导出** — PDF / Excel / Hunspell / CSV / LLM Prompt
+
+## 安装
+
+### macOS（推荐）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/wumail/conlang-maker/main/scripts/install.sh | bash
 ```
 
-脚本会自动下载最新版本、安装到 `/Applications`，并移除 macOS 隔离属性。
+### 手动安装
 
-**方法二：手动安装 DMG**
+从 [Releases](https://github.com/wumail/conlang-maker/releases) 下载对应平台的安装包。
 
-1. 从 [Releases](https://github.com/wumail/conlang-maker/releases) 下载 `.dmg` 文件
-2. 打开 DMG，将 `conlang-maker.app` 拖入 `/Applications`
-3. 首次打开可能提示"应用已损坏"，请在终端执行以下命令修复：
+macOS 用户首次打开如提示"应用已损坏"，请执行：
 
 ```bash
 sudo xattr -rd com.apple.quarantine "/Applications/conlang-maker.app"
 codesign --force --deep --sign - "/Applications/conlang-maker.app"
 ```
 
-> ⚠️ 由于未购买 Apple Developer 证书，macOS Gatekeeper 会阻止直接打开。上述命令会移除隔离属性并重新 ad-hoc 签名，之后即可正常使用。
+详见 [安装指南](https://wumail.github.io/conlang-maker/guide/installation.html)。
 
-### Linux
-
-从 [Releases](https://github.com/wumail/conlang-maker/releases) 下载对应格式的安装包：
-- `.deb` (Debian/Ubuntu)
-- `.rpm` (Fedora/RHEL)
-- `.AppImage` (通用)
-
-### Windows
-
-从 [Releases](https://github.com/wumail/conlang-maker/releases) 下载 `.msi` 或 `.exe` 安装包。
-
-## Development
-
-### Recommended IDE Setup
-
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
-
-### Getting Started
+## 开发
 
 ```bash
 bun install
 bun run tauri dev
 ```
 
-## CI / Release
-
-- CI workflow: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-	- Runs on macOS / Linux / Windows
-	- Executes TypeScript type-check and Rust `cargo check`
-- Release workflow: [`.github/workflows/release-tauri.yml`](.github/workflows/release-tauri.yml)
-	- Triggered by tag push like `v1.0.3`
-	- Builds and publishes installers for macOS (aarch64 + x64) / Linux / Windows
-
-## Auto Update (Tauri Updater)
-
-- Updater endpoint is configured in [`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)
-- Required GitHub secrets for release signing:
-	- `TAURI_SIGNING_PRIVATE_KEY`
-	- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- `plugins.updater.pubkey` in `tauri.conf.json` must be set to your real updater public key before production release.
-
-### Generate updater keypair
-
-Run locally:
+### 文档开发
 
 ```bash
-bunx tauri signer generate -w ~/.tauri/myapp.key
+bun run docs:dev     # 启动文档开发服务器
+bun run docs:build   # 构建文档
 ```
 
-- Put the private key file contents into GitHub secret `TAURI_SIGNING_PRIVATE_KEY`
-- Put passphrase into `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-- Put the generated public key into `src-tauri/tauri.conf.json` -> `plugins.updater.pubkey`
+## CI / Release
+
+- [CI](.github/workflows/ci.yml) — TypeScript + Rust 检查
+- [Release](.github/workflows/release-tauri.yml) — 多平台构建发布
+- [Docs](.github/workflows/deploy-docs.yml) — 文档自动部署到 GitHub Pages
