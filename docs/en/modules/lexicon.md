@@ -28,21 +28,6 @@ Each entry supports multiple senses, each containing:
 - Lock to manual mode (🔒) for custom IPA
 - Unlock (🔓) to restore auto-generation
 
-## Pronunciation Playback
-
-Click the 🔊 button next to a word's IPA to hear concatenative TTS playback, fully offline.
-
-## Etymology
-
-| Source Type | Description |
-|------------|------------|
-| A priori | Created from scratch |
-| A posteriori | Based on natural languages |
-| Evolved | Sound-changed from parent language |
-| Borrowed | Borrowed from another language |
-| Mixed | Multiple sources |
-| Derived | Created through derivation |
-
 ## Quick Entry
 
 Click the ⚡ button (top-right) for a popup: word → gloss → POS → **Enter** to save → auto-clears for the next entry.
