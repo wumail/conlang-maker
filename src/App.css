@@ -1,0 +1,51 @@
+@import "tailwindcss";
+@plugin "daisyui" {
+  themes: light --default, dark;
+}
+
+/* Doulos SIL — comprehensive IPA font covering Unicode 14+ Phonetic Extensions */
+/* Note: Doulos SIL is Regular-only; bold weight falls back to the same face. */
+@font-face {
+  font-family: 'Doulos SIL';
+  font-weight: 400 700;
+  font-style: normal;
+  font-display: swap;
+  src: url('/fonts/DoulosSIL-Regular.woff2') format('woff2');
+}
+
+/* Apply IPA font to any element that renders phoneme symbols */
+.ipa-char {
+  font-family: 'Doulos SIL', 'Charis SIL', 'Segoe UI', 'Noto Sans', sans-serif;
+  /* Enable OpenType mark positioning (mark) and mark-to-mark attachment (mkmk)
+     so that stacked diacritics like n̪̊ (dental + ring) are placed correctly.
+     kern: kerning pairs; calt: contextual alternates for ligated IPA sequences. */
+  font-feature-settings: "mark" 1, "mkmk" 1, "kern" 1, "calt" 1;
+  /* Let the text engine prioritise glyph precision over render speed */
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent bidi algorithm from reordering combining character sequences */
+  unicode-bidi: isolate;
+}
+
+/* Utility: hide scrollbar but keep scrolling */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.react-flow__handle {
+  cursor: default !important;
+  pointer-events: none;
+}
+
+/* 禁用 ReactFlow 容器内的文本选中 */
+.react-flow {
+  user-select: none;
+  -webkit-user-select: none; /* Safari */
+  -ms-user-select: none;     /* IE */
+  -moz-user-select: none;    /* Firefox */
+}
