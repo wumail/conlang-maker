@@ -73,7 +73,13 @@ export interface Sense {
   grammatical_function?: string; // 孤立语虚词功能标签（如 particle / topic / aspect_marker）
 }
 
-export type OriginType = 'a_priori' | 'a_posteriori' | 'mixed' | 'derived' | 'borrowed' | 'evolved';
+export type OriginType =
+  | "a_priori"
+  | "a_posteriori"
+  | "mixed"
+  | "derived"
+  | "borrowed"
+  | "evolved";
 
 export interface Etymology {
   origin_type: OriginType;
@@ -102,9 +108,9 @@ export interface WordEntry {
 
 // ── 语法相关 ──────────────────────────────────────────────
 
-export type WordOrder = 'SVO' | 'SOV' | 'VSO' | 'VOS' | 'OVS' | 'OSV';
-export type ModifierPosition = 'before_head' | 'after_head';
-export type AdpositionType = 'preposition' | 'postposition';
+export type WordOrder = "SVO" | "SOV" | "VSO" | "VOS" | "OVS" | "OSV";
+export type ModifierPosition = "before_head" | "after_head";
+export type AdpositionType = "preposition" | "postposition";
 
 export interface SyntaxConfig {
   word_order: WordOrder;
@@ -116,7 +122,7 @@ export interface PartOfSpeech {
   pos_id: string;
   name: string;
   gloss_abbr: string;
-  word_pattern: string;       // 词形合法性正则，空字符串表示无约束
+  word_pattern: string; // 词形合法性正则，空字符串表示无约束
   requires_definition: boolean;
   requires_pronunciation: boolean;
 }
@@ -139,18 +145,19 @@ export interface InflectionDimension {
 // ── 屈折规则 (Phase 2 完整形态) ──────────────────────────
 
 export type MorphologyType =
-  | 'prefix' | 'suffix'
-  | 'infix'
-  | 'circumfix'
-  | 'reduplication'
-  | 'ablaut';
+  | "prefix"
+  | "suffix"
+  | "infix"
+  | "circumfix"
+  | "reduplication"
+  | "ablaut";
 
 export type ConditionType =
-  | 'ends_with_phoneme_class'
-  | 'starts_with_phoneme_class'
-  | 'matches_regex';
+  | "ends_with_phoneme_class"
+  | "starts_with_phoneme_class"
+  | "matches_regex";
 
-export type PhonemeClass = 'vowel' | 'consonant';
+export type PhonemeClass = "vowel" | "consonant";
 
 export interface ConditionClause {
   type: ConditionType;
@@ -170,7 +177,7 @@ export interface CircumfixConfig {
   suffix_part: string;
 }
 
-export type ReduplicationMode = 'full' | 'partial_onset' | 'partial_coda';
+export type ReduplicationMode = "full" | "partial_onset" | "partial_coda";
 
 export interface ReduplicationConfig {
   mode: ReduplicationMode;
@@ -196,7 +203,7 @@ export interface InflectionRule {
   reduplication_config?: ReduplicationConfig;
   ablaut_config?: AblautConfig;
   // ── Typology 扩展 ──
-  slot_id?: string;              // 黏着语：关联的词缀槽位
+  slot_id?: string; // 黏着语：关联的词缀槽位
   conjugation_class_id?: string; // 屈折语：关联的变位类
   fused_dimensions?: Record<string, string>[]; // 屈折语：融合规则映射多组维度值
 }
@@ -235,21 +242,25 @@ export interface GrammarChapter {
 
 // ── 语言类型学 (Typology) ────────────────────────────────
 
-export type MorphologicalTypology = 'isolating' | 'agglutinative' | 'fusional' | 'polysynthetic';
-export type HeadMarking = 'head' | 'dependent' | 'double' | 'none';
+export type MorphologicalTypology =
+  | "isolating"
+  | "agglutinative"
+  | "fusional"
+  | "polysynthetic";
+export type HeadMarking = "head" | "dependent" | "double" | "none";
 
 export interface TypologyConfig {
   morphological_type: MorphologicalTypology;
-  synthesis_index: number;   // 1.0 ~ 5.0
-  fusion_index: number;      // 1.0 ~ 3.0
+  synthesis_index: number; // 1.0 ~ 5.0
+  fusion_index: number; // 1.0 ~ 3.0
   head_marking: HeadMarking;
-  auto_estimated: boolean;   // true=由系统统计推断, false=用户手动设定
+  auto_estimated: boolean; // true=由系统统计推断, false=用户手动设定
 }
 
 export interface AffixSlot {
   slot_id: string;
-  position: number;          // <0 前缀槽位, >0 后缀槽位
-  dimension_id: string;      // 关联的屈折维度
+  position: number; // <0 前缀槽位, >0 后缀槽位
+  dimension_id: string; // 关联的屈折维度
   is_obligatory: boolean;
   label: string;
 }
@@ -258,14 +269,14 @@ export interface ConjugationClass {
   class_id: string;
   name: string;
   applies_to_pos: string;
-  stem_pattern: string;      // 词干识别规则
-  rule_ids: string[];        // 属于此类的屈折规则 ID
+  stem_pattern: string; // 词干识别规则
+  rule_ids: string[]; // 属于此类的屈折规则 ID
 }
 
 export interface IrregularOverride {
-  entry_id: string;          // 关联词条 ID
+  entry_id: string; // 关联词条 ID
   dimension_values: Record<string, string>;
-  surface_form: string;      // 手动指定的词形
+  surface_form: string; // 手动指定的词形
 }
 
 // ── GrammarConfig ────────────────────────────────────────
@@ -289,7 +300,7 @@ export interface GrammarConfig {
 export interface LanguageEntry {
   language_id: string;
   name: string;
-  path: string;           // relative dir name, e.g. "proto_language"
+  path: string; // relative dir name, e.g. "proto_language"
   parent_id: string | null;
 }
 
@@ -314,7 +325,7 @@ export interface GlobalRegistry {
 
 // ── Operation Log ────────────────────────────────────────
 
-export type OperationType = 'pull_sync' | 'borrowing';
+export type OperationType = "pull_sync" | "borrowing";
 
 export interface OperationLogEntry {
   log_id: string;
@@ -360,8 +371,8 @@ export interface SCARule {
   rule_id: string;
   description: string;
   // 字符模式（Phase 2）
-  target: string;         // space-separated phonemes "p t k"
-  replacement: string;    // corresponding replacements "b d g"
+  target: string; // space-separated phonemes "p t k"
+  replacement: string; // corresponding replacements "b d g"
   context_before: string;
   context_after: string;
   exceptions: string[];
@@ -452,3 +463,5 @@ export interface CorpusIndexEntry {
     updated_at: string;
   };
 }
+
+declare module "*.png";

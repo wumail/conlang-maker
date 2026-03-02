@@ -15,7 +15,7 @@ features:
   - title: 🔊 交互式音系设计
     details: IPA 辅音矩阵与元音梯形图，329 个音素音频，12 种语言风格预设一键加载
   - title: 📖 智能词典管理
-    details: IPA 自动生成、拼接式 TTS 发音、IPA 模糊搜索、多义项与词源追踪
+    details: IPA 自动生成、IPA 模糊搜索、多义项与词源追踪
   - title: 📝 完整语法建模
     details: 6 种形态操作类型、条件屈折规则、派生规则引擎、屈折范式矩阵
   - title: 🧪 翻译沙盒

@@ -21,11 +21,7 @@ import { QuickEntry } from "../common/QuickEntry";
 import { LanguageToggle } from "../common/LanguageToggle";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useTheme } from "../../lib/useTheme";
-
-const NAV_LINK_BASE =
-  "flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap";
-const NAV_ACTIVE = `${NAV_LINK_BASE} bg-primary text-primary-content`;
-const NAV_INACTIVE = `${NAV_LINK_BASE} text-base-content/70 hover:bg-primary-content hover:text-neutral`;
+import { NAV_ACTIVE, NAV_INACTIVE } from "../../lib/ui";
 
 export function AppNav() {
   const { t, i18n } = useTranslation();
@@ -180,9 +176,7 @@ export function AppNav() {
             <button
               tabIndex={0}
               className={`flex items-center px-2 py-1 rounded text-xs ${
-                isActiveInOverflow
-                  ? "bg-primary text-base-content"
-                  : "text-neutral-content/70 hover:bg-neutral-content/10 hover:text-neutral-content"
+                isActiveInOverflow ? NAV_ACTIVE : NAV_INACTIVE
               }`}
               title={t("common.more")}
             >
@@ -190,14 +184,14 @@ export function AppNav() {
             </button>
             <ul
               tabIndex={0}
-              className="dropdown-content menu bg-base-200 rounded-box shadow-lg z-50 w-48 p-1 mt-1"
+              className="dropdown-content menu bg-base-200 rounded-box shadow-lg z-50 p-1 mt-1 gap-1"
             >
               {overflowItems.map(({ to, icon, label }) => (
                 <li key={to}>
                   <NavLink
                     to={to}
                     className={({ isActive }) =>
-                      `flex items-center gap-2 text-sm ${isActive ? "bg-primary text-base-content" : ""}`
+                      `flex items-center gap-2 text-sm ${isActive ? NAV_ACTIVE : NAV_INACTIVE}`
                     }
                   >
                     {icon} {label}

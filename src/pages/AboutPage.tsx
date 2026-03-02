@@ -6,6 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { BTN_PRIMARY } from "../lib/ui";
 import { GITHUB_REPO_OWNER, GITHUB_REPO_NAME } from "../constants";
+import ravenIcon from "../assets/raven.png";
 
 interface GithubRelease {
   tag_name: string;
@@ -96,11 +97,18 @@ export function AboutPage() {
   return (
     <div className="flex-1 p-8 overflow-y-auto">
       <div className="max-w-lg mx-auto space-y-6">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-bold">Conlang Maker</h1>
-          <p className="text-base-content/60">
-            {t("about.version")}: {appVersion || "..."}
-          </p>
+        <div className="space-x-4 flex items-end">
+          <img
+            src={ravenIcon}
+            alt="Conlang Maker Logo"
+            className="w-24 h-24 rounded-full"
+          />
+          <div>
+            <p className="text-base-content/60">
+              {t("about.version")}: {appVersion || "..."}
+            </p>
+            <h1 className="text-2xl font-bold">Conlang Maker</h1>
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -153,18 +161,21 @@ export function AboutPage() {
               )}
               {installDone && (
                 <div className="flex items-center gap-3">
-                  <p className="text-sm text-success">{t("about.installDone")}</p>
-                  <button
-                    className={BTN_PRIMARY}
-                    onClick={() => relaunch()}
-                  >
+                  <p className="text-sm text-success">
+                    {t("about.installDone")}
+                  </p>
+                  <button className={BTN_PRIMARY} onClick={() => relaunch()}>
                     <RotateCcw className="w-4 h-4" />
                     {t("about.restartNow")}
                   </button>
                 </div>
               )}
               <button
-                onClick={() => openUrl(`https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`)}
+                onClick={() =>
+                  openUrl(
+                    `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/releases`,
+                  )
+                }
                 className="text-sm text-primary flex items-center gap-1 cursor-pointer hover:underline"
               >
                 <ExternalLink className="w-3.5 h-3.5" />{" "}
@@ -178,7 +189,11 @@ export function AboutPage() {
           <p>
             GitHub:{" "}
             <button
-              onClick={() => openUrl(`https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`)}
+              onClick={() =>
+                openUrl(
+                  `https://github.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}`,
+                )
+              }
               className="text-primary cursor-pointer hover:underline"
             >
               {GITHUB_REPO_OWNER}/{GITHUB_REPO_NAME}

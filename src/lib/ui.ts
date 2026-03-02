@@ -21,7 +21,8 @@ export const TEXTAREA = "textarea textarea-md" as const;
 /** 主操作按钮（蓝色）*/
 export const BTN_PRIMARY = "btn btn-sm btn-primary btn-soft gap-1" as const;
 
-export const BTN_PRIMARY_MD = "btn btn-outline btn-primary btn-soft gap-1" as const;
+export const BTN_PRIMARY_MD =
+  "btn btn-outline btn-primary btn-soft gap-1" as const;
 
 /** 成功操作按钮（绿色）*/
 export const BTN_SUCCESS = "btn btn-sm btn-success btn-soft gap-1" as const;
@@ -36,13 +37,15 @@ export const BTN_GHOST_SQ = "btn btn-ghost btn-xs btn-square" as const;
 export const BTN_OUTLINE_ERROR = "btn btn-sm btn-outline btn-error" as const;
 
 /** 删除/危险图标按钮 */
-export const BTN_ERROR = "btn btn-ghost btn-sm btn-square text-base-content/50 hover:text-error" as const;
+export const BTN_ERROR =
+  "btn btn-ghost btn-sm btn-square text-base-content/50 hover:text-error" as const;
 
 /** 文字链接按钮 */
 export const BTN_LINK = "btn btn-soft btn-primary btn-sm gap-1" as const;
 
 /** 卡片容器 */
-export const CARD = "card bg-base-100 shadow-sm border border-base-200" as const;
+export const CARD =
+  "card bg-base-100 shadow-sm border border-base-200" as const;
 
 /** 卡片正文 */
 export const CARD_BODY = "card-body" as const;
@@ -57,7 +60,16 @@ export const TOGGLE = "toggle toggle-sm" as const;
 export const BADGE = "badge badge-sm" as const;
 
 /** 小节标题 (h3) */
-export const SECTION_HEADER = "text-sm font-semibold text-base-content/70 mb-2" as const;
+export const SECTION_HEADER =
+  "text-sm font-semibold text-base-content/70 mb-2" as const;
 
 /** 表单字段标签 */
 export const FIELD_LABEL = "text-sm font-medium text-base-content/80" as const;
+
+export const NAV_LINK_BASE =
+  "flex items-center gap-1 px-2.5 py-1 rounded text-xs font-medium transition-colors whitespace-nowrap" as const;
+
+export const NAV_ACTIVE =
+  `${NAV_LINK_BASE} bg-primary text-primary-content` as const;
+export const NAV_INACTIVE =
+  `${NAV_LINK_BASE} text-base-content/70 hover:bg-primary-content hover:text-neutral` as const;

@@ -15,7 +15,7 @@ features:
   - title: 🔊 Interactive Phonology Design
     details: IPA consonant matrix & vowel trapezoid, 329 phoneme audio clips, 12 language-style presets
   - title: 📖 Smart Lexicon Management
-    details: Auto IPA generation, concatenative TTS, fuzzy IPA search, multi-sense entries & etymology tracking
+    details: Auto IPA generation, fuzzy IPA search, multi-sense entries & etymology tracking
   - title: 📝 Complete Grammar Modeling
     details: 6 morphological operation types, conditional inflection rules, derivation engine, paradigm matrix
   - title: 🧪 Translation Sandbox
