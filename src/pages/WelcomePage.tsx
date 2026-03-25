@@ -9,7 +9,7 @@ import { useWorkspaceStore } from "../store/workspaceStore";
 import { BTN_PRIMARY, BTN_GHOST, BTN_ERROR, BTN_PRIMARY_MD } from "../lib/ui";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { ModalPortal } from "../components/common/ModalPortal";
-import { LanguageToggle } from "../components/common/LanguageToggle";
+
 import type { FamilyEntry } from "../types";
 
 export function WelcomePage() {
@@ -119,9 +119,6 @@ export function WelcomePage() {
 
   return (
     <div className="relative flex items-center justify-center h-full bg-base-200">
-      <LanguageToggle
-        className={`${BTN_GHOST} text-xs font-bold absolute top-4 right-4`}
-      />
 
       <div className="max-w-md w-full p-8 space-y-6">
         <div className="text-center space-y-2">

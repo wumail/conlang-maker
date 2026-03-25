@@ -1,12 +1,13 @@
 {
   "name": "conlang-maker",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "i18n:check": "node scripts/i18n-check.mjs",
     "version:check": "node scripts/version-check.mjs",
+    "version:update": "node scripts/version-update.mjs",
     "build": "node scripts/i18n-check.mjs && node scripts/version-check.mjs && tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",

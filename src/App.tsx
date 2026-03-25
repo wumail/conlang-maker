@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { TitleBar } from "./components/nav/TitleBar";
 import { AppNav } from "./components/nav/AppNav";
 import { ProjectStats } from "./components/nav/ProjectStats";
 import { PhonologyPage } from "./pages/PhonologyPage";
@@ -119,6 +120,9 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-200 font-sans">
+      {/* Always visible title bar (replaces native OS title bar) */}
+      <TitleBar />
+
       {/* Hide nav on welcome page */}
       {location.pathname !== "/welcome" && <AppNav />}
 

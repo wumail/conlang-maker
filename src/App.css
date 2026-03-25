@@ -1,4 +1,5 @@
 @import "tailwindcss";
+
 @plugin "daisyui" {
   themes: light --default, dark;
 }
@@ -32,6 +33,7 @@
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
 .scrollbar-hide {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -45,7 +47,84 @@
 /* 禁用 ReactFlow 容器内的文本选中 */
 .react-flow {
   user-select: none;
-  -webkit-user-select: none; /* Safari */
-  -ms-user-select: none;     /* IE */
-  -moz-user-select: none;    /* Firefox */
+  -webkit-user-select: none;
+  /* Safari */
+  -ms-user-select: none;
+  /* IE */
+  -moz-user-select: none;
+  /* Firefox */
+}
+
+/* ── Custom Title Bar ── */
+.titlebar {
+  -webkit-app-region: drag;
+}
+
+.titlebar button,
+.titlebar a,
+.titlebar select {
+  -webkit-app-region: no-drag;
+}
+
+/* ── macOS Window Rounded Corners ──
+   html/body must be transparent so the Tauri transparent window shows through.
+   Only #root gets a visible background + border-radius = true rounded corners. */
+html,
+body {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+}
+
+#root {
+  border-radius: 10px;
+  overflow: hidden;
+  /* The actual background comes from Tailwind/DaisyUI theme classes on the inner div */
+}
+
+/* ── macOS-style Traffic Lights ── */
+.tl-btn {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: none;
+  padding: 0;
+  margin: 0;
+  cursor: pointer;
+  position: relative;
+  transition: opacity 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tl-close {
+  background-color: #ff5f57;
+}
+
+.tl-minimize {
+  background-color: #febc2e;
+}
+
+.tl-maximize {
+  background-color: #28c840;
+}
+
+.tl-btn:hover {
+  opacity: 0.85;
+}
+
+.tl-btn:active {
+  opacity: 0.65;
+}
+
+/* SVG icons inside traffic lights: hidden by default, shown on parent hover */
+.tl-icon {
+  display: none;
+  color: rgba(0, 0, 0, 0.5);
+  flex-shrink: 0;
+}
+
+.traffic-lights:hover .tl-icon {
+  display: block;
 }

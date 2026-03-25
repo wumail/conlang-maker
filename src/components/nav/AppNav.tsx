@@ -7,27 +7,18 @@ import {
   ScrollText,
   Package,
   Wand2,
-  Zap,
   Dna,
   GitFork,
   FileDown,
   BookOpen,
-  Sun,
-  Moon,
   MoreHorizontal,
-  Info,
 } from "lucide-react";
-import { QuickEntry } from "../common/QuickEntry";
-import { LanguageToggle } from "../common/LanguageToggle";
 import { useWorkspaceStore } from "../../store/workspaceStore";
-import { useTheme } from "../../lib/useTheme";
 import { NAV_ACTIVE, NAV_INACTIVE } from "../../lib/ui";
 
 export function AppNav() {
   const { t, i18n } = useTranslation();
-  const { theme, toggle: toggleTheme } = useTheme();
   const location = useLocation();
-  const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const languages = useWorkspaceStore((s) => s.config.languages);
   const activeLang = languages.find((l) => l.language_id === activeLanguageId);
@@ -127,8 +118,8 @@ export function AppNav() {
   );
 
   return (
-    <header className="bg-base-300 text-base-content flex items-center h-11 px-2 shrink-0 select-none relative">
-      {/* ── Brand / Language Name ── */}
+    <nav className="bg-base-300 text-base-content flex items-center h-10 px-2 shrink-0 select-none relative">
+      {/* ── Language Name ── */}
       <NavLink
         to="/tree"
         className="flex items-center gap-1.5 px-2 shrink-0"
@@ -140,7 +131,6 @@ export function AppNav() {
       </NavLink>
 
       <div className="w-px h-5 bg-base-content/20 mx-1" />
-
       {/* Hidden measurement row — measures natural width of all items */}
       <div
         ref={measureRef}
@@ -159,7 +149,7 @@ export function AppNav() {
       </div>
 
       {/* ── Visible Nav Items ── */}
-      <nav ref={navRef} className="flex items-center gap-1 flex-1 min-w-0">
+      <div ref={navRef} className="flex items-center gap-1 flex-1 min-w-0">
         {visibleItems.map(({ to, icon, label }) => (
           <NavLink
             key={to}
@@ -201,45 +191,7 @@ export function AppNav() {
             </ul>
           </div>
         )}
-      </nav>
-
-      {/* ── Right Actions ── */}
-      <div className="flex items-center gap-1 shrink-0 ml-2">
-        <button
-          onClick={() => setQuickEntryOpen(true)}
-          className="btn btn-ghost btn-xs text-warning"
-          title={t("quickEntry.title")}
-        >
-          <Zap className="w-4 h-4" />
-        </button>
-
-        <button
-          onClick={toggleTheme}
-          className="btn btn-ghost btn-xs"
-          title={t("common.toggleTheme")}
-        >
-          {theme === "light" ? (
-            <Moon className="w-4 h-4" />
-          ) : (
-            <Sun className="w-4 h-4" />
-          )}
-        </button>
-
-        <LanguageToggle />
-
-        <NavLink
-          to="/about"
-          className="btn btn-ghost btn-xs"
-          title={t("nav.about")}
-        >
-          <Info className="w-4 h-4" />
-        </NavLink>
       </div>
-
-      <QuickEntry
-        isOpen={quickEntryOpen}
-        onClose={() => setQuickEntryOpen(false)}
-      />
-    </header>
+    </nav>
   );
 }

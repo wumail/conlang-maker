@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { ExternalLink, RefreshCw, RotateCcw } from "lucide-react";
+import { ExternalLink, Github, RefreshCw, RotateCcw } from "lucide-react";
 import { getVersion } from "@tauri-apps/api/app";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -185,8 +185,9 @@ export function AboutPage() {
           )}
         </div>
 
-        <div className="text-xs text-base-content/40 space-y-1">
-          <p>
+        <div className=" text-xs text-base-content space-y-1">
+          <p className="flex items-center gap-1">
+            <Github size={12} />
             GitHub:{" "}
             <button
               onClick={() =>
