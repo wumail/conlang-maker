@@ -48,7 +48,7 @@ export function TitleBar() {
     >
       {/* ── Left: Traffic Lights ── */}
       <div className="flex items-center gap-2 shrink-0" data-tauri-drag-region>
-        <div className="traffic-lights flex items-center gap-1.5">
+        <div className="traffic-lights flex items-center gap-1.5 ml-1">
           <button
             className="tl-btn tl-close"
             onClick={() => appWindow.close()}

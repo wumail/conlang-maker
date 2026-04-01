@@ -51,29 +51,65 @@ export const romanizationToPhonemes = (
 };
 
 /**
- * Expand a macro symbol to a regex character class.
+ * Expand a context pattern string into a regex fragment.
+ * Supports:
+ *   - `#` → word boundary (^ for before, $ for after)
+ *   - Single-letter macro symbols (e.g. `V` → `(?:a|e|i|o|u)`)
+ *   - Multi-character sequences (e.g. `lV` → `l(?:a|e|i|o|u)`)
+ *   - `_` or empty → empty string
  */
-const expandMacro = (symbol: string, macros: Record<string, string[]>): string => {
-  if (!symbol || symbol === '_') return '.';
-  return macros[symbol] ? `[${macros[symbol].join('')}]` : symbol;
+const expandContext = (
+  pattern: string,
+  macros: Record<string, string[]>,
+  position: 'before' | 'after'
+): string => {
+  if (!pattern || pattern === '_') return '';
+  if (pattern === '#') return position === 'before' ? '^' : '$';
+
+  let result = '';
+  let i = 0;
+  while (i < pattern.length) {
+    const ch = pattern[i];
+    if (ch === '#') {
+      result += position === 'before' ? '^' : '$';
+      i++;
+    } else if (macros[ch] && macros[ch].length > 0) {
+      const sorted = [...macros[ch]].sort((a, b) => b.length - a.length);
+      const alt = sorted.map(s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+      result += `(?:${alt})`;
+      i++;
+    } else {
+      // Literal character — escape regex special chars
+      result += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      i++;
+    }
+  }
+  return result;
 };
 
 /**
  * Apply a single allophony rule to the phoneme string.
- * Uses capture groups instead of lookbehind/lookahead for compatibility.
+ * Rewritten to avoid Regex Lookbehind (?<=...) which is unsupported in Safari < 16.4.
+ * Uses a capturing group for the 'before' context and a lookahead for the 'after' context.
  */
 const applyRule = (
   phonemes: string,
   rule: AllophonyRule,
   macros: Record<string, string[]>
 ): string => {
-  const before = expandMacro(rule.context_before, macros);
-  const after = expandMacro(rule.context_after, macros);
+  const beforeRaw = expandContext(rule.context_before, macros, 'before');
+  const afterRaw = expandContext(rule.context_after, macros, 'after');
+  const escapedTarget = rule.target.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
   try {
-    const pattern = new RegExp(`(${before})(${rule.target})(${after})`, 'g');
-    return phonemes.replace(pattern, `$1${rule.replacement}$3`);
-  } catch {
-    // Invalid regex — skip rule silently
+    const beforeGroup = beforeRaw ? `(${beforeRaw})` : '()';
+    const afterLookahead = afterRaw ? `(?=${afterRaw})` : '';
+    const pattern = `${beforeGroup}(${escapedTarget})${afterLookahead}`;
+
+    const regex = new RegExp(pattern, 'g');
+    return phonemes.replace(regex, `$1${rule.replacement}`);
+  } catch (err) {
+    console.warn(`[Allophony] Invalid regex for rule "${rule.rule_id}": target="${rule.target}"`);
     return phonemes;
   }
 };

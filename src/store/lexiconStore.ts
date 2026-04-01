@@ -1,6 +1,6 @@
-import { create } from 'zustand';
-import { WordEntry } from '../types';
-import { invoke } from '@tauri-apps/api/core';
+import { create } from "zustand";
+import { WordEntry } from "../types";
+import { invoke } from "@tauri-apps/api/core";
 
 interface LexiconStore {
   wordsMap: Record<string, WordEntry>;
@@ -27,11 +27,19 @@ const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 /** 记录每个词条在当前 debounce 周期内的首个旧拼写，避免后续 upsert 覆盖丢失 */
 const pendingOldRomanized = new Map<string, string>();
 
+function isValidWordEntry(word: WordEntry): boolean {
+  const romanized = (word.con_word_romanized || "").trim();
+  const hasMeaning = word.senses.some((s) => (s.gloss || "").trim().length > 0);
+  if (!hasMeaning) return false;
+  if (romanized === "new_word") return false;
+  return true;
+}
+
 function debouncedSaveWord(
   projectPath: string,
   languagePath: string,
   word: WordEntry,
-  old_romanized?: string
+  old_romanized?: string,
 ) {
   const key = word.entry_id;
   if (old_romanized && !pendingOldRomanized.has(key)) {
@@ -44,14 +52,17 @@ function debouncedSaveWord(
   saveTimers.set(
     key,
     setTimeout(() => {
-      invoke('save_word', { projectPath, languagePath, word, oldRomanized: effectiveOldRomanized }).catch(err =>
-        console.warn(`保存词条失败：${err}`),
-      );
+      invoke("save_word", {
+        projectPath,
+        languagePath,
+        word,
+        oldRomanized: effectiveOldRomanized,
+      }).catch((err) => console.warn(`保存词条失败：${err}`));
       pendingOldRomanized.delete(key);
       saveTimers.delete(key);
     }, 500),
   );
-};
+}
 
 function rebuildList(wordsMap: Record<string, WordEntry>): WordEntry[] {
   return Object.values(wordsMap).sort((a, b) =>
@@ -62,34 +73,46 @@ function rebuildList(wordsMap: Record<string, WordEntry>): WordEntry[] {
 export const useLexiconStore = create<LexiconStore>((set, get) => ({
   wordsMap: {},
   wordsList: [],
-  searchTerm: '',
+  searchTerm: "",
   activeWordId: null,
-  projectPath: '.',
-  languagePath: 'proto_language',
+  projectPath: ".",
+  languagePath: "proto_language",
 
   setProjectPath: (path) => set({ projectPath: path }),
   setLanguagePath: (path) => set({ languagePath: path }),
 
   loadWords: (words) => {
     const wordsMap: Record<string, WordEntry> = {};
-    words.forEach(w => { wordsMap[w.entry_id] = w; });
+    words.forEach((w) => {
+      wordsMap[w.entry_id] = w;
+    });
     set({ wordsMap, wordsList: rebuildList(wordsMap) });
   },
 
   loadFromBackend: async (projectPath: string, languagePath: string) => {
     try {
-      const words = await invoke<WordEntry[]>('load_all_words', { projectPath, languagePath });
+      const words = await invoke<WordEntry[]>("load_all_words", {
+        projectPath,
+        languagePath,
+      });
       const wordsMap: Record<string, WordEntry> = {};
-      words.forEach(w => { wordsMap[w.entry_id] = w; });
-      set({ wordsMap, wordsList: rebuildList(wordsMap), projectPath, languagePath });
+      words.forEach((w) => {
+        wordsMap[w.entry_id] = w;
+      });
+      set({
+        wordsMap,
+        wordsList: rebuildList(wordsMap),
+        projectPath,
+        languagePath,
+      });
     } catch (err) {
-      console.error('Failed to load words:', err);
+      console.error("Failed to load words:", err);
     }
   },
 
   upsertWord: (word) => {
     let old_romanized: string | undefined;
-    set(state => {
+    set((state) => {
       const existing = state.wordsMap[word.entry_id];
       if (existing && existing.con_word_romanized !== word.con_word_romanized) {
         old_romanized = existing.con_word_romanized;
@@ -97,22 +120,34 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
       const wordsMap = { ...state.wordsMap, [word.entry_id]: word };
       return { wordsMap, wordsList: rebuildList(wordsMap) };
     });
+
+    // Allow local draft editing, but persist only valid entries.
+    if (!isValidWordEntry(word)) {
+      return;
+    }
+
     const { projectPath, languagePath } = get();
     debouncedSaveWord(projectPath, languagePath, word, old_romanized);
   },
 
   importWords: (words) => {
-    set(state => {
+    const validWords = words.filter(isValidWordEntry);
+    set((state) => {
       const wordsMap = { ...state.wordsMap };
-      words.forEach(w => { wordsMap[w.entry_id] = w; });
+      validWords.forEach((w) => {
+        wordsMap[w.entry_id] = w;
+      });
       return { wordsMap, wordsList: rebuildList(wordsMap) };
     });
     // 批量保存：逐词 invoke，但不走 debounce（这里数量有限且已是用户主动操作）
     const { projectPath, languagePath } = get();
-    words.forEach(w => {
-      invoke('save_word', { projectPath, languagePath, word: w, oldRomanized: null }).catch(err =>
-        console.warn(`批量保存失败 [${w.entry_id}]：${err}`),
-      );
+    validWords.forEach((w) => {
+      invoke("save_word", {
+        projectPath,
+        languagePath,
+        word: w,
+        oldRomanized: null,
+      }).catch((err) => console.warn(`批量保存失败 [${w.entry_id}]：${err}`));
     });
   },
 
@@ -122,22 +157,25 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
 
     // 取消该词条的任何待保存 timer
     const timer = saveTimers.get(entryId);
-    if (timer) { clearTimeout(timer); saveTimers.delete(entryId); }
+    if (timer) {
+      clearTimeout(timer);
+      saveTimers.delete(entryId);
+    }
     pendingOldRomanized.delete(entryId);
 
-    set(state => {
+    set((state) => {
       const wordsMap = { ...state.wordsMap };
       delete wordsMap[entryId];
       return { wordsMap, wordsList: rebuildList(wordsMap), activeWordId: null };
     });
 
     const { projectPath, languagePath } = get();
-    invoke('delete_word', {
+    invoke("delete_word", {
       projectPath,
       languagePath,
       entryId,
       conWordRomanized: wordToDelete.con_word_romanized,
-    }).catch(err => console.warn(`删除失败：${err}`));
+    }).catch((err) => console.warn(`删除失败：${err}`));
   },
 
   setSearchTerm: (term) => set({ searchTerm: term }),

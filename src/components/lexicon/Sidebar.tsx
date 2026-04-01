@@ -13,6 +13,7 @@ import {
   Filter,
   ArrowDownAZ,
   ArrowUpZA,
+  // Trash2,
 } from "lucide-react";
 import { exportToCSV } from "../../utils/exportCSV";
 import { ipaFuzzySearch } from "../../utils/ipaSearch";
@@ -20,6 +21,7 @@ import { BTN_GHOST_SQ, TOGGLE, SELECT } from "../../lib/ui";
 import { WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
 import { TagSelector } from "../common/TagSelector";
+import { ConfirmModal } from "../common/ConfirmModal";
 
 type SortMode = "az" | "za";
 
@@ -27,11 +29,13 @@ export const Sidebar: React.FC = () => {
   const { t } = useTranslation();
   const {
     wordsList,
+    wordsMap,
     searchTerm,
     setSearchTerm,
     activeWordId,
     setActiveWordId,
     upsertWord,
+    deleteWord,
   } = useLexiconStore();
   const config = usePhonoStore((s) => s.config);
   const partsOfSpeech = useGrammarStore((s) => s.config.parts_of_speech);
@@ -47,6 +51,9 @@ export const Sidebar: React.FC = () => {
   // Batch edit state
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] =
+    useState(false);
+  const [showCleanBlankConfirm, setShowCleanBlankConfirm] = useState(false);
 
   const inventory = useMemo(
     () => [
@@ -64,6 +71,63 @@ export const Sidebar: React.FC = () => {
     });
     return Array.from(tagSet).sort();
   }, [wordsList]);
+
+  const blankWordIds = useMemo(
+    () =>
+      wordsList
+        .filter((w) => {
+          const rom = (w.con_word_romanized || "").trim();
+          const hasMeaning = w.senses.some(
+            (s) => (s.gloss || "").trim().length > 0,
+          );
+          return rom === "" && !hasMeaning;
+        })
+        .map((w) => w.entry_id),
+    [wordsList],
+  );
+
+  const handleDeleteSelected = () => {
+    const ids = Array.from(selectedIds);
+    ids.forEach((id) => deleteWord(id));
+    setSelectedIds(new Set());
+    setBatchMode(false);
+  };
+
+  const handleCleanBlankWords = () => {
+    blankWordIds.forEach((id) => deleteWord(id));
+  };
+
+  /**
+   * If the currently active word is still the default "new_word" or blank,
+   * remove it so we don't accumulate ghost entries.
+   */
+  const cleanupEmptyWord = () => {
+    if (!activeWordId) return;
+    const prev = wordsMap[activeWordId];
+    if (!prev) return;
+    const rom = prev.con_word_romanized.trim();
+    const hasMeaning = prev.senses.some((s) => s.gloss.trim().length > 0);
+    // Keep existing edited entries that temporarily have empty spelling but still carry meaning.
+    if (rom === "new_word" || (rom === "" && !hasMeaning)) {
+      deleteWord(prev.entry_id);
+    }
+  };
+
+  // Cleanup on unmount (e.g. navigating to another page)
+  React.useEffect(() => {
+    return () => {
+      const store = useLexiconStore.getState();
+      const id = store.activeWordId;
+      if (!id) return;
+      const w = store.wordsMap[id];
+      if (!w) return;
+      const rom = w.con_word_romanized.trim();
+      const hasMeaning = w.senses.some((s) => s.gloss.trim().length > 0);
+      if (rom === "new_word" || (rom === "" && !hasMeaning)) {
+        store.deleteWord(w.entry_id);
+      }
+    };
+  }, []);
 
   const filteredWords: WordEntry[] = useMemo(() => {
     let result: WordEntry[];
@@ -109,9 +173,19 @@ export const Sidebar: React.FC = () => {
       );
     }
     return result;
-  }, [searchTerm, wordsList, ipaMode, inventory, sortMode, filterPos, filterOrigin, filterTags]);
+  }, [
+    searchTerm,
+    wordsList,
+    ipaMode,
+    inventory,
+    sortMode,
+    filterPos,
+    filterOrigin,
+    filterTags,
+  ]);
 
   const handleAddWord = () => {
+    cleanupEmptyWord();
     const newId = crypto.randomUUID();
     const now = new Date().toISOString();
     upsertWord({
@@ -170,6 +244,14 @@ export const Sidebar: React.FC = () => {
             >
               <Download size={18} />
             </button>
+            {/* <button
+              onClick={() => setShowCleanBlankConfirm(true)}
+              className={`${BTN_GHOST_SQ} ${blankWordIds.length > 0 ? "text-warning" : "opacity-50"}`}
+              title={t("lexicon.cleanBlankWords")}
+              disabled={blankWordIds.length === 0}
+            >
+              <Trash2 size={18} />
+            </button> */}
           </div>
         </div>
 
@@ -192,6 +274,13 @@ export const Sidebar: React.FC = () => {
                 onClick={() => setSelectedIds(new Set())}
               >
                 {t("common.clear", "Clear")}
+              </button>
+              <button
+                className="hover:underline text-error"
+                onClick={() => setShowDeleteSelectedConfirm(true)}
+                disabled={selectedIds.size === 0}
+              >
+                {t("lexicon.deleteSelected")}
               </button>
             </div>
           </div>
@@ -324,11 +413,13 @@ export const Sidebar: React.FC = () => {
                   else next.add(word.entry_id);
                   setSelectedIds(next);
                 } else {
+                  cleanupEmptyWord();
                   setActiveWordId(word.entry_id);
                 }
               }}
-              className={`p-3 border-b border-base-200 rounded cursor-pointer flex gap-3 ${batchMode ? "hover:bg-base-200" : "hover:bg-info/10"
-                } ${isActive ? "bg-primary/15" : ""} ${isSelected && batchMode ? "bg-primary/5" : ""}`}
+              className={`p-3 border-b border-base-200 rounded cursor-pointer flex gap-3 ${
+                batchMode ? "hover:bg-base-200" : "hover:bg-info/10"
+              } ${isActive ? "bg-primary/15" : ""} ${isSelected && batchMode ? "bg-primary/5" : ""}`}
             >
               {batchMode && (
                 <div className="pt-1">
@@ -350,7 +441,7 @@ export const Sidebar: React.FC = () => {
                   </div>
                 )}
                 <div className="text-xs text-base-content/60 truncate">
-                  {word.senses.map((s) => s.gloss).join(", ")}
+                  {word.senses.map((s) => s.gloss).join("; ")}
                 </div>
               </div>
             </div>
@@ -367,6 +458,32 @@ export const Sidebar: React.FC = () => {
           }}
         />
       )}
+
+      <ConfirmModal
+        open={showDeleteSelectedConfirm}
+        title={t("lexicon.deleteSelected")}
+        message={t("lexicon.deleteSelectedConfirm", {
+          count: selectedIds.size,
+        })}
+        onConfirm={() => {
+          handleDeleteSelected();
+          setShowDeleteSelectedConfirm(false);
+        }}
+        onCancel={() => setShowDeleteSelectedConfirm(false)}
+      />
+
+      <ConfirmModal
+        open={showCleanBlankConfirm}
+        title={t("lexicon.cleanBlankWords")}
+        message={t("lexicon.cleanBlankWordsConfirm", {
+          count: blankWordIds.length,
+        })}
+        onConfirm={() => {
+          handleCleanBlankWords();
+          setShowCleanBlankConfirm(false);
+        }}
+        onCancel={() => setShowCleanBlankConfirm(false)}
+      />
     </div>
   );
 };

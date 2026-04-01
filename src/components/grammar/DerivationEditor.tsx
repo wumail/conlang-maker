@@ -46,6 +46,9 @@ export const DerivationEditor: React.FC = () => {
 
   const [previewRuleId, setPreviewRuleId] = React.useState<string | null>(null);
   const [previews, setPreviews] = React.useState<DerivedWordPreview[]>([]);
+  const [selectedPreviewIds, setSelectedPreviewIds] = React.useState<
+    Set<string>
+  >(new Set());
   const [deleteTarget, setDeleteTarget] = React.useState<string | null>(null);
   const { sensors, onDragEnd } = useDragReorder(
     rules,
@@ -63,6 +66,7 @@ export const DerivationEditor: React.FC = () => {
       affix: "",
       condition: null,
       semantic_note: "",
+      sca_mutable: false,
     };
     addDerivation(rule);
   };
@@ -84,10 +88,14 @@ export const DerivationEditor: React.FC = () => {
     const results = generateDerivedWords(sourceWords, rule, phonoConfig);
     setPreviews(results);
     setPreviewRuleId(rule.rule_id);
+    setSelectedPreviewIds(new Set(results.map((p) => p.source.entry_id)));
   };
 
   const importDerived = (rule: DerivationRule) => {
-    previews.forEach((p) => {
+    const toImport = previews.filter((p) =>
+      selectedPreviewIds.has(p.source.entry_id),
+    );
+    toImport.forEach((p) => {
       const entry: WordEntry = {
         entry_id: crypto.randomUUID(),
         language_id: DEFAULT_LANGUAGE_ID,
@@ -120,6 +128,7 @@ export const DerivationEditor: React.FC = () => {
     });
     setPreviews([]);
     setPreviewRuleId(null);
+    setSelectedPreviewIds(new Set());
   };
 
   return (
@@ -290,12 +299,29 @@ export const DerivationEditor: React.FC = () => {
                     >
                       <Sparkles size={14} /> {t("grammar.derivation.preview")}
                     </button>
+                    <label className="flex items-center gap-2 text-xs text-base-content/70">
+                      <input
+                        type="checkbox"
+                        className="checkbox checkbox-sm checkbox-primary"
+                        checked={!!rule.sca_mutable}
+                        onChange={(e) =>
+                          handleChange(
+                            rule.rule_id,
+                            "sca_mutable",
+                            e.target.checked,
+                          )
+                        }
+                      />
+                      {t("grammar.scaMutable")}
+                    </label>
                     {previewRuleId === rule.rule_id && previews.length > 0 && (
                       <button
                         onClick={() => importDerived(rule)}
                         className={BTN_SUCCESS}
+                        disabled={selectedPreviewIds.size === 0}
                       >
-                        {t("grammar.derivation.import")} ({previews.length})
+                        {t("grammar.derivation.import")} (
+                        {selectedPreviewIds.size}/{previews.length})
                       </button>
                     )}
                   </div>
@@ -304,6 +330,28 @@ export const DerivationEditor: React.FC = () => {
                       <table className="table table-sm table-zebra">
                         <thead>
                           <tr>
+                            <th>
+                              <input
+                                type="checkbox"
+                                className="checkbox checkbox-sm checkbox-primary"
+                                checked={
+                                  selectedPreviewIds.size === previews.length
+                                }
+                                onChange={() => {
+                                  if (
+                                    selectedPreviewIds.size === previews.length
+                                  ) {
+                                    setSelectedPreviewIds(new Set());
+                                  } else {
+                                    setSelectedPreviewIds(
+                                      new Set(
+                                        previews.map((p) => p.source.entry_id),
+                                      ),
+                                    );
+                                  }
+                                }}
+                              />
+                            </th>
                             <th>{t("lexicon.word")}</th>
                             <th>→</th>
                             <th>{"IPA"}</th>
@@ -311,7 +359,27 @@ export const DerivationEditor: React.FC = () => {
                         </thead>
                         <tbody>
                           {previews.slice(0, 20).map((p) => (
-                            <tr key={p.source.entry_id}>
+                            <tr
+                              key={p.source.entry_id}
+                              className="cursor-pointer hover:bg-base-200"
+                              onClick={() => {
+                                const next = new Set(selectedPreviewIds);
+                                if (next.has(p.source.entry_id))
+                                  next.delete(p.source.entry_id);
+                                else next.add(p.source.entry_id);
+                                setSelectedPreviewIds(next);
+                              }}
+                            >
+                              <td>
+                                <input
+                                  type="checkbox"
+                                  className="checkbox checkbox-sm checkbox-primary"
+                                  checked={selectedPreviewIds.has(
+                                    p.source.entry_id,
+                                  )}
+                                  readOnly
+                                />
+                              </td>
                               <td className="font-mono">
                                 {p.source.con_word_romanized}
                               </td>

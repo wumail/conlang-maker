@@ -13,6 +13,12 @@ import { BTN_PRIMARY } from "../../lib/ui";
 import { WordEntry } from "../../types";
 import { invoke } from "@tauri-apps/api/core";
 
+function isValidWordEntry(word: WordEntry): boolean {
+  const romanized = (word.con_word_romanized || "").trim();
+  if (!romanized || romanized === "new_word") return false;
+  return word.senses.some((s) => (s.gloss || "").trim().length > 0);
+}
+
 export function PullSync() {
   const { t } = useTranslation();
   const {
@@ -51,11 +57,14 @@ export function PullSync() {
         projectPath,
         languagePath: parentLang.path,
       });
+      const validParentWords = pWords.filter(isValidWordEntry);
       // Find parent words not already in current language
       const currentParentIds = new Set(
         wordsList.map((w) => w.etymology.parent_entry_id).filter(Boolean),
       );
-      const newWords = pWords.filter((w) => !currentParentIds.has(w.entry_id));
+      const newWords = validParentWords.filter(
+        (w) => !currentParentIds.has(w.entry_id),
+      );
       setParentWords(newWords);
     } catch (err) {
       console.warn(`Pull sync check failed: ${err}`);
@@ -80,28 +89,33 @@ export function PullSync() {
       console.warn("Failed to create snapshot before pull sync:", err);
     }
 
-    const evolved = parentWords.map((pw) => {
-      const { result } = applySoundChanges(
-        pw.con_word_romanized,
-        scaConfig.rule_sets,
-        macros,
-      );
-      return {
-        ...pw,
-        entry_id: `${pw.entry_id}_evolved_${Date.now().toString(36)}`,
-        language_id: activeLanguageId,
-        con_word_romanized: result,
-        phonetic_ipa: "",
-        phonetic_override: false,
-        etymology: {
-          ...pw.etymology,
-          origin_type: "evolved" as const,
-          parent_entry_id: pw.entry_id,
-          source_language_id: parentLang?.language_id || null,
-          applied_sound_changes: scaConfig.rule_sets.map((rs) => rs.ruleset_id),
-        },
-      };
-    });
+    const evolved = parentWords
+      .filter(isValidWordEntry)
+      .map((pw) => {
+        const { result } = applySoundChanges(
+          pw.con_word_romanized,
+          scaConfig.rule_sets,
+          macros,
+        );
+        return {
+          ...pw,
+          entry_id: `${pw.entry_id}_evolved_${Date.now().toString(36)}`,
+          language_id: activeLanguageId,
+          con_word_romanized: result.trim(),
+          phonetic_ipa: "",
+          phonetic_override: false,
+          etymology: {
+            ...pw.etymology,
+            origin_type: "evolved" as const,
+            parent_entry_id: pw.entry_id,
+            source_language_id: parentLang?.language_id || null,
+            applied_sound_changes: scaConfig.rule_sets.map(
+              (rs) => rs.ruleset_id,
+            ),
+          },
+        };
+      })
+      .filter(isValidWordEntry);
     importWords(evolved);
     setParentWords([]);
   };

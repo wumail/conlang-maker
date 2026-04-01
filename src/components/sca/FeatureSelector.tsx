@@ -1,7 +1,10 @@
 import { useTranslation } from "react-i18next";
 import { PHONEME_FEATURES } from "../../data/ipa_features";
 import { FeatureExpression, FeatureReplacement } from "../../types";
-import { findMatchingPhonemes } from "../../utils/scaEngine";
+import {
+  findMatchingPhonemes,
+  SCA_BOUNDARY_FEATURE,
+} from "../../utils/scaEngine";
 import { usePhonoStore } from "../../store/phonoStore";
 import { BADGE } from "../../lib/ui";
 
@@ -15,6 +18,7 @@ function getAllFeatures(): string[] {
 }
 
 const ALL_FEATURES = getAllFeatures();
+const FEATURE_OPTIONS = [SCA_BOUNDARY_FEATURE, ...ALL_FEATURES];
 
 interface FeatureExprEditorProps {
   label: string;
@@ -65,7 +69,7 @@ export function FeatureExprEditor({
     <div className="space-y-1">
       <label className="text-xs text-base-content/60">{label}</label>
       <div className="flex flex-wrap gap-1">
-        {ALL_FEATURES.map((feat) => {
+        {FEATURE_OPTIONS.map((feat) => {
           const inPos = expr.positive.includes(feat);
           const inNeg = expr.negative.includes(feat);
           let cls =
@@ -83,7 +87,7 @@ export function FeatureExprEditor({
             >
               {inPos && "+"}
               {inNeg && "−"}
-              {feat}
+              {feat === SCA_BOUNDARY_FEATURE ? t("sca.wordBoundary") : feat}
             </span>
           );
         })}

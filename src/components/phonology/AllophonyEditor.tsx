@@ -93,6 +93,11 @@ export const AllophonyEditor: React.FC = () => {
         </div>
       )}
 
+      {/* Context syntax hint */}
+      <div className="mb-4 text-xs text-base-content/60 bg-info/10 p-2 rounded border border-info/20">
+        💡 {t("phonology.allophony.contextHint")}
+      </div>
+
       {rules.length === 0 && (
         <EmptyState message={t("phonology.allophony.noRules")} />
       )}

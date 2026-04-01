@@ -56,3 +56,22 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 - **Rules**: Target phoneme → replacement phoneme, with pre/post context
 - **Priority**: Applied by priority descending, first match stops
 - **Macro references**: Context can reference phoneme class macros
+
+### Context Syntax
+
+| Symbol | Meaning | Example |
+|--------|---------|---------|
+| `#` | Word boundary | Before `#` = word-initial, After `#` = word-final |
+| `V`, `C`, etc. | Macro symbol | Expands to all phonemes in the class |
+| Plain characters | Literal match | `l` matches literal l |
+| Multi-char sequences | Concatenated | `lV` = l followed by any vowel |
+| `_` or empty | Any character | No context restriction |
+
+### Examples
+
+| Before | Target | → | Replacement | After | Meaning |
+|--------|--------|---|-------------|-------|---------|
+| `#` | `e` | → | `i` | `lV` | Word-initial e before l+vowel → i |
+| `V` | `t` | → | `d` | `V` | Intervocalic t → d |
+| `V` | `k` | → | `x` | `#` | Word-final k after vowel → x |
+| | `n` | → | `ŋ` | `k` | n before k → ŋ |

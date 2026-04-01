@@ -39,6 +39,7 @@ const emptyRule = (posId: string): InflectionRule => ({
   match_regex: ".*",
   disabled: false,
   condition: null,
+  sca_mutable: false,
 });
 
 /** 孤立语允许的简单类型 */
@@ -156,13 +157,14 @@ export const InflectionSection: React.FC = () => {
       )}
       {rules.length === 0 && <EmptyState message={t("grammar.noRules")} />}
       {rules.length > 0 && (
-        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-base-content/60 px-1">
+        <div className="grid grid-cols-13 gap-2 text-xs font-medium text-base-content/60 px-1">
           <div className="col-span-2">{t("grammar.pos")}</div>
           <div className="col-span-2">{t("grammar.tag")}</div>
           <div className="col-span-2">{t("grammar.type")}</div>
           <div className="col-span-2">{t("grammar.affix")}</div>
           <div className="col-span-2">{t("grammar.matchRegex")}</div>
           <div className="col-span-1">{t("grammar.enabled")}</div>
+          <div className="col-span-1">{t("grammar.scaMutableShort")}</div>
           <div className="col-span-1"></div>
         </div>
       )}
@@ -194,7 +196,7 @@ export const InflectionSection: React.FC = () => {
                         className="text-base-content/30 shrink-0 mt-1.5"
                       />
                     </span>
-                    <div className="grid grid-cols-12 gap-2 items-center flex-1">
+                    <div className="grid grid-cols-13 gap-2 items-center flex-1">
                       <select
                         value={rule.pos_id}
                         onChange={(e) =>
@@ -280,6 +282,22 @@ export const InflectionSection: React.FC = () => {
                             )
                           }
                           className={CHECKBOX}
+                        />
+                      </div>
+
+                      <div className="col-span-1 flex items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={!!rule.sca_mutable}
+                          onChange={(e) =>
+                            handleChange(
+                              rule.rule_id,
+                              "sca_mutable",
+                              e.target.checked,
+                            )
+                          }
+                          className={CHECKBOX}
+                          title={t("grammar.scaMutable")}
                         />
                       </div>
 

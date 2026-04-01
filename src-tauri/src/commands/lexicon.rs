@@ -3,6 +3,15 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::command;
 
+fn is_valid_word_entry(word: &WordEntry) -> bool {
+    let romanized = word.con_word_romanized.trim();
+    let has_meaning = word.senses.iter().any(|s| !s.gloss.trim().is_empty());
+    if !has_meaning {
+        return false;
+    }
+    romanized != "new_word"
+}
+
 /// 安全写入：先写临时文件，再原子性 rename 替换，防止写入中途崩溃导致数据丢失
 pub fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     if let Some(parent) = path.parent() {
@@ -51,7 +60,11 @@ pub fn load_all_words(
                 let line = line.trim();
                 if !line.is_empty() {
                     match serde_json::from_str::<WordEntry>(line) {
-                        Ok(word) => all_words.push(word),
+                        Ok(word) => {
+                            if is_valid_word_entry(&word) {
+                                all_words.push(word)
+                            }
+                        }
                         Err(e) => eprintln!("解析词条失败，跳过该行: {}", e),
                     }
                 }
@@ -68,6 +81,10 @@ pub fn save_word(
     word: WordEntry,
     old_romanized: Option<String>,
 ) -> Result<(), String> {
+    if !is_valid_word_entry(&word) {
+        return Ok(());
+    }
+
     let lexicon_dir = Path::new(&project_path)
         .join(&language_path)
         .join("lexicon");

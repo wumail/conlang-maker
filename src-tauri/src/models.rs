@@ -342,6 +342,8 @@ pub struct InflectionRule {
     pub conjugation_class_id: Option<String>,
     #[serde(default)]
     pub fused_dimensions: Option<Vec<HashMap<String, String>>>,
+    #[serde(default)]
+    pub sca_mutable: bool,
 }
 
 fn default_match_regex() -> String {
@@ -369,6 +371,8 @@ pub struct DerivationRule {
     pub circumfix_config: Option<CircumfixConfig>,
     #[serde(default)]
     pub semantic_note: String,
+    #[serde(default)]
+    pub sca_mutable: bool,
 }
 
 // ── 语法手册 (Phase 2) ──────────────────────────────────
@@ -666,6 +670,18 @@ pub struct GlossedLine {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
+pub struct AutoGlossReport {
+    #[serde(default)]
+    pub total: u32,
+    #[serde(default, rename = "autoApplied", alias = "auto_applied")]
+    pub auto_applied: u32,
+    #[serde(default)]
+    pub pending: u32,
+    #[serde(default)]
+    pub unresolved: u32,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct CorpusTextMeta {
     #[serde(default)]
     pub tags: Vec<String>,
@@ -673,6 +689,8 @@ pub struct CorpusTextMeta {
     pub created_at: String,
     #[serde(default)]
     pub updated_at: String,
+    #[serde(default)]
+    pub auto_gloss_report: Option<AutoGlossReport>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]

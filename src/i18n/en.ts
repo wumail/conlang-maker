@@ -16,7 +16,7 @@ export default {
       statWords: "Words",
       statPhonemes: "Phonemes",
       statPOS: "POS",
-      statCorpus: "Texts"
+      statCorpus: "Texts",
     },
     common: {
       add: "Add",
@@ -50,7 +50,7 @@ export default {
       clear: "Clear",
       error: "Error",
       selectAll: "Select All",
-      selected: "Selected"
+      selected: "Selected",
     },
     lexicon: {
       title: "Lexicon",
@@ -99,11 +99,16 @@ export default {
         pron: "Pronoun",
         prep: "Preposition",
         conj: "Conjunction",
-        interj: "Interjection"
+        interj: "Interjection",
       },
       sort: "Sort",
       sortDefault: "Default",
       batchEdit: "Batch Edit",
+      deleteSelected: "Delete Selected",
+      deleteSelectedConfirm: "Delete the selected {{count}} entries?",
+      cleanBlankWords: "Clean Blank Entries",
+      cleanBlankWordsConfirm:
+        "Delete {{count}} entries with empty spelling and empty gloss?",
       setPosAll: "Set Part of Speech (All)",
       noChange: "No Change",
       addTags: "Add Tags",
@@ -111,45 +116,45 @@ export default {
       advancedSearch: "Advanced Search",
       tabs: {
         qc: "Quality Check",
-        statistics: "Statistics"
-      }
+        statistics: "Statistics",
+      },
     },
     phonology: {
       tabs: {
         inventory: "Phoneme Inventory",
         romanization: "Romanization",
         phonotactics: "Phonotactics",
-        allophony: "Allophony"
+        allophony: "Allophony",
       },
       presets: {
         label: "Presets",
         select: "Apply a preset...",
         deselect: "Deselect",
         clearAll: "Clear All Phonemes",
-        'preset_japanese': "Japanese-style",
-        'preset_arabic': "Arabic-style",
-        'preset_slavic': "Slavic-style",
-        'preset_finnic': "Finnic-style",
-        'preset_hawaiian': "Hawaiian-style",
-        'preset_nahuatl': "Nahuatl-style",
-        'preset_mandarin': "Mandarin-style",
-        'preset_hindi': "Hindi-style",
-        'preset_swahili': "Swahili-style",
-        'preset_latin': "Latin-style",
-        'preset_georgian': "Georgian-style",
-        'preset_elvish': "Tolkien Elvish-style",
-        'desc_japanese': "Simple 5-vowel system, no clusters",
-        'desc_arabic': "Emphatic pharyngeals, 3-vowel",
-        'desc_slavic': "Palatalized consonants, sibilants",
-        'desc_finnic': "Vowel harmony, gemination",
-        'desc_hawaiian': "Minimal consonants, open syllables",
-        'desc_nahuatl': "Lateral affricate, glottal stop",
-        'desc_mandarin': "Retroflex, aspirated pairs",
-        'desc_hindi': "Aspirated/retroflex, breathy voiced",
-        'desc_swahili': "Prenasalized stops, 5-vowel",
-        'desc_latin': "Classical Latin inventory",
-        'desc_georgian': "Ejective series, rich clusters",
-        'desc_elvish': "Tolkien-style, flowing sounds"
+        preset_japanese: "Japanese-style",
+        preset_arabic: "Arabic-style",
+        preset_slavic: "Slavic-style",
+        preset_finnic: "Finnic-style",
+        preset_hawaiian: "Hawaiian-style",
+        preset_nahuatl: "Nahuatl-style",
+        preset_mandarin: "Mandarin-style",
+        preset_hindi: "Hindi-style",
+        preset_swahili: "Swahili-style",
+        preset_latin: "Latin-style",
+        preset_georgian: "Georgian-style",
+        preset_elvish: "Tolkien Elvish-style",
+        desc_japanese: "Simple 5-vowel system, no clusters",
+        desc_arabic: "Emphatic pharyngeals, 3-vowel",
+        desc_slavic: "Palatalized consonants, sibilants",
+        desc_finnic: "Vowel harmony, gemination",
+        desc_hawaiian: "Minimal consonants, open syllables",
+        desc_nahuatl: "Lateral affricate, glottal stop",
+        desc_mandarin: "Retroflex, aspirated pairs",
+        desc_hindi: "Aspirated/retroflex, breathy voiced",
+        desc_swahili: "Prenasalized stops, 5-vowel",
+        desc_latin: "Classical Latin inventory",
+        desc_georgian: "Ejective series, rich clusters",
+        desc_elvish: "Tolkien-style, flowing sounds",
       },
       imbalance: {
         title: "Inventory Warnings(no need to follow strictly)",
@@ -157,12 +162,13 @@ export default {
         noVowels: "No vowels selected",
         noConsonants: "No consonants selected",
         fewVowels: "Very few vowels ({{count}}); most languages have 3+",
-        fewConsonants: "Very few consonants ({{count}}); most languages have 6+"
+        fewConsonants:
+          "Very few consonants ({{count}}); most languages have 6+",
       },
       inventory: {
         tabs: {
           consonants: "Consonants",
-          vowels: "Vowels"
+          vowels: "Vowels",
         },
         selected: "Selected Phoneme Inventory",
         consonants: "Consonants",
@@ -177,7 +183,7 @@ export default {
           click: "Click",
           plosive: "Plosive",
           nasal: "Nasal",
-          fricativeApproximant: "Fricative / approximant"
+          fricativeApproximant: "Fricative / approximant",
         },
         subcategories: {
           voiced: "Voiced",
@@ -189,12 +195,13 @@ export default {
           lateralAffricate: "Lateral affricate",
           lateralFricative: "Lateral fricative",
           nasal: "Nasal",
-          none: ""
+          none: "",
         },
         placeManner: "Place →\nManner ↓",
         ipaVowels: "IPA: Vowels",
         vowelLength: "Vowel Length Modifiers",
-        vowelLengthHint: "Select long (ː) and half-long (ˑ) variants of vowels in your inventory",
+        vowelLengthHint:
+          "Select long (ː) and half-long (ˑ) variants of vowels in your inventory",
         long: "Long",
         halfLong: "Half-long",
         toggleLongVowel: "Toggle long variant",
@@ -214,71 +221,76 @@ export default {
         nearOpen: "Near-open",
         open: "Open",
         places: {
-          "Bilabial": "Bilabial",
-          "Labiodental": "Labiodental",
-          "Linguolabial": "Linguolabial",
-          "Dental": "Dental",
-          "Alveolar": "Alveolar",
-          "Postalveolar": "Postalveolar",
-          "Retroflex": "Retroflex",
+          Bilabial: "Bilabial",
+          Labiodental: "Labiodental",
+          Linguolabial: "Linguolabial",
+          Dental: "Dental",
+          Alveolar: "Alveolar",
+          Postalveolar: "Postalveolar",
+          Retroflex: "Retroflex",
           "(Alveolo-)palatal": "(Alveolo-)palatal",
-          "Palatal": "Palatal",
-          "Velar": "Velar",
-          "Uvular": "Uvular",
+          Palatal: "Palatal",
+          Velar: "Velar",
+          Uvular: "Uvular",
           "Pharyngeal/epiglottal": "Pharyngeal/epiglottal",
-          "Glottal": "Glottal"
+          Glottal: "Glottal",
         },
         manners: {
-          "Nasal": "Nasal",
-          "Plosive": "Plosive",
+          Nasal: "Nasal",
+          Plosive: "Plosive",
           "Sibilant affricate": "Sibilant affricate",
           "Non-sibilant affricate": "Non-sibilant affricate",
           "Sibilant fricative": "Sibilant fricative",
           "Non-sibilant fricative": "Non-sibilant fricative",
-          "Approximant": "Approximant",
+          Approximant: "Approximant",
           "Tap/flap": "Tap/flap",
-          "Trill": "Trill",
+          Trill: "Trill",
           "Lateral affricate": "Lateral affricate",
           "Lateral fricative": "Lateral fricative",
           "Lateral approximant": "Lateral approximant",
-          "Lateral tap/flap": "Lateral tap/flap"
+          "Lateral tap/flap": "Lateral tap/flap",
         },
-        playAudio: "{{symbol}} — Click to play"
+        playAudio: "{{symbol}} — Click to play",
       },
       romanization: {
         title: "Romanization Maps",
         map: "Map",
         addMap: "Add Map",
-        deleteMapConfirm: "Are you sure you want to delete this romanization map?",
+        deleteMapConfirm:
+          "Are you sure you want to delete this romanization map?",
         deleteRuleConfirm: "Are you sure you want to delete this rule?",
-        noMaps: "No romanization maps yet. Add one to define spelling-to-phoneme rules.",
+        noMaps:
+          "No romanization maps yet. Add one to define spelling-to-phoneme rules.",
         addRule: "Add Rule",
         inventory: "Inventory",
         sort: "Sort by length",
-        sortHint: "Sort rules by input length (longest first) for greedy matching",
+        sortHint:
+          "Sort rules by input length (longest first) for greedy matching",
         clickToInsert: "Click to insert into focused output field",
         focusFirst: "Focus an output field first",
         input: "Input (spelling)",
         output: "Output (phoneme)",
         contextBefore: "Context Before",
         contextAfter: "Context After",
-        placeholders: {
-        }
+        placeholders: {},
       },
       phonotactics: {
         title: "Phonotactics",
         syllableStructure: "Syllable Structure",
-        syllableHint: "Use uppercase letters as macro placeholders. Parentheses indicate optional segments.",
+        syllableHint:
+          "Use uppercase letters as macro placeholders. Parentheses indicate optional segments.",
         macros: "Phoneme Class Macros",
         addMacro: "Add Macro",
         deleteMacro: "Delete Macro",
         deleteMacroConfirm: "Are you sure you want to delete this macro?",
-        noMacros: "No macros defined. Add one to use in syllable structure and allophony rules.",
+        noMacros:
+          "No macros defined. Add one to use in syllable structure and allophony rules.",
         blacklist: "Blacklist Patterns",
         addPattern: "Add Pattern",
         deletePattern: "Delete Pattern",
         deletePatternConfirm: "Are you sure you want to delete this pattern?",
-        noBlacklist: "No blacklisted patterns. Add regex patterns to reject invalid syllables.",
+        noBlacklist:
+          "No blacklisted patterns. Add regex patterns to reject invalid syllables.",
         inventoryConsonants: "Inventory consonants",
         inventoryVowels: "Vowels",
         selectPhoneme: "Select phoneme",
@@ -286,7 +298,8 @@ export default {
         clickToInsert: "Click to insert",
         focusFirst: "Focus a macro value field first",
         vowelHarmony: "Vowel Harmony",
-        vowelHarmonyHint: "Divide vowels into two groups that cannot co-occur within a word",
+        vowelHarmonyHint:
+          "Divide vowels into two groups that cannot co-occur within a word",
         toneSystem: "Tone System",
         toneHint: "Define tonal registers for the language",
         toneName: "Name",
@@ -297,22 +310,25 @@ export default {
         groupB: "Group B",
         placeholders: {
           blacklist: "e.g. ^[ptkbdg]{3,}",
-        }
+        },
       },
       allophony: {
         title: "Allophony Rules",
         addRule: "Add Rule",
         deleteRule: "Delete Rule",
-        deleteRuleConfirm: "Are you sure you want to delete this allophony rule?",
+        deleteRuleConfirm:
+          "Are you sure you want to delete this allophony rule?",
         availableMacros: "Available macros",
-        noRules: "No allophony rules yet. Add rules to define context-dependent phoneme alternations.",
+        noRules:
+          "No allophony rules yet. Add rules to define context-dependent phoneme alternations.",
         description: "Description (e.g. t becomes d between vowels)",
         target: "Target",
         replacement: "Replacement",
         contextBefore: "Context Before",
         contextAfter: "Context After",
-
-      }
+        contextHint:
+          "Context syntax: # = word boundary, V/C = macro, multi-char sequences supported (e.g. lV = l followed by vowel)",
+      },
     },
     grammar: {
       title: "Inflection Rules",
@@ -327,7 +343,7 @@ export default {
         manual: "Grammar Manual",
         test: "Test",
         typology: "Typology",
-        reference: "Reference"
+        reference: "Reference",
       },
       syntaxTitle: "Syntax Configuration",
       wordOrder: "Word Order",
@@ -351,8 +367,10 @@ export default {
       reqPron: "Req. Pron",
       addRule: "Add Rule",
       deleteRule: "Delete Rule",
-      deleteRuleConfirm: "Are you sure you want to delete this inflection rule?",
-      noRules: "No inflection rules yet. Add rules to define morphological patterns.",
+      deleteRuleConfirm:
+        "Are you sure you want to delete this inflection rule?",
+      noRules:
+        "No inflection rules yet. Add rules to define morphological patterns.",
       pos: "POS",
       tag: "Tag",
       form: "Form",
@@ -360,6 +378,8 @@ export default {
       affix: "Affix",
       matchRegex: "Match Regex",
       enabled: "On",
+      scaMutable: "Allow SCA edits",
+      scaMutableShort: "SCA",
       suffix: "Suffix",
       prefix: "Prefix",
       infix: "Infix",
@@ -391,14 +411,16 @@ export default {
         deleteValue: "Delete Value",
         valueName: "Value Name",
         valueGloss: "Gloss (e.g. NOM, ACC)",
-        deleteDimensionConfirm: "Are you sure you want to delete this dimension?",
-        deleteValueConfirm: "Are you sure you want to delete this value?"
+        deleteDimensionConfirm:
+          "Are you sure you want to delete this dimension?",
+        deleteValueConfirm: "Are you sure you want to delete this value?",
       },
       derivation: {
         title: "Derivation Rules",
         addRule: "Add Rule",
         deleteRule: "Delete Rule",
-        deleteRuleConfirm: "Are you sure you want to delete this derivation rule?",
+        deleteRuleConfirm:
+          "Are you sure you want to delete this derivation rule?",
         noRules: "No derivation rules defined.",
         namePlaceholder: "e.g. Noun → Verb",
         sourcePos: "Source POS",
@@ -406,7 +428,7 @@ export default {
         semanticNote: "Semantic note",
 
         preview: "Preview",
-        import: "Import to lexicon"
+        import: "Import to lexicon",
       },
       manual: {
         title: "Grammar Manual",
@@ -416,23 +438,24 @@ export default {
         noChapters: "No chapters yet. Start writing your grammar!",
 
         chapterTitlePlaceholder: "e.g. Noun Morphology",
-        contentPlaceholder: "Write in Markdown... Use {{paradigm:pos_id:testword}} to embed a paradigm table."
+        contentPlaceholder:
+          "Write in Markdown... Use {{paradigm:pos_id:testword}} to embed a paradigm table.",
       },
       matrix: {
-        extraDims: "Additional dimensions not shown in matrix"
+        extraDims: "Additional dimensions not shown in matrix",
       },
       testTitle: "Inflection Test",
-      testHint: "Enter a word and select POS to test all applicable inflection rules",
+      testHint:
+        "Enter a word and select POS to test all applicable inflection rules",
       testWordPlaceholder: "Enter test word...",
       runTest: "Run Test",
       test: {
         output: "Output",
         detail: "Detail",
-
       },
       placeholders: {
-        affix: "e.g. -s, ka-"
-      }
+        affix: "e.g. -s, ka-",
+      },
     },
     sandbox: {
       title: "Translation Sandbox",
@@ -443,7 +466,7 @@ export default {
       syntaxMode: "Syntax Reorder",
       addToken: "Add Token",
       reorder: "Reorder & Translate",
-      inflectionHelper: "Inflection Helper"
+      inflectionHelper: "Inflection Helper",
     },
     wordgen: {
       title: "Word Generator",
@@ -464,18 +487,20 @@ export default {
       rewriteRules: "Rewrite Rules",
       addRewriteRule: "Add Rewrite Rule",
       deleteRewriteRule: "Delete Rewrite Rule",
-      deleteRewriteRuleConfirm: "Are you sure you want to delete this rewrite rule?",
+      deleteRewriteRuleConfirm:
+        "Are you sure you want to delete this rewrite rule?",
       rewritePattern: "Pattern (regex)",
       rewriteReplacement: "Replacement",
       dropoff: "Dropoff",
       applyTypologyDefaults: "Apply Typology Defaults",
-      typologyHint: "Current typology: {{type}}. Syllable range adjusted accordingly.",
+      typologyHint:
+        "Current typology: {{type}}. Syllable range adjusted accordingly.",
       advancedSearch: "Advanced Search",
       batchEdit: "Batch Edit",
       setPosAll: "Set Part of Speech",
       addTags: "Add Tags",
       removeTags: "Remove Tags",
-      noChange: "No Change"
+      noChange: "No Change",
     },
     qc: {
       title: "Quality Check",
@@ -493,8 +518,8 @@ export default {
         emptyIpa: "Empty IPA",
         patternMismatch: "Word pattern mismatch",
         missingRequired: "Missing required field",
-        duplicateWord: "Duplicate word form"
-      }
+        duplicateWord: "Duplicate word form",
+      },
     },
     statistics: {
       title: "Statistics Report",
@@ -505,7 +530,7 @@ export default {
       bigramHeatmap: "Bigram Heatmap",
       syllableDistribution: "Syllable Distribution",
 
-      romanizationLookup: "Romanization Lookup"
+      romanizationLookup: "Romanization Lookup",
     },
     quickEntry: {
       title: "Quick Entry",
@@ -514,16 +539,17 @@ export default {
       wordPlaceholder: "romanized word...",
       gloss: "Gloss",
       glossPlaceholder: "meaning...",
-      save: "Save"
+      save: "Save",
     },
     workspace: {
-      switchLanguage: "Switch language"
+      switchLanguage: "Switch language",
     },
     sca: {
       title: "Sound Change Applier",
       ruleSets: "Rule Sets",
       addRuleSet: "Add Rule Set",
-      noRuleSets: "No rule sets defined. Add one to start defining sound changes.",
+      noRuleSets:
+        "No rule sets defined. Add one to start defining sound changes.",
       newRuleSet: "New Rule Set",
       unnamed: "Unnamed",
       addRule: "Add Rule",
@@ -536,9 +562,21 @@ export default {
       original: "Original",
       result: "Result",
       showingFirst: "Showing first {{count}} of {{total}} words",
+      pageInfo:
+        "Page {{current}} / {{total}}, {{totalItems}} changed words total",
+      prevPage: "Prev",
+      nextPage: "Next",
       changedCount: "{{count}} words will change",
+      changedCountAll: "{{count}} items will change",
       batchApply: "Apply to Lexicon",
+      batchApplyAll: "Apply to Lexicon & Grammar Rules",
       applied: "Applied!",
+      scope: "Scope",
+      label: "Target",
+      field: "Field",
+      scopeLexicon: "Lexicon",
+      scopeInflection: "Inflection",
+      scopeDerivation: "Derivation",
       featureMode: "Feature Mode",
       featureDetail: "Feature Detail",
       target: "Target",
@@ -549,6 +587,7 @@ export default {
       replacementFeatures: "Replacement Features",
       contextBeforeFeatures: "Context Before Features",
       contextAfterFeatures: "Context After Features",
+      wordBoundary: "Word boundary (#)",
       setFeatures: "Set",
       removeFeatures: "Remove",
       matchingPhonemes: "Matching phonemes",
@@ -557,14 +596,16 @@ export default {
       deleteRule: "Delete Rule",
       deleteRuleConfirm: "Are you sure you want to delete this rule?",
       toggleExpand: "Expand / Collapse",
-      runPreview: "Run Sound Change Preview"
+      runPreview: "Run Sound Change Preview",
     },
     tree: {
       title: "Language Family Tree",
       pullSync: "Pull Sync",
-      pullSyncDesc: "Pull new vocabulary from the parent language, then apply your sound change rules to evolve them into this language's phonology.",
+      pullSyncDesc:
+        "Pull new vocabulary from the parent language, then apply your sound change rules to evolve them into this language's phonology.",
       borrowing: "Borrowing",
-      borrowingDesc: "Borrow vocabulary from any other language in the family tree. Borrowed words are copied as-is without applying sound changes.",
+      borrowingDesc:
+        "Borrow vocabulary from any other language in the family tree. Borrowed words are copied as-is without applying sound changes.",
       words: "words",
       switchTo: "Switch to this language",
       fork: "Fork",
@@ -583,7 +624,8 @@ export default {
       borrowWord: "Borrow this word",
       deleteLang: "Delete Language",
       deleteConfirmTitle: "Delete Language",
-      deleteConfirmMsg: "Are you sure you want to delete \"{{name}}\"? All its data (words, phonology, grammar) will be permanently lost. This cannot be undone.",
+      deleteConfirmMsg:
+        'Are you sure you want to delete "{{name}}"? All its data (words, phonology, grammar) will be permanently lost. This cannot be undone.',
       createRoot: "Create Root Language",
       renameLang: "Rename",
       confirmDelete: "Delete",
@@ -599,7 +641,7 @@ export default {
       rollbackTitle: "Rollback",
       showInFolder: "Show in Folder",
       snapshotWarning: "Rolling back will override current data.",
-      snapshots: "Snapshots"
+      snapshots: "Snapshots",
     },
     export: {
       title: "Export & Import",
@@ -623,7 +665,7 @@ export default {
       conflictOverwrite: "Overwrite Existing",
       llmPrompt: "LLM Prompt",
       llmPromptDesc: "Export language data as a prompt for ChatGPT / Claude",
-      copyPrompt: "Copy to Clipboard"
+      copyPrompt: "Copy to Clipboard",
     },
     corpus: {
       title: "Corpus Manager",
@@ -647,7 +689,27 @@ export default {
       glossLabels: "Gloss Labels",
       linkedEntry: "Linked Entry",
       moreSenses: "more senses",
-      deleteTokenConfirm: "Are you sure you want to delete this token?"
+      deleteTokenConfirm: "Are you sure you want to delete this token?",
+      autoGlossReport:
+        "Auto-gloss report: total {{total}}, auto-applied {{autoApplied}}, pending review {{pending}}, unresolved {{unresolved}}.",
+      pendingSuggestionsTitle:
+        "{{count}} low-confidence suggestions need review",
+      applyAllSuggestions: "Apply All",
+      suggestionToken: "Token",
+      suggestionValue: "Suggestion",
+      suggestionConfidence: "Confidence",
+      suggestionTrace: "Trace",
+      applySuggestion: "Apply",
+      applyScaPreview: "Preview & Apply SCA to Corpus",
+      applyScaNoChanges: "No applicable corpus changes from current SCA rules.",
+      scaDiffTitle: "SCA Change Preview ({{count}})",
+      scaDiffScope: "Scope",
+      scaDiffContext: "Context",
+      scaDiffOriginalText: "Original Text",
+      scaDiffLineOriginal: "Gloss Line Original",
+      scaDiffTokenSurface: "Token Surface",
+      applySelectedScaChanges: "Apply Selected Changes ({{count}})",
+      result: "After",
     },
     typology: {
       title: "Language Typology",
@@ -656,24 +718,30 @@ export default {
         isolating: "Isolating",
         agglutinative: "Agglutinative",
         fusional: "Fusional",
-        polysynthetic: "Polysynthetic"
+        polysynthetic: "Polysynthetic",
       },
       typeDescriptions: {
-        isolating: "One morpheme per word; grammar expressed by word order and particles (e.g. Chinese, Vietnamese)",
-        agglutinative: "Transparent, stackable affixes; one affix = one meaning (e.g. Turkish, Finnish, Japanese)",
-        fusional: "Affixes fuse multiple meanings; stem changes common (e.g. Latin, Russian, German)",
-        polysynthetic: "Words incorporate many morphemes, often forming sentence-words (e.g. Inuktitut, Mohawk)"
+        isolating:
+          "One morpheme per word; grammar expressed by word order and particles (e.g. Chinese, Vietnamese)",
+        agglutinative:
+          "Transparent, stackable affixes; one affix = one meaning (e.g. Turkish, Finnish, Japanese)",
+        fusional:
+          "Affixes fuse multiple meanings; stem changes common (e.g. Latin, Russian, German)",
+        polysynthetic:
+          "Words incorporate many morphemes, often forming sentence-words (e.g. Inuktitut, Mohawk)",
       },
       synthesisIndex: "Synthesis Index",
-      synthesisIndexHint: "Morphemes per word (1.0 = isolating, 5.0 = polysynthetic)",
+      synthesisIndexHint:
+        "Morphemes per word (1.0 = isolating, 5.0 = polysynthetic)",
       fusionIndex: "Fusion Index",
-      fusionIndexHint: "Meanings per affix (1.0 = agglutinative, 3.0 = highly fusional)",
+      fusionIndexHint:
+        "Meanings per affix (1.0 = agglutinative, 3.0 = highly fusional)",
       headMarking: "Head Marking",
       headMarkingOptions: {
         head: "Head-marking",
         dependent: "Dependent-marking",
         double: "Double-marking",
-        none: "No marking"
+        none: "No marking",
       },
       autoEstimated: "Auto-estimate from lexicon",
       manualMode: "Manual setting",
@@ -681,12 +749,14 @@ export default {
       conjugationClasses: "Conjugation Classes",
       fusedDimensions: "Fused Dimensions",
       deleteFusedDimension: "Delete Fused Dimension",
-      deleteFusedDimensionConfirm: "Are you sure you want to delete this fused dimension mapping?",
+      deleteFusedDimensionConfirm:
+        "Are you sure you want to delete this fused dimension mapping?",
       irregularOverrides: "Irregular Overrides",
       addSlot: "Add Slot",
       deleteSlot: "Delete Slot",
       deleteSlotConfirm: "Are you sure you want to delete this affix slot?",
-      affixSlotsHint: "Define ordered affix slots. Position < 0 = prefix, > 0 = suffix. Each slot binds to an inflection dimension.",
+      affixSlotsHint:
+        "Define ordered affix slots. Position < 0 = prefix, > 0 = suffix. Each slot binds to an inflection dimension.",
       noSlots: "No affix slots defined yet.",
       slotPrefix: "Prefix",
       slotSuffix: "Suffix",
@@ -695,8 +765,10 @@ export default {
       slotOrderPreview: "Slot Order Preview",
       addClass: "Add Class",
       deleteClass: "Delete Class",
-      deleteClassConfirm: "Are you sure you want to delete this conjugation class?",
-      conjugationClassesHint: "Define conjugation/declension classes. Each class groups inflection rules that share stem patterns.",
+      deleteClassConfirm:
+        "Are you sure you want to delete this conjugation class?",
+      conjugationClassesHint:
+        "Define conjugation/declension classes. Each class groups inflection rules that share stem patterns.",
       noClasses: "No conjugation classes defined yet.",
       classNamePlaceholder: "e.g. 1st Conjugation",
       stemPatternPlaceholder: "Stem regex pattern",
@@ -705,7 +777,8 @@ export default {
       addOverride: "Add Override",
       deleteOverride: "Delete Override",
       deleteOverrideConfirm: "Are you sure you want to delete this override?",
-      irregularOverridesHint: "Manually specify surface forms for irregular words, bypassing regular inflection rules.",
+      irregularOverridesHint:
+        "Manually specify surface forms for irregular words, bypassing regular inflection rules.",
       noOverrides: "No irregular overrides defined yet.",
       selectEntry: "Select entry...",
       searchEntry: "Search entries...",
@@ -715,14 +788,17 @@ export default {
       noDimensionsHint: "Please configure inflection dimensions first",
       noPosHint: "Please define parts of speech first",
       noRulesHint: "Please configure inflection rules first",
-      noScaRulesWarning: "No sound change rules configured — pulled words will not undergo evolution",
-      isolatingInflectionHint: "Isolating languages typically have minimal inflection. Rules here are optional — grammar is mainly expressed through word order and particles.",
+      noScaRulesWarning:
+        "No sound change rules configured — pulled words will not undergo evolution",
+      isolatingInflectionHint:
+        "Isolating languages typically have minimal inflection. Rules here are optional — grammar is mainly expressed through word order and particles.",
       analysisTitle: "Typological Analysis",
       estimatedSynthesis: "Estimated Synthesis Index",
       estimatedFusion: "Estimated Fusion Index",
-      noDataForAnalysis: "Add words to the lexicon to auto-estimate typology indices.",
+      noDataForAnalysis:
+        "Add words to the lexicon to auto-estimate typology indices.",
       morphemesPerWord: "morphemes/word",
-      meaningsPerAffix: "meanings/affix"
+      meaningsPerAffix: "meanings/affix",
     },
     dataset: {
       title: "Datasets",
@@ -731,11 +807,12 @@ export default {
       active: "Active",
       remove: "Remove",
       removeTitle: "Remove Dataset",
-      removeMessage: "Remove this dataset from the list? (Data files will not be deleted.)",
+      removeMessage:
+        "Remove this dataset from the list? (Data files will not be deleted.)",
       manage: "Manage",
       importBundle: "Import Bundle",
       importBundleDesc: "Import a .conlang.json bundle as a new project",
-      chooseBundleDir: "Choose a folder to save the imported project"
+      chooseBundleDir: "Choose a folder to save the imported project",
     },
     family: {
       title: "Family Management",
@@ -744,16 +821,19 @@ export default {
       active: "Active",
       remove: "Remove",
       removeTitle: "Remove Family",
-      removeMessage: "Remove this family from the list? (Only removes the record, does not delete files on disk.)",
+      removeMessage:
+        "Remove this family from the list? (Only removes the record, does not delete files on disk.)",
       manage: "Manage",
       saveAs: "Save As",
       saveAsTitle: "Save As Copy",
       saveAsChooseDir: "Choose destination",
       newName: "New Name",
       newNamePlaceholder: "e.g. My Language Family Copy",
-      saveAsSourceMissing: "Current family is not loaded. Please open a family first.",
-      saveAsInvalidTarget: "Please choose a folder outside the current project directory.",
-      saveAsFailed: "Save As failed: {{reason}}"
+      saveAsSourceMissing:
+        "Current family is not loaded. Please open a family first.",
+      saveAsInvalidTarget:
+        "Please choose a folder outside the current project directory.",
+      saveAsFailed: "Save As failed: {{reason}}",
     },
     welcome: {
       subtitle: "Create and manage constructed languages",
@@ -763,11 +843,12 @@ export default {
       recent: "Recent Families",
       remove: "Remove from list",
       removeTitle: "Remove Family",
-      removeMessage: "Remove this family from the recent list? (Only removes the record, does not delete files on disk.)",
+      removeMessage:
+        "Remove this family from the recent list? (Only removes the record, does not delete files on disk.)",
       createTitle: "Create Language Family",
       familyName: "Family Name",
       familyNamePlaceholder: "e.g. Proto-Elvish",
-      importFailed: "Import failed! Missing language data folders: {{missing}}"
+      importFailed: "Import failed! Missing language data folders: {{missing}}",
     },
     about: {
       version: "Version",
@@ -780,6 +861,6 @@ export default {
       installing: "Installing...",
       installDone: "Update installed. Restart app to apply.",
       restartNow: "Restart Now",
-    }
-  }
+    },
+  },
 };

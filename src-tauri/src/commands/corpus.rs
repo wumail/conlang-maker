@@ -1,12 +1,15 @@
+use crate::commands::lexicon::atomic_write;
+use crate::models::{CorpusIndexEntry, CorpusText, CorpusTextMeta};
 use std::fs;
 use std::path::Path;
 use tauri::command;
-use crate::models::{CorpusText, CorpusIndexEntry, CorpusTextMeta};
-use crate::commands::lexicon::atomic_write;
 
 /// Load corpus index (list of all corpus texts with metadata only)
 #[command]
-pub fn load_corpus_index(project_path: String, language_path: String) -> Result<Vec<CorpusIndexEntry>, String> {
+pub fn load_corpus_index(
+    project_path: String,
+    language_path: String,
+) -> Result<Vec<CorpusIndexEntry>, String> {
     let corpus_dir = Path::new(&project_path).join(&language_path).join("corpus");
     if !corpus_dir.exists() {
         return Ok(Vec::new());
@@ -18,13 +21,18 @@ pub fn load_corpus_index(project_path: String, language_path: String) -> Result<
     }
 
     let content = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
-    let entries: Vec<CorpusIndexEntry> = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+    let entries: Vec<CorpusIndexEntry> =
+        serde_json::from_str(&content).map_err(|e| e.to_string())?;
     Ok(entries)
 }
 
 /// Load a single corpus text by ID
 #[command]
-pub fn load_corpus_text(project_path: String, language_path: String, corpus_id: String) -> Result<CorpusText, String> {
+pub fn load_corpus_text(
+    project_path: String,
+    language_path: String,
+    corpus_id: String,
+) -> Result<CorpusText, String> {
     let corpus_dir = Path::new(&project_path).join(&language_path).join("corpus");
     let file_path = corpus_dir.join(format!("{}.json", corpus_id));
 
@@ -38,7 +46,11 @@ pub fn load_corpus_text(project_path: String, language_path: String, corpus_id: 
 
 /// Save a corpus text (create or update) and update the index
 #[command]
-pub fn save_corpus_text(project_path: String, language_path: String, text: CorpusText) -> Result<(), String> {
+pub fn save_corpus_text(
+    project_path: String,
+    language_path: String,
+    text: CorpusText,
+) -> Result<(), String> {
     let corpus_dir = Path::new(&project_path).join(&language_path).join("corpus");
     fs::create_dir_all(&corpus_dir).map_err(|e| e.to_string())?;
 
@@ -65,6 +77,7 @@ pub fn save_corpus_text(project_path: String, language_path: String, text: Corpu
             tags: text.metadata.tags.clone(),
             created_at: text.metadata.created_at.clone(),
             updated_at: text.metadata.updated_at.clone(),
+            auto_gloss_report: text.metadata.auto_gloss_report.clone(),
         },
     };
 
@@ -85,7 +98,11 @@ pub fn save_corpus_text(project_path: String, language_path: String, text: Corpu
 
 /// Delete a corpus text and update the index
 #[command]
-pub fn delete_corpus_text(project_path: String, language_path: String, corpus_id: String) -> Result<(), String> {
+pub fn delete_corpus_text(
+    project_path: String,
+    language_path: String,
+    corpus_id: String,
+) -> Result<(), String> {
     let corpus_dir = Path::new(&project_path).join(&language_path).join("corpus");
 
     // Delete the individual file
@@ -98,7 +115,8 @@ pub fn delete_corpus_text(project_path: String, language_path: String, corpus_id
     let index_path = corpus_dir.join("corpus_index.json");
     if index_path.exists() {
         let idx_content = fs::read_to_string(&index_path).map_err(|e| e.to_string())?;
-        let mut index: Vec<CorpusIndexEntry> = serde_json::from_str(&idx_content).unwrap_or_default();
+        let mut index: Vec<CorpusIndexEntry> =
+            serde_json::from_str(&idx_content).unwrap_or_default();
         index.retain(|e| e.corpus_id != corpus_id);
         let idx_content = serde_json::to_string_pretty(&index).map_err(|e| e.to_string())?;
         atomic_write(&index_path, &idx_content)?;

@@ -98,6 +98,12 @@ src/
   - `src-tauri/Cargo.toml` 的 `[package].version`
   - `src-tauri/tauri.conf.json` 的 `version`
 - 每次准备发布前必须执行：`bun run version:check`（CI 也会强制检查）。
+- 使用 `bun run version:update` 自动化版本更新流程：
+  1. 先执行 `version:check` 确认当前版本一致
+  2. 提示下一个 patch 版本号，支持输入自定义版本号
+  3. 检查 git 暂存区：无暂存变更则中止，有冲突标记则警告
+  4. 同步更新 `package.json`、`Cargo.toml`、`tauri.conf.json` 三个文件的版本号
+  5. 自动暂存版本文件并输出建议的 commit 命令
 - `identifier`（`src-tauri/tauri.conf.json`）在发布后**禁止随意修改**。修改会导致：
   - 被系统识别为不同应用（安装/更新链断裂）
   - 应用数据目录迁移问题（用户数据“丢失”）

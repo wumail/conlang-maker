@@ -16,7 +16,7 @@ export default {
       statWords: "词项",
       statPhonemes: "音位",
       statPOS: "词类",
-      statCorpus: "语料"
+      statCorpus: "语料",
     },
     common: {
       add: "添加",
@@ -50,7 +50,7 @@ export default {
       clear: "清除",
       error: "错误",
       selectAll: "全选",
-      selected: "已选"
+      selected: "已选",
     },
     lexicon: {
       title: "词典",
@@ -97,11 +97,15 @@ export default {
         pron: "代词",
         prep: "介词",
         conj: "连词",
-        interj: "感叹词"
+        interj: "感叹词",
       },
       sort: "排序",
       sortDefault: "默认",
       batchEdit: "批量编辑",
+      deleteSelected: "删除选中",
+      deleteSelectedConfirm: "确定要删除已选的 {{count}} 个词条吗？",
+      cleanBlankWords: "清理空白词",
+      cleanBlankWordsConfirm: "确定要删除 {{count}} 个空拼且无释义的词条吗？",
       setPosAll: "设置词性（全部）",
       noChange: "不更改",
       addTags: "添加标签",
@@ -109,45 +113,45 @@ export default {
       advancedSearch: "高级搜索",
       tabs: {
         qc: "词典质检",
-        statistics: "统计报告"
-      }
+        statistics: "统计报告",
+      },
     },
     phonology: {
       tabs: {
         inventory: "音素表",
         romanization: "罗马音映射",
         phonotactics: "音位配列",
-        allophony: "音位变体"
+        allophony: "音位变体",
       },
       presets: {
         label: "预设",
         select: "选择预设...",
         deselect: "取消选择",
         clearAll: "清除所有音素",
-        'preset_japanese': "日语风格",
-        'preset_arabic': "阿拉伯语风格",
-        'preset_slavic': "斯拉夫语风格",
-        'preset_finnic': "芬兰语风格",
-        'preset_hawaiian': "夏威夷语风格",
-        'preset_nahuatl': "纳瓦特尔语风格",
-        'preset_mandarin': "普通话风格",
-        'preset_hindi': "印地语风格",
-        'preset_swahili': "斯瓦希里语风格",
-        'preset_latin': "拉丁语风格",
-        'preset_georgian': "格鲁吉亚语风格",
-        'preset_elvish': "托尔金精灵语风格",
-        'desc_japanese': "简单五元音系统，无辅音丛",
-        'desc_arabic': "咽化辅音，三元音",
-        'desc_slavic': "腭化辅音，咝擦音丰富",
-        'desc_finnic': "元音和谐，辅音长短对立",
-        'desc_hawaiian': "极少辅音，开音节",
-        'desc_nahuatl': "边塞擦音，喉塞音",
-        'desc_mandarin': "翘舌音，送气对立",
-        'desc_hindi': "送气/卷舌，浊气声",
-        'desc_swahili': "前鼻化塞音，五元音",
-        'desc_latin': "古典拉丁语音素表",
-        'desc_georgian': "挤喉音系列，复杂辅音丛",
-        'desc_elvish': "托尔金风格，流畅音感"
+        preset_japanese: "日语风格",
+        preset_arabic: "阿拉伯语风格",
+        preset_slavic: "斯拉夫语风格",
+        preset_finnic: "芬兰语风格",
+        preset_hawaiian: "夏威夷语风格",
+        preset_nahuatl: "纳瓦特尔语风格",
+        preset_mandarin: "普通话风格",
+        preset_hindi: "印地语风格",
+        preset_swahili: "斯瓦希里语风格",
+        preset_latin: "拉丁语风格",
+        preset_georgian: "格鲁吉亚语风格",
+        preset_elvish: "托尔金精灵语风格",
+        desc_japanese: "简单五元音系统，无辅音丛",
+        desc_arabic: "咽化辅音，三元音",
+        desc_slavic: "腭化辅音，咝擦音丰富",
+        desc_finnic: "元音和谐，辅音长短对立",
+        desc_hawaiian: "极少辅音，开音节",
+        desc_nahuatl: "边塞擦音，喉塞音",
+        desc_mandarin: "翘舌音，送气对立",
+        desc_hindi: "送气/卷舌，浊气声",
+        desc_swahili: "前鼻化塞音，五元音",
+        desc_latin: "古典拉丁语音素表",
+        desc_georgian: "挤喉音系列，复杂辅音丛",
+        desc_elvish: "托尔金风格，流畅音感",
       },
       imbalance: {
         title: "音素表警告（不需要严格遵从）",
@@ -155,12 +159,12 @@ export default {
         noVowels: "未选择元音",
         noConsonants: "未选择辅音",
         fewVowels: "元音过少（{{count}} 个）；多数语言有 3 个以上",
-        fewConsonants: "辅音过少（{{count}} 个）；多数语言有 6 个以上"
+        fewConsonants: "辅音过少（{{count}} 个）；多数语言有 6 个以上",
       },
       inventory: {
         tabs: {
           consonants: "辅音",
-          vowels: "元音"
+          vowels: "元音",
         },
         selected: "已选音素",
         consonants: "辅音",
@@ -175,7 +179,7 @@ export default {
           click: "搭嘴音",
           plosive: "塞音",
           nasal: "鼻音",
-          fricativeApproximant: "擦音/近音"
+          fricativeApproximant: "擦音/近音",
         },
         subcategories: {
           voiced: "浊音",
@@ -187,7 +191,7 @@ export default {
           lateralAffricate: "边塞擦音",
           lateralFricative: "边擦音",
           nasal: "鼻音",
-          none: ""
+          none: "",
         },
         placeManner: "发音部位 →\n发音方法 ↓",
         ipaVowels: "IPA: 元音",
@@ -212,36 +216,36 @@ export default {
         nearOpen: "次开",
         open: "开",
         places: {
-          "Bilabial": "双唇音",
-          "Labiodental": "唇齿音",
-          "Linguolabial": "舌唇音",
-          "Dental": "齿音",
-          "Alveolar": "齿龈音",
-          "Postalveolar": "齿龈后音",
-          "Retroflex": "卷舌音",
+          Bilabial: "双唇音",
+          Labiodental: "唇齿音",
+          Linguolabial: "舌唇音",
+          Dental: "齿音",
+          Alveolar: "齿龈音",
+          Postalveolar: "齿龈后音",
+          Retroflex: "卷舌音",
           "(Alveolo-)palatal": "（齿龈-）硬膈音",
-          "Palatal": "硬腭音",
-          "Velar": "软腭音",
-          "Uvular": "小舌音",
+          Palatal: "硬腭音",
+          Velar: "软腭音",
+          Uvular: "小舌音",
           "Pharyngeal/epiglottal": "咽音/会厌音",
-          "Glottal": "声门音"
+          Glottal: "声门音",
         },
         manners: {
-          "Nasal": "鼻音",
-          "Plosive": "塞音",
+          Nasal: "鼻音",
+          Plosive: "塞音",
           "Sibilant affricate": "咝塞擦音",
           "Non-sibilant affricate": "非咝塞擦音",
           "Sibilant fricative": "咝擦音",
           "Non-sibilant fricative": "非咝擦音",
-          "Approximant": "近音",
+          Approximant: "近音",
           "Tap/flap": "闪音/弹音",
-          "Trill": "颤音",
+          Trill: "颤音",
           "Lateral affricate": "边塞擦音",
           "Lateral fricative": "边擦音",
           "Lateral approximant": "边近音",
-          "Lateral tap/flap": "边闪音"
+          "Lateral tap/flap": "边闪音",
         },
-        playAudio: "{{symbol}} — 点击播放"
+        playAudio: "{{symbol}} — 点击播放",
       },
       romanization: {
         title: "罗马音映射表",
@@ -260,8 +264,7 @@ export default {
         output: "输出 (音素)",
         contextBefore: "前缀环境",
         contextAfter: "后缀环境",
-        placeholders: {
-        }
+        placeholders: {},
       },
       phonotactics: {
         title: "音位配列 (Phonotactics)",
@@ -295,7 +298,7 @@ export default {
         groupB: "B 组",
         placeholders: {
           blacklist: "例如：^[ptkbdg]{3,}",
-        }
+        },
       },
       allophony: {
         title: "音位变体规则 (Allophony)",
@@ -309,8 +312,9 @@ export default {
         replacement: "替换为",
         contextBefore: "前缀环境",
         contextAfter: "后缀环境",
-
-      }
+        contextHint:
+          "上下文语法：# = 词边界，V/C 等为宏符号，支持多字符序列（如 lV = l后跟元音）",
+      },
     },
     grammar: {
       title: "屈折规则",
@@ -325,7 +329,7 @@ export default {
         manual: "语法手册",
         test: "屈折测试",
         typology: "类型学",
-        reference: "参考"
+        reference: "参考",
       },
       syntaxTitle: "句法配置",
       wordOrder: "语序",
@@ -358,6 +362,8 @@ export default {
       affix: "词缀",
       matchRegex: "匹配正则",
       enabled: "启用",
+      scaMutable: "允许 SCA 修改",
+      scaMutableShort: "SCA",
       suffix: "后缀",
       prefix: "前缀",
       infix: "中缀",
@@ -390,7 +396,7 @@ export default {
         valueName: "值名称",
         valueGloss: "缩写 (如 NOM, ACC)",
         deleteDimensionConfirm: "确定要删除此维度吗？",
-        deleteValueConfirm: "确定要删除此值吗？"
+        deleteValueConfirm: "确定要删除此值吗？",
       },
       derivation: {
         title: "派生规则",
@@ -404,7 +410,7 @@ export default {
         semanticNote: "语义说明",
 
         preview: "预览",
-        import: "导入词典"
+        import: "导入词典",
       },
       manual: {
         title: "语法手册",
@@ -414,10 +420,11 @@ export default {
         noChapters: "暂无章节。开始编写你的语法吧！",
 
         chapterTitlePlaceholder: "例如：名词形态",
-        contentPlaceholder: "用 Markdown 编写... 使用 {{paradigm:pos_id:测试词}} 嵌入范式表。"
+        contentPlaceholder:
+          "用 Markdown 编写... 使用 {{paradigm:pos_id:测试词}} 嵌入范式表。",
       },
       matrix: {
-        extraDims: "矩阵未显示的额外维度"
+        extraDims: "矩阵未显示的额外维度",
       },
       testTitle: "屈折测试",
       testHint: "输入测试词并选择词性，运行所有适用的屈折规则",
@@ -426,11 +433,10 @@ export default {
       test: {
         output: "输出",
         detail: "详情",
-
       },
       placeholders: {
-        affix: "例如：-s, ka-"
-      }
+        affix: "例如：-s, ka-",
+      },
     },
     sandbox: {
       title: "翻译沙盒",
@@ -441,7 +447,7 @@ export default {
       syntaxMode: "句法重排",
       addToken: "添加词汇",
       reorder: "重排并翻译",
-      inflectionHelper: "词形助手"
+      inflectionHelper: "词形助手",
     },
     wordgen: {
       title: "造词生成器",
@@ -473,7 +479,7 @@ export default {
       setPosAll: "设置词性",
       addTags: "添加标签 (逗号分隔)",
       removeTags: "移除标签 (逗号分隔)",
-      noChange: "保持不变"
+      noChange: "保持不变",
     },
     qc: {
       title: "词典质检",
@@ -491,8 +497,8 @@ export default {
         emptyIpa: "IPA 为空",
         patternMismatch: "词形不符合模式",
         missingRequired: "缺少必填字段",
-        duplicateWord: "重复词形"
-      }
+        duplicateWord: "重复词形",
+      },
     },
     statistics: {
       title: "统计报告",
@@ -503,7 +509,7 @@ export default {
       bigramHeatmap: "二元组合热力图",
       syllableDistribution: "音节结构分布",
 
-      romanizationLookup: "正字法速查表"
+      romanizationLookup: "正字法速查表",
     },
     quickEntry: {
       title: "快速录入",
@@ -512,10 +518,10 @@ export default {
       wordPlaceholder: "罗马音...",
       gloss: "释义",
       glossPlaceholder: "含义...",
-      save: "保存"
+      save: "保存",
     },
     workspace: {
-      switchLanguage: "切换语言"
+      switchLanguage: "切换语言",
     },
     sca: {
       title: "历时音变引擎",
@@ -534,15 +540,28 @@ export default {
       original: "原形",
       result: "结果",
       showingFirst: "显示前 {{count}} / {{total}} 个词",
+      pageInfo:
+        "第 {{current}} / {{total}} 页，共 {{totalItems}} 个发生变化的词",
+      prevPage: "上一页",
+      nextPage: "下一页",
       changedCount: "{{count}} 个词将发生变化",
+      changedCountAll: "{{count}} 项将发生变化",
       batchApply: "应用到词典",
+      batchApplyAll: "应用到词典与语法规则",
       applied: "已应用！",
+      scope: "范围",
+      label: "目标",
+      field: "字段",
+      scopeLexicon: "词典",
+      scopeInflection: "屈折",
+      scopeDerivation: "派生",
       featureMode: "特征模式",
       featureDetail: "特征详情",
       target: "目标",
       replacement: "替换",
       contextBefore: "前置环境",
       contextAfter: "后置环境",
+      wordBoundary: "词边界(#)",
       targetFeatures: "目标特征",
       replacementFeatures: "替换特征",
       contextBeforeFeatures: "前置环境特征",
@@ -555,14 +574,16 @@ export default {
       deleteRule: "删除规则",
       deleteRuleConfirm: "确定要删除此音变规则吗？",
       toggleExpand: "展开 / 收起",
-      runPreview: "运行音变预览"
+      runPreview: "运行音变预览",
     },
     tree: {
       title: "语系拓扑图",
       pullSync: "拉取同步",
-      pullSyncDesc: "从父语言拉取新词汇，并自动应用音变规则，将其演变为当前语言的语音形式。",
+      pullSyncDesc:
+        "从父语言拉取新词汇，并自动应用音变规则，将其演变为当前语言的语音形式。",
       borrowing: "借词",
-      borrowingDesc: "从语系树中的任何其他语言借入词汇。借词将原样复制，不应用音变规则。",
+      borrowingDesc:
+        "从语系树中的任何其他语言借入词汇。借词将原样复制，不应用音变规则。",
       words: "个词条",
       switchTo: "切换到此语言",
       fork: "派生",
@@ -581,7 +602,8 @@ export default {
       borrowWord: "借入此词",
       deleteLang: "删除语言",
       deleteConfirmTitle: "删除语言",
-      deleteConfirmMsg: "确定要删除「{{name}}」吗？该语言的所有数据（词汇、音系、语法）将被永久删除，此操作不可撤销。",
+      deleteConfirmMsg:
+        "确定要删除「{{name}}」吗？该语言的所有数据（词汇、音系、语法）将被永久删除，此操作不可撤销。",
       createRoot: "创建根语系",
       renameLang: "重命名",
       confirmDelete: "删除",
@@ -597,7 +619,7 @@ export default {
       rollbackTitle: "回退",
       showInFolder: "在文件夹中显示",
       snapshotWarning: "回退将会覆盖当前数据。",
-      snapshots: "快照"
+      snapshots: "快照",
     },
     export: {
       title: "导出与导入",
@@ -621,7 +643,7 @@ export default {
       conflictOverwrite: "覆盖现有单词",
       llmPrompt: "LLM Prompt",
       llmPromptDesc: "将语言数据导出为 ChatGPT / Claude 提示词",
-      copyPrompt: "复制到剪贴板"
+      copyPrompt: "复制到剪贴板",
     },
     corpus: {
       title: "语料库管理",
@@ -645,7 +667,26 @@ export default {
       glossLabels: "释义标签",
       linkedEntry: "关联词条",
       moreSenses: "更多义项",
-      deleteTokenConfirm: "确定要删除此词元吗？"
+      deleteTokenConfirm: "确定要删除此词元吗？",
+      autoGlossReport:
+        "自动标注统计：总计 {{total}}，自动应用 {{autoApplied}}，待复核 {{pending}}，未识别 {{unresolved}}。",
+      pendingSuggestionsTitle: "有 {{count}} 条低置信候选待复核",
+      applyAllSuggestions: "全部应用",
+      suggestionToken: "词元",
+      suggestionValue: "候选",
+      suggestionConfidence: "置信度",
+      suggestionTrace: "来源",
+      applySuggestion: "应用",
+      applyScaPreview: "预览并应用 SCA 到语料",
+      applyScaNoChanges: "当前 SCA 规则对语料无可应用变化。",
+      scaDiffTitle: "SCA 变更预览（{{count}} 项）",
+      scaDiffScope: "范围",
+      scaDiffContext: "上下文",
+      scaDiffOriginalText: "原文",
+      scaDiffLineOriginal: "标注行原文",
+      scaDiffTokenSurface: "词元表层",
+      applySelectedScaChanges: "应用选中变更（{{count}}）",
+      result: "变化后",
     },
     typology: {
       title: "语言类型学",
@@ -654,13 +695,15 @@ export default {
         isolating: "孤立语",
         agglutinative: "黏着语",
         fusional: "屈折语",
-        polysynthetic: "多式综合语"
+        polysynthetic: "多式综合语",
       },
       typeDescriptions: {
-        isolating: "一个词素对应一个语素，语法主要通过语序和虚词表达（如中文、越南语）",
-        agglutinative: "透明拼接的词缀，一个词缀=一个语法意义（如土耳其语、芬兰语、日语）",
+        isolating:
+          "一个词素对应一个语素，语法主要通过语序和虚词表达（如中文、越南语）",
+        agglutinative:
+          "透明拼接的词缀，一个词缀=一个语法意义（如土耳其语、芬兰语、日语）",
         fusional: "词缀融合多个意义，常有词干变化（如拉丁语、俄语、德语）",
-        polysynthetic: "单词包含大量词素，常形成句-词（如因纽特语、莫霍克语）"
+        polysynthetic: "单词包含大量词素，常形成句-词（如因纽特语、莫霍克语）",
       },
       synthesisIndex: "综合度指数",
       synthesisIndexHint: "每词词素数（1.0 = 孤立, 5.0 = 多式综合）",
@@ -671,7 +714,7 @@ export default {
         head: "中心词标记",
         dependent: "依存词标记",
         double: "双重标记",
-        none: "无标记"
+        none: "无标记",
       },
       autoEstimated: "从词库自动推断",
       manualMode: "手动设定",
@@ -684,7 +727,8 @@ export default {
       addSlot: "添加槽位",
       deleteSlot: "删除槽位",
       deleteSlotConfirm: "确定要删除此词缀槽位吗？",
-      affixSlotsHint: "定义有序的词缀槽位。position < 0 为前缀，> 0 为后缀。每个槽位绑定一个屈折维度。",
+      affixSlotsHint:
+        "定义有序的词缀槽位。position < 0 为前缀，> 0 为后缀。每个槽位绑定一个屈折维度。",
       noSlots: "尚未定义词缀槽位。",
       slotPrefix: "前缀",
       slotSuffix: "后缀",
@@ -694,7 +738,8 @@ export default {
       addClass: "添加变位类",
       deleteClass: "删除变位类",
       deleteClassConfirm: "确定要删除此变位类吗？",
-      conjugationClassesHint: "定义变位/变格类。每个类将共享词干模式的屈折规则分组管理。",
+      conjugationClassesHint:
+        "定义变位/变格类。每个类将共享词干模式的屈折规则分组管理。",
       noClasses: "尚未定义变位类。",
       classNamePlaceholder: "如：第一变位",
       stemPatternPlaceholder: "词干正则模式",
@@ -714,13 +759,14 @@ export default {
       noPosHint: "请先定义词性",
       noRulesHint: "请先配置屈折规则",
       noScaRulesWarning: "未配置音变规则，拉取的词汇将不会经过演变",
-      isolatingInflectionHint: "孤立语通常很少使用屈折变化。此处的规则为可选项——语法主要通过语序和虚词表达。",
+      isolatingInflectionHint:
+        "孤立语通常很少使用屈折变化。此处的规则为可选项——语法主要通过语序和虚词表达。",
       analysisTitle: "类型学分析",
       estimatedSynthesis: "推算综合度指数",
       estimatedFusion: "推算融合度指数",
       noDataForAnalysis: "向词库添加词条以自动推算类型学指数。",
       morphemesPerWord: "词素/词",
-      meaningsPerAffix: "意义/词缀"
+      meaningsPerAffix: "意义/词缀",
     },
     dataset: {
       title: "数据集",
@@ -733,7 +779,7 @@ export default {
       manage: "管理",
       importBundle: "导入备份",
       importBundleDesc: "将 .conlang.json 备份文件导入为新项目",
-      chooseBundleDir: "选择保存导入项目的文件夹"
+      chooseBundleDir: "选择保存导入项目的文件夹",
     },
     family: {
       title: "语系管理",
@@ -751,7 +797,7 @@ export default {
       newNamePlaceholder: "例如：我的语系副本",
       saveAsSourceMissing: "当前语系未加载，请先打开一个语系。",
       saveAsInvalidTarget: "请选择当前项目目录之外的文件夹。",
-      saveAsFailed: "另存为失败：{{reason}}"
+      saveAsFailed: "另存为失败：{{reason}}",
     },
     welcome: {
       subtitle: "创建与管理构造语言",
@@ -761,11 +807,12 @@ export default {
       recent: "最近打开",
       remove: "从列表移除",
       removeTitle: "移除语系",
-      removeMessage: "从最近列表中移除此语系？（仅移除记录，不会删除磁盘上的文件）",
+      removeMessage:
+        "从最近列表中移除此语系？（仅移除记录，不会删除磁盘上的文件）",
       createTitle: "创建语系",
       familyName: "语系名称",
       familyNamePlaceholder: "例如：原始精灵语",
-      importFailed: "导入失败！缺失以下语言数据文件夹：{{missing}}"
+      importFailed: "导入失败！缺失以下语言数据文件夹：{{missing}}",
     },
     about: {
       version: "版本",
@@ -778,6 +825,6 @@ export default {
       installing: "安装中...",
       installDone: "更新已安装，重启应用后生效。",
       restartNow: "立即重启",
-    }
-  }
+    },
+  },
 };

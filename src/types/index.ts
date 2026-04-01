@@ -206,6 +206,7 @@ export interface InflectionRule {
   slot_id?: string; // 黏着语：关联的词缀槽位
   conjugation_class_id?: string; // 屈折语：关联的变位类
   fused_dimensions?: Record<string, string>[]; // 屈折语：融合规则映射多组维度值
+  sca_mutable?: boolean; // 是否允许被 SCA 批量改写
 }
 
 // ── 派生规则 (Phase 2) ───────────────────────────────────
@@ -221,6 +222,7 @@ export interface DerivationRule {
   infix_config?: InfixConfig;
   circumfix_config?: CircumfixConfig;
   semantic_note: string;
+  sca_mutable?: boolean; // 是否允许被 SCA 批量改写
 }
 
 // ── 语法手册 (Phase 2) ──────────────────────────────────
@@ -449,6 +451,12 @@ export interface CorpusText {
     tags: string[];
     created_at: string;
     updated_at: string;
+    auto_gloss_report?: {
+      total: number;
+      autoApplied: number;
+      pending: number;
+      unresolved: number;
+    } | null;
   };
 }
 
@@ -461,6 +469,12 @@ export interface CorpusIndexEntry {
     tags: string[];
     created_at: string;
     updated_at: string;
+    auto_gloss_report?: {
+      total: number;
+      autoApplied: number;
+      pending: number;
+      unresolved: number;
+    } | null;
   };
 }
 

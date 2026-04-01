@@ -19,6 +19,10 @@ export function GlossLineRow({ line }: GlossLineRowProps) {
   const deleteGlossedLine = useCorpusStore((s) => s.deleteGlossedLine);
   const [editingTokenId, setEditingTokenId] = useState<string | null>(null);
   const [hoverTokenId, setHoverTokenId] = useState<string | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number }>({
+    x: 0,
+    y: 0,
+  });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const wordsList = useLexiconStore((s) => s.wordsList);
   const wordsMap = useMemo(
@@ -62,35 +66,47 @@ export function GlossLineRow({ line }: GlossLineRowProps) {
       <div className="overflow-x-auto">
         <div className="inline-flex gap-4 min-w-0">
           {/* Row labels */}
-          <div className="flex flex-col items-end shrink-0 text-xs text-base-content/40 pt-0.5 gap-[1px]">
-            <span className="leading-5">{t("corpus.surfaceForm")}</span>
-            <span className="leading-4">{t("corpus.morphemeBreak")}</span>
-            <span className="leading-4">{t("corpus.glossLabels")}</span>
-            <span className="leading-4">IPA</span>
+          <div className="flex flex-col items-end shrink-0 text-xs text-base-content/40 gap-[1px]">
+            <span className="h-5 flex items-center">
+              {t("corpus.surfaceForm")}
+            </span>
+            <span className="h-4 flex items-center">
+              {t("corpus.morphemeBreak")}
+            </span>
+            <span className="h-4 flex items-center">
+              {t("corpus.glossLabels")}
+            </span>
+            <span className="h-4 flex items-center">IPA</span>
           </div>
           {line.tokens.map((token) => (
             <div
               key={token.token_id}
               className="relative flex flex-col items-start cursor-pointer hover:bg-info/10 rounded px-1"
               onClick={() => setEditingTokenId(token.token_id)}
-              onMouseEnter={() => setHoverTokenId(token.token_id)}
+              onMouseEnter={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const x = Math.min(rect.right + 8, window.innerWidth - 280);
+                const y = Math.min(rect.top, window.innerHeight - 180);
+                setHoverPosition({ x: Math.max(8, x), y: Math.max(8, y) });
+                setHoverTokenId(token.token_id);
+              }}
               onMouseLeave={() => setHoverTokenId(null)}
             >
               {/* Row 1: Surface form */}
-              <span className="font-semibold text-sm">
+              <span className="h-5 flex items-center font-semibold text-sm">
                 {token.surface_form || "—"}
               </span>
               {/* Row 2: Morpheme break */}
-              <span className="text-xs text-base-content/70 font-mono">
+              <span className="h-4 flex items-center text-xs text-base-content/70 font-mono">
                 {token.morpheme_break || "—"}
               </span>
               {/* Row 3: Gloss labels */}
-              <span className="text-xs text-primary">
+              <span className="h-4 flex items-center text-xs text-primary">
                 {token.gloss_labels || "—"}
               </span>
               {/* Row 4: IPA */}
-              <span className="text-xs text-base-content/50 font-mono">
-                {token.ipa ? `/${token.ipa}/` : ""}
+              <span className="h-4 flex items-center text-xs text-base-content/50 font-mono">
+                {token.ipa ? `${token.ipa}` : ""}
               </span>
 
               {/* Word popover on hover */}
@@ -99,7 +115,7 @@ export function GlossLineRow({ line }: GlossLineRowProps) {
                 wordsMap.get(token.linked_entry_id) && (
                   <WordPopover
                     entry={wordsMap.get(token.linked_entry_id)!}
-                    position={{ x: 0, y: 0 }}
+                    position={hoverPosition}
                   />
                 )}
             </div>
