@@ -2,6 +2,8 @@
 
 Generate candidate words randomly based on your phonotactic rules.
 
+**Navigate**: click `Word Generator` in the sidebar.
+
 ## Workflow
 
 1. Set **count** (50–100 recommended) and **syllable range** (1–3)
@@ -9,6 +11,14 @@ Generate candidate words randomly based on your phonotactic rules.
 3. Browse candidates — each shows auto-generated IPA
 4. Delete unwanted words, assign POS to the rest
 5. Select desired words → click **"Import to Lexicon"**
+
+### Step-by-step: Generate cleaner candidates
+
+1. Start with count 60 and syllables 1~2.
+2. Generate and remove outliers.
+3. Adjust phonotactics if too many invalid forms appear.
+4. Regenerate, then assign POS in batch.
+5. Import only selected candidates.
 
 ## Parameters
 
@@ -34,3 +44,11 @@ Slider (0.0–3.0) controlling distribution weights for each phoneme class, shap
 ### Rewrite Rules
 
 Post-processing regex replacements, useful for adding long vowel markers (e.g., `aa → ā`).
+
+### Advanced example
+
+1. Enable Swadesh mapping.
+2. Generate 100 candidates.
+3. Use decay to increase sonorant-heavy style.
+4. Add rewrite `aa -> ā` and `ii -> ī`.
+5. Import filtered set into lexicon.

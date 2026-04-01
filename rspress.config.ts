@@ -16,6 +16,10 @@ const zhSidebar = {
           text: "从零构建人工语言",
           link: "/guide/getting-started",
         },
+        {
+          text: "功能示例与联动示例",
+          link: "/guide/examples-and-workflows",
+        },
       ],
     },
     {
@@ -50,6 +54,10 @@ const enSidebar = {
         {
           text: "Build a Conlang from Scratch",
           link: "/en/guide/getting-started",
+        },
+        {
+          text: "Feature & Integration Examples",
+          link: "/en/guide/examples-and-workflows",
         },
       ],
     },

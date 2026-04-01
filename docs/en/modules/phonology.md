@@ -4,6 +4,14 @@ Manage your language's sound system across 4 sub-pages: Inventory, Romanization,
 
 ## Inventory
 
+### Step-by-step: Build a balanced starter inventory
+
+1. Load one preset close to your target style.
+2. Add/remove consonants to keep voicing symmetry.
+3. Keep 5-7 core vowels first.
+4. Use warning panel to fix obvious imbalance.
+5. Save and continue to romanization.
+
 ### Interactive IPA Charts
 
 - **Consonant table**: 13 places of articulation × 13 manners — click to select/deselect
@@ -41,6 +49,13 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 - **Longest match**: Auto-sorts by input length for greedy matching
 - **Phoneme table integration**: Click phonemes to insert into the editing field
 
+### Step-by-step: Build a stable mapping table
+
+1. Create table `Standard` and set it as default.
+2. Add multi-letter rules first (`sh`, `ch`, `ng`).
+3. Add single-letter rules (`a`, `e`, `i`, ...).
+4. Confirm longest-match behavior with sample spellings.
+
 ## Phonotactics
 
 | Feature | Description |
@@ -50,6 +65,13 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 | Blacklist | Regex patterns to reject illegal combinations |
 | Vowel harmony | Split vowels into two groups, no mixing within a word |
 | Tone system | Define tone categories (name + diacritic) |
+
+### Step-by-step: Configure legal syllable space
+
+1. Define macros (`C`, `V`, optional `N`).
+2. Set syllable template (for example `(C)V(C)`).
+3. Add blacklist regex for forbidden clusters.
+4. (Optional) enable vowel harmony and define groups.
 
 ## Allophony
 
@@ -75,3 +97,11 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 | `V` | `t` | → | `d` | `V` | Intervocalic t → d |
 | `V` | `k` | → | `x` | `#` | Word-final k after vowel → x |
 | | `n` | → | `ŋ` | `k` | n before k → ŋ |
+
+### Step-by-step: Add one allophony rule safely
+
+1. Add rule with clear description.
+2. Set target and replacement phoneme.
+3. Add context with macros/boundary if needed.
+4. Check IPA outputs in lexicon entries.
+5. Reorder priority when multiple rules overlap.
