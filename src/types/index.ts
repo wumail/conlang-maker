@@ -95,6 +95,13 @@ export interface EntryMetadata {
   updated_at: string;
 }
 
+export interface WordEvolution {
+  is_deprecated: boolean;
+  deprecated_since_language_id: string | null;
+  parent_snapshot_hash?: string | null;
+  last_synced_word_hash?: string | null;
+}
+
 export interface WordEntry {
   entry_id: string;
   language_id: string;
@@ -104,6 +111,7 @@ export interface WordEntry {
   senses: Sense[];
   etymology: Etymology;
   metadata: EntryMetadata;
+  evolution?: WordEvolution;
 }
 
 // ── 语法相关 ──────────────────────────────────────────────

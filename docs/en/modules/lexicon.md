@@ -15,6 +15,20 @@ The core module, with a sidebar + editor panel split-view for managing all word 
 | IPA fuzzy search | Toggle IPA search mode, results sorted by phonetic similarity |
 | Tags | Free-form comma-separated tag system |
 
+## Lifecycle Labels
+
+Entries support three lifecycle labels:
+
+- **Added**: Entry exists in the current language but not in its parent language
+- **Deprecated**: Entry is marked deprecated in the current language
+- **Changed**: Entry form/pronunciation differs from its parent-language counterpart
+
+You can filter by lifecycle status in Advanced Search, and the same labels are shown below IPA in the editor panel.
+
+:::tip
+If an entry is marked as **Deprecated**, that status takes precedence and it will not simultaneously show **Changed**.
+:::
+
 ### Step-by-step: Create one high-quality entry
 
 1. Click `+` to add a new entry.
@@ -52,6 +66,14 @@ Click the ⚡ button (top-right) for a popup: word → gloss → POS → **Enter
 ### Best use case
 
 Use Quick Entry when collecting many roots during brainstorming sessions.
+
+## Evolution Path
+
+For entries with `Evolved` / `Borrowed` origin and a parent reference, the editor shows an evolution path.
+
+- Supports full multi-generation lineage display (for example `a → ab → abc`)
+- Adjacent repeated forms are automatically deduplicated (for example `a → a` becomes `a`)
+- Applied sound change badges remain visible below the path (when present)
 
 ## Quality Check
 

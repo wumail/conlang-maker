@@ -1,8 +1,10 @@
 import React, { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
+import { useWorkspaceStore } from "../../store/workspaceStore";
 import { DEFAULT_LANGUAGE_ID } from "../../constants";
 import {
   Search,
@@ -17,16 +19,26 @@ import {
 } from "lucide-react";
 import { exportToCSV } from "../../utils/exportCSV";
 import { ipaFuzzySearch } from "../../utils/ipaSearch";
-import { BTN_GHOST_SQ, TOGGLE, SELECT } from "../../lib/ui";
-import { WordEntry } from "../../types";
+import { generateIPA } from "../../utils/ipaGenerator";
+import { BTN_GHOST_SQ, TOGGLE, SELECT, BADGE } from "../../lib/ui";
+import { PhonologyConfig, WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
 import { TagSelector } from "../common/TagSelector";
 import { ConfirmModal } from "../common/ConfirmModal";
+import {
+  getWordEvolution,
+  hasWordChangedFromParent,
+  WordLifecycleFlags,
+} from "../../utils/wordLifecycle";
 
 type SortMode = "az" | "za";
+type LifecycleFilter = "" | "added" | "deprecated" | "changed";
 
 export const Sidebar: React.FC = () => {
   const { t } = useTranslation();
+  const projectPath = useWorkspaceStore((s) => s.projectPath);
+  const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
+  const workspaceLanguages = useWorkspaceStore((s) => s.config.languages);
   const {
     wordsList,
     wordsMap,
@@ -47,6 +59,7 @@ export const Sidebar: React.FC = () => {
   const [filterPos, setFilterPos] = useState("");
   const [filterTags, setFilterTags] = useState<string[]>([]);
   const [filterOrigin, setFilterOrigin] = useState("");
+  const [filterLifecycle, setFilterLifecycle] = useState<LifecycleFilter>("");
 
   // Batch edit state
   const [batchMode, setBatchMode] = useState(false);
@@ -54,6 +67,107 @@ export const Sidebar: React.FC = () => {
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] =
     useState(false);
   const [showCleanBlankConfirm, setShowCleanBlankConfirm] = useState(false);
+  const [parentWordsById, setParentWordsById] = useState<Record<string, WordEntry>>({});
+  const [parentPhonoConfig, setParentPhonoConfig] =
+    useState<PhonologyConfig | null>(null);
+  const [parentWordsLoaded, setParentWordsLoaded] = useState(false);
+
+  const activeLanguage = useMemo(
+    () => workspaceLanguages.find((lang) => lang.language_id === activeLanguageId),
+    [workspaceLanguages, activeLanguageId],
+  );
+
+  const parentLanguage = useMemo(() => {
+    if (!activeLanguage?.parent_id) return null;
+    return (
+      workspaceLanguages.find((lang) => lang.language_id === activeLanguage.parent_id) ??
+      null
+    );
+  }, [workspaceLanguages, activeLanguage]);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    const loadParentWords = async () => {
+      if (!parentLanguage) {
+        setParentWordsById({});
+        setParentPhonoConfig(null);
+        setParentWordsLoaded(true);
+        return;
+      }
+      setParentWordsLoaded(false);
+
+      try {
+        const parentWords = await invoke<WordEntry[]>("load_all_words", {
+          projectPath,
+          languagePath: parentLanguage.path,
+        });
+        const parentPhono = await invoke<PhonologyConfig>("load_phonology", {
+          projectPath,
+          languagePath: parentLanguage.path,
+        });
+        if (cancelled) return;
+
+        const byId: Record<string, WordEntry> = {};
+        parentWords.forEach((word) => {
+          byId[word.entry_id] = word;
+        });
+
+        setParentWordsById(byId);
+        setParentPhonoConfig(parentPhono);
+        setParentWordsLoaded(true);
+      } catch (error) {
+        if (!cancelled) {
+          setParentWordsById({});
+          setParentPhonoConfig(null);
+        }
+        console.warn(`加载父语言词典失败：${error}`);
+      }
+    };
+
+    loadParentWords();
+    return () => {
+      cancelled = true;
+    };
+  }, [parentLanguage, projectPath]);
+
+  const lifecycleMap = useMemo<Record<string, WordLifecycleFlags>>(() => {
+    if (parentLanguage && !parentWordsLoaded) return {};
+    const result: Record<string, WordLifecycleFlags> = {};
+
+    wordsList.forEach((word) => {
+      const parentEntryId = word.etymology?.parent_entry_id;
+      const parentWord =
+        parentLanguage && parentEntryId ? parentWordsById[parentEntryId] : null;
+      const evolution = getWordEvolution(word);
+      const isNew = !!parentLanguage && !parentWord;
+      const isChanged =
+        !!parentLanguage && !!parentWord
+          ? (() => {
+              const lexicalChanged = hasWordChangedFromParent(word, parentWord);
+              if (lexicalChanged) return true;
+              if (!parentPhonoConfig) return false;
+              const childSurface = generateIPA(
+                word.con_word_romanized,
+                config,
+              ).surface;
+              const parentSurface = generateIPA(
+                parentWord.con_word_romanized,
+                parentPhonoConfig,
+              ).surface;
+              return childSurface !== parentSurface;
+            })()
+          : false;
+      const isDeprecated = evolution.is_deprecated;
+      result[word.entry_id] = {
+        isNew,
+        isDeprecated,
+        isChanged: isDeprecated ? false : isChanged,
+      };
+    });
+
+    return result;
+  }, [wordsList, parentLanguage, parentWordsById, parentPhonoConfig, config, parentWordsLoaded]);
 
   const inventory = useMemo(
     () => [
@@ -184,6 +298,19 @@ export const Sidebar: React.FC = () => {
     filterTags,
   ]);
 
+  const displayWords = useMemo(() => {
+    if (!filterLifecycle) return filteredWords;
+
+    return filteredWords.filter((word) => {
+      const lifecycle = lifecycleMap[word.entry_id];
+      if (!lifecycle) return false;
+
+      if (filterLifecycle === "added") return lifecycle.isNew;
+      if (filterLifecycle === "deprecated") return lifecycle.isDeprecated;
+      return lifecycle.isChanged;
+    });
+  }, [filteredWords, lifecycleMap, filterLifecycle]);
+
   const handleAddWord = () => {
     cleanupEmptyWord();
     const newId = crypto.randomUUID();
@@ -211,6 +338,10 @@ export const Sidebar: React.FC = () => {
         semantic_shift_note: "",
       },
       metadata: { tags: [], created_at: now, updated_at: now },
+      evolution: {
+        is_deprecated: false,
+        deprecated_since_language_id: null,
+      },
     });
     setActiveWordId(newId);
   };
@@ -264,7 +395,7 @@ export const Sidebar: React.FC = () => {
               <button
                 className="hover:underline text-primary"
                 onClick={() =>
-                  setSelectedIds(new Set(filteredWords.map((w) => w.entry_id)))
+                  setSelectedIds(new Set(displayWords.map((w) => w.entry_id)))
                 }
               >
                 {t("common.selectAll", "All")}
@@ -370,6 +501,27 @@ export const Sidebar: React.FC = () => {
             </div>
             <div>
               <label className="block text-base-content/60 mb-1">
+                {t("lexicon.lifecycle.filterLabel")}
+              </label>
+              <select
+                className={`${SELECT} select-xs w-full`}
+                value={filterLifecycle}
+                onChange={(e) =>
+                  setFilterLifecycle(e.target.value as LifecycleFilter)
+                }
+              >
+                <option value="">{t("common.all", "All")}</option>
+                <option value="added">{t("lexicon.lifecycle.added")}</option>
+                <option value="deprecated">
+                  {t("lexicon.lifecycle.deprecated")}
+                </option>
+                <option value="changed">
+                  {t("lexicon.lifecycle.changed")}
+                </option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-base-content/60 mb-1">
                 {t("lexicon.tags")}
               </label>
               <TagSelector
@@ -379,7 +531,10 @@ export const Sidebar: React.FC = () => {
                 placeholder={t("lexicon.tags")}
               />
             </div>
-            {(filterPos || filterOrigin || filterTags.length > 0) && (
+            {(filterPos ||
+              filterOrigin ||
+              filterTags.length > 0 ||
+              filterLifecycle) && (
               <div className="flex justify-end mt-1">
                 <button
                   className="text-primary hover:underline"
@@ -387,6 +542,7 @@ export const Sidebar: React.FC = () => {
                     setFilterPos("");
                     setFilterTags([]);
                     setFilterOrigin("");
+                    setFilterLifecycle("");
                   }}
                 >
                   {t("common.clear", "Clear")}
@@ -397,7 +553,8 @@ export const Sidebar: React.FC = () => {
         )}
       </div>
       <div className="flex-1 overflow-y-auto relative p-2 space-y-2">
-        {filteredWords.map((word) => {
+        {displayWords.map((word) => {
+          const lifecycle = lifecycleMap[word.entry_id];
           const isSelected = selectedIds.has(word.entry_id);
           const isActive =
             activeWordId === word.entry_id &&
@@ -431,13 +588,42 @@ export const Sidebar: React.FC = () => {
                   />
                 </div>
               )}
-              <div className="flex-1 min-w-0">
+              <div className="flex-1 min-w-0 relative">
+                {lifecycle &&
+                  (lifecycle.isNew || lifecycle.isDeprecated || lifecycle.isChanged) && (
+                    <div className="absolute right-0 top-0 flex items-center gap-1">
+                      {lifecycle.isNew && (
+                        <span className={`${BADGE} badge-success`}>
+                          {t("lexicon.lifecycle.added")}
+                        </span>
+                      )}
+                      {lifecycle.isDeprecated && (
+                        <span className={`${BADGE} badge-error`}>
+                          {t("lexicon.lifecycle.deprecated")}
+                        </span>
+                      )}
+                      {lifecycle.isChanged && (
+                        <span className={`${BADGE} badge-warning`}>
+                          {t("lexicon.lifecycle.changed")}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 <div className="font-semibold text-base-content truncate">
                   {word.con_word_romanized}
                 </div>
                 {ipaMode && word.phonetic_ipa && (
                   <div className="text-xs font-mono text-primary truncate">
                     /{word.phonetic_ipa}/
+                  </div>
+                )}
+                {word.metadata?.tags && word.metadata.tags.length > 0 && (
+                  <div className="mt-1 flex flex-wrap gap-1">
+                    {word.metadata.tags.slice(0, 4).map((tag) => (
+                      <span key={`${word.entry_id}-${tag}`} className="badge badge-ghost badge-xs">
+                        {tag}
+                      </span>
+                    ))}
                   </div>
                 )}
                 <div className="text-xs text-base-content/60 truncate">

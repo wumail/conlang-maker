@@ -129,6 +129,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
         });
         // Reload workspace after fork
         await get().loadWorkspace(conlangFilePath);
+        // Switch to the newly forked language
+        get().setActiveLanguage(newId);
     },
 
     deleteLanguage: async (languageId: string) => {

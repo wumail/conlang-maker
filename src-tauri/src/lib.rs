@@ -24,6 +24,7 @@ pub fn run() {
             commands::workspace::create_new_project,
             commands::fork::fork_language,
             commands::fork::delete_language,
+            commands::fork::migrate_inherited_lexicon_links,
             commands::sca::load_sca,
             commands::sca::save_sca,
             commands::corpus::load_corpus_index,

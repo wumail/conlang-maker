@@ -1,17 +1,16 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
+import { useWorkspaceStore } from "../../store/workspaceStore";
+import { useSCAStore } from "../../store/scaStore";
 import { Trash2, Plus, Lock, Unlock, Tag } from "lucide-react";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { TagsInput } from "../common/TagsInput";
-import { Sense, WordEntry, OriginType } from "../../types";
+import { Sense, WordEntry, PhonologyConfig, OriginType, LanguageEntry } from "../../types";
 import { generateIPA } from "../../utils/ipaGenerator";
-// import {
-//   playIpaConcatenated,
-//   stopConcatenatedPlayback,
-// } from "../../utils/ttsConcatenate";
 import {
   INPUT,
   SELECT,
@@ -19,13 +18,24 @@ import {
   BTN_ERROR,
   BTN_GHOST_SQ,
   BTN_LINK,
+  TOGGLE,
+  BADGE,
 } from "../../lib/ui";
+import {
+  getWordEvolution,
+  hasWordChangedFromParent,
+  WordLifecycleFlags,
+} from "../../utils/wordLifecycle";
 
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
   const { activeWordId, wordsMap, wordsList, upsertWord, deleteWord } = useLexiconStore();
   const phonoConfig = usePhonoStore((s) => s.config);
   const partsOfSpeech = useGrammarStore((s) => s.config.parts_of_speech);
+  const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
+  const projectPath = useWorkspaceStore((s) => s.projectPath);
+  const workspaceLanguages = useWorkspaceStore((s) => s.config.languages);
+  const scaConfig = useSCAStore((s) => s.config);
 
   // TTS playback state
   // const [isPlaying, setIsPlaying] = useState(false);
@@ -40,6 +50,186 @@ export const EditorPane: React.FC = () => {
   const prevRomanizedRef = useRef<string>("");
 
   const word = activeWordId ? wordsMap[activeWordId] : null;
+  const evolution = word ? getWordEvolution(word) : null;
+
+  // Parent language detection
+  const activeLanguage = useMemo(
+    () => workspaceLanguages.find((l) => l.language_id === activeLanguageId),
+    [workspaceLanguages, activeLanguageId],
+  );
+  const parentLanguage = useMemo(() => {
+    if (!activeLanguage?.parent_id) return null;
+    return workspaceLanguages.find((l) => l.language_id === activeLanguage.parent_id) ?? null;
+  }, [workspaceLanguages, activeLanguage]);
+
+  const lineageLanguages = useMemo<LanguageEntry[]>(() => {
+    if (!activeLanguage) return [];
+    const chain: LanguageEntry[] = [];
+    const visited = new Set<string>();
+    let current: LanguageEntry | null = activeLanguage;
+
+    while (current && !visited.has(current.language_id)) {
+      chain.push(current);
+      visited.add(current.language_id);
+      current = current.parent_id
+        ? workspaceLanguages.find((l) => l.language_id === current?.parent_id) ?? null
+        : null;
+    }
+
+    return chain.reverse();
+  }, [activeLanguage, workspaceLanguages]);
+
+  // Load parent word data for lifecycle labels & evolution path
+  const [parentWordsById, setParentWordsById] = useState<Record<string, WordEntry>>({});
+  const [parentPhonoConfig, setParentPhonoConfig] = useState<PhonologyConfig | null>(null);
+  const [ancestorWordsByLanguage, setAncestorWordsByLanguage] = useState<
+    Record<string, Record<string, WordEntry>>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!parentLanguage || !projectPath) {
+      setParentWordsById({});
+      setParentPhonoConfig(null);
+      return;
+    }
+    (async () => {
+      try {
+        const [words, phono] = await Promise.all([
+          invoke<WordEntry[]>("load_all_words", { projectPath, languagePath: parentLanguage.path }),
+          invoke<PhonologyConfig>("load_phonology", { projectPath, languagePath: parentLanguage.path }),
+        ]);
+        if (cancelled) return;
+        const byId: Record<string, WordEntry> = {};
+        words.forEach((w) => { byId[w.entry_id] = w; });
+        setParentWordsById(byId);
+        setParentPhonoConfig(phono);
+      } catch (err) {
+        if (!cancelled) {
+          setParentWordsById({});
+          setParentPhonoConfig(null);
+        }
+        console.warn("Failed to load parent words for editor:", err);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [parentLanguage, projectPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!projectPath || !activeLanguageId || lineageLanguages.length <= 1) {
+      setAncestorWordsByLanguage({});
+      return;
+    }
+
+    const ancestorLanguages = lineageLanguages.filter(
+      (lang) => lang.language_id !== activeLanguageId,
+    );
+
+    (async () => {
+      try {
+        const loaded = await Promise.all(
+          ancestorLanguages.map(async (lang) => {
+            const words = await invoke<WordEntry[]>("load_all_words", {
+              projectPath,
+              languagePath: lang.path,
+            });
+            const byId: Record<string, WordEntry> = {};
+            words.forEach((entry) => {
+              byId[entry.entry_id] = entry;
+            });
+            return { languageId: lang.language_id, wordsById: byId };
+          }),
+        );
+
+        if (cancelled) return;
+
+        const nextMap: Record<string, Record<string, WordEntry>> = {};
+        loaded.forEach(({ languageId, wordsById }) => {
+          nextMap[languageId] = wordsById;
+        });
+        setAncestorWordsByLanguage(nextMap);
+      } catch (error) {
+        if (!cancelled) {
+          setAncestorWordsByLanguage({});
+        }
+        console.warn("Failed to load ancestor words for evolution path:", error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath, activeLanguageId, lineageLanguages]);
+
+  // Parent word for the active word
+  const parentWord = word?.etymology?.parent_entry_id
+    ? parentWordsById[word.etymology.parent_entry_id] ?? null
+    : null;
+
+  const evolutionPathWords = useMemo(() => {
+    if (!word || !activeLanguageId) return [] as string[];
+
+    const baseEntryId = word.etymology.parent_entry_id ?? word.entry_id;
+    const wordsOnPath: string[] = [];
+
+    lineageLanguages.forEach((lang) => {
+      if (lang.language_id === activeLanguageId) {
+        const current = word.con_word_romanized.trim();
+        if (current) {
+          wordsOnPath.push(current);
+        }
+        return;
+      }
+
+      const ancestorWord = ancestorWordsByLanguage[lang.language_id]?.[baseEntryId];
+      const ancestorRomanized = ancestorWord?.con_word_romanized?.trim();
+      if (ancestorRomanized) {
+        wordsOnPath.push(ancestorRomanized);
+      }
+    });
+
+    const dedupedWords = wordsOnPath.filter(
+      (pathWord, index) => index === 0 || pathWord !== wordsOnPath[index - 1],
+    );
+
+    if (dedupedWords.length === 0) {
+      const fallback = word.con_word_romanized.trim();
+      return fallback ? [fallback] : [];
+    }
+
+    return dedupedWords;
+  }, [word, activeLanguageId, lineageLanguages, ancestorWordsByLanguage]);
+
+  // Lifecycle flags
+  const lifecycleFlags = useMemo<WordLifecycleFlags | null>(() => {
+    if (!word) return null;
+    const evo = getWordEvolution(word);
+    const isNew = !!parentLanguage && !parentWord;
+    const isDeprecated = evo.is_deprecated;
+    let isChanged = false;
+    if (parentLanguage && parentWord) {
+      isChanged = hasWordChangedFromParent(word, parentWord);
+      if (!isChanged && parentPhonoConfig) {
+        const childSurface = generateIPA(word.con_word_romanized, phonoConfig).surface;
+        const parentSurface = generateIPA(parentWord.con_word_romanized, parentPhonoConfig).surface;
+        isChanged = childSurface !== parentSurface;
+      }
+    }
+    return { isNew, isDeprecated, isChanged: isDeprecated ? false : isChanged };
+  }, [word, parentLanguage, parentWord, parentPhonoConfig, phonoConfig]);
+
+  // SCA rule name lookup
+  const scaRuleLookup = useMemo(() => {
+    const map = new Map<string, string>();
+    scaConfig.rule_sets.forEach((rs) => {
+      rs.rules.forEach((r) => {
+        map.set(r.rule_id, r.description || rs.name);
+      });
+    });
+    return map;
+  }, [scaConfig]);
 
   // Collect all unique tags from all words for autocomplete
   const allTags = useMemo(() => {
@@ -197,6 +387,20 @@ export const EditorPane: React.FC = () => {
               </button>
             )} */}
           </div>
+          {lifecycleFlags &&
+            (lifecycleFlags.isNew || lifecycleFlags.isDeprecated || lifecycleFlags.isChanged) && (
+              <div className="flex gap-1 mt-2">
+                {lifecycleFlags.isNew && (
+                  <span className={`${BADGE} badge-success`}>{t("lexicon.lifecycle.added")}</span>
+                )}
+                {lifecycleFlags.isDeprecated && (
+                  <span className={`${BADGE} badge-error`}>{t("lexicon.lifecycle.deprecated")}</span>
+                )}
+                {lifecycleFlags.isChanged && (
+                  <span className={`${BADGE} badge-warning`}>{t("lexicon.lifecycle.changed")}</span>
+                )}
+              </div>
+            )}
         </div>
         <button
           onClick={() => setConfirmDelete(true)}
@@ -374,28 +578,85 @@ export const EditorPane: React.FC = () => {
               <p className="text-xs font-medium text-base-content/60 mb-1">
                 {t("lexicon.evolutionPath")}
               </p>
-              <div className="flex items-center gap-2 font-mono text-sm">
-                <span className="text-base-content/50">
-                  *{word.etymology.parent_entry_id}
-                </span>
-                {word.etymology.applied_sound_changes &&
-                  word.etymology.applied_sound_changes.length > 0 && (
-                    <>
-                      <span className="text-base-content/50">→</span>
-                      {word.etymology.applied_sound_changes.map((scId, i) => (
-                        <span key={i} className="badge badge-xs badge-ghost">
-                          {scId}
-                        </span>
-                      ))}
-                      <span className="text-base-content/50">→</span>
-                    </>
-                  )}
-                <span className="font-bold text-primary">
-                  {word.con_word_romanized}
-                </span>
+              <div className="flex items-center gap-2 font-mono text-sm flex-wrap">
+                {evolutionPathWords.map((pathWord, index) => (
+                  <React.Fragment key={`${pathWord}-${index}`}>
+                    {index > 0 && <span className="text-base-content/50">→</span>}
+                    <span
+                      className={
+                        index === evolutionPathWords.length - 1
+                          ? "font-bold text-primary"
+                          : "text-base-content/60 italic"
+                      }
+                    >
+                      {pathWord}
+                    </span>
+                  </React.Fragment>
+                ))}
               </div>
+              {word.etymology.applied_sound_changes &&
+                word.etymology.applied_sound_changes.length > 0 && (
+                  <div className="mt-2 flex items-center gap-1 flex-wrap">
+                    {word.etymology.applied_sound_changes.map((scId, i) => (
+                      <span key={i} className="badge badge-xs badge-ghost" title={scId}>
+                        {scaRuleLookup.get(scId) || scId.slice(0, 8)}
+                      </span>
+                    ))}
+                  </div>
+                )}
             </div>
           )}
+
+        <div>
+          <label className="block text-xs font-medium text-base-content/60 mb-1">
+            {t("lexicon.lifecycle.deprecation")}
+          </label>
+          <div className="rounded-lg border border-base-300 bg-base-200/50 p-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input
+                type="checkbox"
+                className={TOGGLE}
+                checked={evolution?.is_deprecated ?? false}
+                onChange={(e) =>
+                  handleChange("evolution", {
+                    ...(word.evolution ?? {}),
+                    is_deprecated: e.target.checked,
+                    deprecated_since_language_id: e.target.checked
+                      ? evolution?.deprecated_since_language_id ?? activeLanguageId
+                      : null,
+                  })
+                }
+              />
+              <span>{t("lexicon.lifecycle.markDeprecated")}</span>
+            </label>
+            {(evolution?.is_deprecated ?? false) && (
+              <div>
+                <label className="block text-xs font-medium text-base-content/60 mb-1">
+                  {t("lexicon.lifecycle.deprecatedSince")}
+                </label>
+                <select
+                  value={
+                    evolution?.deprecated_since_language_id ?? activeLanguageId
+                  }
+                  onChange={(e) =>
+                    handleChange("evolution", {
+                      ...(word.evolution ?? {}),
+                      is_deprecated: true,
+                      deprecated_since_language_id: e.target.value,
+                    })
+                  }
+                  className={`w-full ${SELECT}`}
+                >
+                  {workspaceLanguages.map((lang) => (
+                    <option key={lang.language_id} value={lang.language_id}>
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        </div>
 
         <div>
           <label className="block text-xs font-medium text-base-content/60 mb-1">

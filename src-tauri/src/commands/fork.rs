@@ -1,21 +1,9 @@
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashSet;
 use tauri::command;
 use crate::models::{WorkspaceConfig, LanguageEntry, WordEntry};
 use crate::commands::lexicon::atomic_write;
-
-/// Generate a unique entry_id (mirrors frontend's crypto.randomUUID style)
-fn generate_entry_id() -> String {
-    static COUNTER: AtomicU64 = AtomicU64::new(0);
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let seq = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("entry_{}_{}", ts, seq)
-}
 
 /// Copy a directory recursively
 pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
@@ -130,9 +118,8 @@ pub fn fork_language(
                     }
                     match serde_json::from_str::<WordEntry>(line) {
                         Ok(mut word) => {
-                            // Generate new entry_id for child; keep original as parent reference
+                            // Keep inherited entry_id stable across parent/child for deterministic sync.
                             let original_entry_id = word.entry_id.clone();
-                            word.entry_id = generate_entry_id();
                             word.language_id = new_id.clone();
                             word.etymology.origin_type = "evolved".to_string();
                             word.etymology.parent_entry_id = Some(original_entry_id);
@@ -233,4 +220,167 @@ pub fn delete_language(
     atomic_write(ws_path, &ws_content)?;
 
     Ok(())
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct MigrationStats {
+    pub dry_run: bool,
+    pub languages_processed: usize,
+    pub words_scanned: usize,
+    pub parent_link_filled: usize,
+    pub source_language_filled: usize,
+    pub origin_fixed: usize,
+    pub files_changed: usize,
+}
+
+fn load_language_entry_ids(project: &Path, language_path: &str) -> Result<HashSet<String>, String> {
+    let lexicon_dir = project.join(language_path).join("lexicon");
+    let mut ids = HashSet::new();
+    if !lexicon_dir.exists() {
+        return Ok(ids);
+    }
+
+    for entry in fs::read_dir(&lexicon_dir).map_err(|e| e.to_string())? {
+        let path = entry.map_err(|e| e.to_string())?.path();
+        if path.extension().map_or(false, |e| e == "ndjson") {
+            let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+                if let Ok(word) = serde_json::from_str::<WordEntry>(trimmed) {
+                    ids.insert(word.entry_id);
+                }
+            }
+        }
+    }
+
+    Ok(ids)
+}
+
+#[command]
+pub fn migrate_inherited_lexicon_links(
+    project_path: String,
+    conlang_file_path: String,
+    dry_run: Option<bool>,
+) -> Result<MigrationStats, String> {
+    let project = Path::new(&project_path);
+    let ws_path = Path::new(&conlang_file_path);
+
+    let ws_config: WorkspaceConfig = if ws_path.exists() {
+        let content = fs::read_to_string(ws_path).map_err(|e| e.to_string())?;
+        serde_json::from_str(&content).map_err(|e| e.to_string())?
+    } else {
+        return Err("Workspace config not found".to_string());
+    };
+
+    let is_dry_run = dry_run.unwrap_or(false);
+
+    let mut stats = MigrationStats {
+        dry_run: is_dry_run,
+        languages_processed: 0,
+        words_scanned: 0,
+        parent_link_filled: 0,
+        source_language_filled: 0,
+        origin_fixed: 0,
+        files_changed: 0,
+    };
+
+    for language in &ws_config.languages {
+        let Some(parent_id) = &language.parent_id else {
+            continue;
+        };
+        let Some(parent_lang) = ws_config.languages.iter().find(|l| &l.language_id == parent_id) else {
+            continue;
+        };
+
+        let parent_ids = load_language_entry_ids(project, &parent_lang.path)?;
+        let child_lexicon_dir = project.join(&language.path).join("lexicon");
+        if !child_lexicon_dir.exists() {
+            continue;
+        }
+
+        stats.languages_processed += 1;
+
+        for entry in fs::read_dir(&child_lexicon_dir).map_err(|e| e.to_string())? {
+            let file_path = entry.map_err(|e| e.to_string())?.path();
+            if !file_path.extension().map_or(false, |e| e == "ndjson") {
+                continue;
+            }
+
+            let content = fs::read_to_string(&file_path).map_err(|e| e.to_string())?;
+            let mut file_changed = false;
+            let mut new_lines: Vec<String> = Vec::new();
+
+            for line in content.lines() {
+                let trimmed = line.trim();
+                if trimmed.is_empty() {
+                    continue;
+                }
+
+                match serde_json::from_str::<WordEntry>(trimmed) {
+                    Ok(mut word) => {
+                        let mut line_changed = false;
+                        stats.words_scanned += 1;
+
+                        let inherited_by_id = parent_ids.contains(&word.entry_id);
+                        let has_parent_link = word.etymology.parent_entry_id.is_some();
+
+                        if inherited_by_id && !has_parent_link {
+                            word.etymology.parent_entry_id = Some(word.entry_id.clone());
+                            stats.parent_link_filled += 1;
+                            line_changed = true;
+                        }
+
+                        let linked_to_self =
+                            word.etymology.parent_entry_id.as_deref() == Some(word.entry_id.as_str());
+
+                        if inherited_by_id && linked_to_self && word.etymology.source_language_id.is_none() {
+                            word.etymology.source_language_id = Some(parent_id.clone());
+                            stats.source_language_filled += 1;
+                            line_changed = true;
+                        }
+
+                        if inherited_by_id
+                            && linked_to_self
+                            && word.etymology.origin_type == "a_priori"
+                        {
+                            word.etymology.origin_type = "evolved".to_string();
+                            stats.origin_fixed += 1;
+                            line_changed = true;
+                        }
+
+                        if line_changed {
+                            file_changed = true;
+                            if let Ok(serialized) = serde_json::to_string(&word) {
+                                new_lines.push(serialized);
+                            } else {
+                                new_lines.push(trimmed.to_string());
+                            }
+                        } else {
+                            new_lines.push(trimmed.to_string());
+                        }
+                    }
+                    Err(_) => {
+                        new_lines.push(trimmed.to_string());
+                    }
+                }
+            }
+
+            if file_changed {
+                stats.files_changed += 1;
+                let new_content = if new_lines.is_empty() {
+                    String::new()
+                } else {
+                    new_lines.join("\n") + "\n"
+                };
+                if !is_dry_run {
+                    atomic_write(&file_path, &new_content)?;
+                }
+            }
+        }
+    }
+
+    Ok(stats)
 }

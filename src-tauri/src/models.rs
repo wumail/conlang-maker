@@ -176,6 +176,29 @@ impl Default for EntryMetadata {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WordEvolution {
+    #[serde(default)]
+    pub is_deprecated: bool,
+    #[serde(default)]
+    pub deprecated_since_language_id: Option<String>,
+    #[serde(default)]
+    pub parent_snapshot_hash: Option<String>,
+    #[serde(default)]
+    pub last_synced_word_hash: Option<String>,
+}
+
+impl Default for WordEvolution {
+    fn default() -> Self {
+        Self {
+            is_deprecated: false,
+            deprecated_since_language_id: None,
+            parent_snapshot_hash: None,
+            last_synced_word_hash: None,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct WordEntry {
     pub entry_id: String,
     pub language_id: String,
@@ -190,6 +213,8 @@ pub struct WordEntry {
     pub etymology: Etymology,
     #[serde(default)]
     pub metadata: EntryMetadata,
+    #[serde(default)]
+    pub evolution: WordEvolution,
 }
 
 // ── 语法相关 ──────────────────────────────────────────────

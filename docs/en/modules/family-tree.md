@@ -10,7 +10,11 @@ Tree structure displaying all languages, highlighting the active language. Click
 
 ## Language Derivation
 
-Create a child language from a parent, fully copying all data (phonology, grammar, lexicon, SCA, corpus) as an independent copy for modification.
+Create a child language from a parent, copying phonology, grammar, lexicon, and corpus data into an independent branch.
+
+- Child entries keep the same `entry_id` as parent entries for deterministic parent-child alignment
+- Child SCA rules are initialized empty so each branch can define its own historical changes
+- After derivation, the app automatically switches to the newly created child language
 
 ### Steps
 
@@ -29,10 +33,24 @@ Create a child language from a parent, fully copying all data (phonology, gramma
 
 ## Pull Sync
 
-Checks for entries in the parent language that don't yet exist in the child:
+Pull Sync compares inherited entries between parent and child and builds **add** / **update** candidates:
 
-- **Pull and apply sound changes**: New words are automatically processed through SCA rule sets, marked as "Evolved" origin
-- Full etymology chain preserved (parent_entry_id + applied_sound_changes)
+- **Add**: inherited entry exists in parent but not in child
+- **Update**: inherited entry changed on one side and can be merged safely
+- **Conflict**: both parent and child changed; child version is kept (no auto-overwrite)
+
+When clicking **Pull & Apply Sound Changes**, candidates are transformed with the child language SCA rule sets and written back with etymology links (`parent_entry_id` + `applied_sound_changes`).
+
+:::tip
+Sense-level differences (gloss/definitions/examples) do **not** trigger Pull Sync updates. Semantics are treated as child-language evolvable content.
+:::
+
+### Legacy Data Migration
+
+If old projects miss inherited-link fields (`parent_entry_id`, `source_language_id`, etc.), use:
+
+- **Preview Migration (dry-run)**: scan and preview fixes without file writes
+- **Migrate Legacy Entries**: apply and persist the fixes
 
 ### Step-by-step: Continuous sync from parent
 
