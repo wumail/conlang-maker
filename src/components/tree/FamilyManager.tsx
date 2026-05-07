@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Trash2, Settings, Save, Copy } from "lucide-react";
-import { open, message } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useRegistryStore } from "../../store/registryStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { BTN_PRIMARY, BTN_GHOST, BTN_ERROR, SELECT } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { ModalPortal } from "../common/ModalPortal";
+import { openPathSafely, messageSafely } from "../../utils/safeDialog";
 
 function normalizePath(input: string): string {
   return input.replace(/\\/g, "/").replace(/\/+$/, "");
@@ -46,7 +46,7 @@ export function FamilySelector() {
         conlangFilePath: family.conlang_file_path,
       });
       if (missing && missing.length > 0) {
-        await message(
+        await messageSafely(
           t("welcome.importFailed", { missing: missing.join(", ") }),
           { title: t("common.error"), kind: "error" },
         );
@@ -102,7 +102,7 @@ export function FamilyManager() {
         conlangFilePath: family.conlang_file_path,
       });
       if (missing && missing.length > 0) {
-        await message(
+        await messageSafely(
           t("welcome.importFailed", { missing: missing.join(", ") }),
           { title: t("common.error"), kind: "error" },
         );
@@ -117,18 +117,18 @@ export function FamilyManager() {
   };
 
   const handleOpen = async () => {
-    const selected = await open({
+    const selected = await openPathSafely({
       title: t("welcome.openFile"),
       filters: [{ name: "Conlang File", extensions: ["conlang"] }],
     });
     if (!selected) return;
-    const filePath = typeof selected === "string" ? selected : String(selected);
+    const filePath = selected;
     try {
       const missing = await invoke<string[]>("validate_conlang_file", {
         conlangFilePath: filePath,
       });
       if (missing && missing.length > 0) {
-        await message(
+        await messageSafely(
           t("welcome.importFailed", { missing: missing.join(", ") }),
           { title: t("common.error"), kind: "error" },
         );
@@ -174,7 +174,7 @@ export function FamilyManager() {
         : "");
 
     if (!sourceConlangPath) {
-      await message(t("family.saveAsSourceMissing"), {
+      await messageSafely(t("family.saveAsSourceMissing"), {
         title: t("common.error"),
         kind: "error",
       });
@@ -183,15 +183,13 @@ export function FamilyManager() {
 
     setSaving(true);
     try {
-      const targetDir = await open({
+      const targetDir = await openPathSafely({
         directory: true,
         title: t("family.saveAsChooseDir"),
       });
       if (!targetDir) return;
 
-      const parentDir = Array.isArray(targetDir)
-        ? (targetDir[0] ?? "")
-        : targetDir;
+      const parentDir = targetDir;
       if (!parentDir) return;
 
       const sourceProjectDir = dirname(sourceConlangPath);
@@ -204,7 +202,7 @@ export function FamilyManager() {
 
       // True descendants are still invalid (would recurse during copy)
       if (isSubPath(resolvedParentDir, sourceProjectDir)) {
-        await message(t("family.saveAsInvalidTarget"), {
+        await messageSafely(t("family.saveAsInvalidTarget"), {
           title: t("common.error"),
           kind: "error",
         });
@@ -230,7 +228,7 @@ export function FamilyManager() {
       setShowModal(false);
     } catch (err) {
       console.warn(`Save As failed: ${err}`);
-      await message(t("family.saveAsFailed", { reason: String(err) }), {
+      await messageSafely(t("family.saveAsFailed", { reason: String(err) }), {
         title: t("common.error"),
         kind: "error",
       });

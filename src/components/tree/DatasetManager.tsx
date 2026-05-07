@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { FolderOpen, Trash2, Settings, FileUp } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { BTN_PRIMARY, BTN_GHOST, BTN_ERROR, SELECT } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { ModalPortal } from "../common/ModalPortal";
+import { openPathSafely } from "../../utils/safeDialog";
 
 const DATASETS_KEY = "conlang-maker-datasets";
 
@@ -152,13 +152,12 @@ export function DatasetManager() {
       }
 
       // Let user pick a directory to place the imported project
-      const targetDir = await open({
+      const targetDir = await openPathSafely({
         directory: true,
         title: t("dataset.chooseBundleDir"),
       });
       if (!targetDir) return;
-      const targetPath =
-        typeof targetDir === "string" ? targetDir : String(targetDir);
+      const targetPath = targetDir;
 
       // Create new project directory inside the chosen folder
       const safeName =

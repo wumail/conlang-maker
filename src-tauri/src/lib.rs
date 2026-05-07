@@ -45,7 +45,10 @@ pub fn run() {
             commands::oplog::create_snapshot,
             commands::oplog::rollback_to_snapshot,
             commands::oplog::set_max_snapshots,
-            commands::workspace::show_in_folder
+            commands::workspace::show_in_folder,
+            commands::dialog::pick_file_path_macos,
+            commands::dialog::pick_directory_path_macos,
+            commands::dialog::pick_save_file_path_macos
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -46,6 +46,47 @@ Define more precise rules based on phonetic features:
 
 Feature mode also supports boundary-aware constraints for edge-specific rules.
 
+## Ruleset Import and Export (New in 1.0.7)
+
+SCA rulesets can now be moved around as plain text, making it easier to reuse historical change pipelines across languages and language families.
+
+### Import a ruleset
+
+- Click `Import Rule Set` in the ruleset panel
+- Paste the external ruleset text into the dialog
+- Optionally provide a new ruleset name; if left empty, a default name is used
+- Click `Parse & Import` to validate each line and create a new ruleset
+
+Supported formats:
+
+- Arrow syntax: `p t k -> b d g / V _ V`
+- Pipe-delimited syntax: `target | replacement | before | after`
+- With description: `description | target | replacement | before | after | exceptions`
+- Feature-mode syntax: `description | @feature | [target] | +set,-remove | [before] | [after] | exceptions`
+
+If parsing fails, the UI reports the offending lines so they can be fixed and retried.
+
+### Export a single ruleset
+
+Each ruleset header now includes two quick actions:
+
+- `Copy Rule Set`: serialize the current ruleset and copy it to the clipboard
+- `Download Rule Set`: export the current ruleset as a `.txt` file
+
+The exported text is round-trip compatible with the importer, so it can be shared directly or pasted back into the app later.
+
+### Export all rulesets at once
+
+- Click `Export All Rule Sets` in the ruleset panel
+- The app bundles every current ruleset into a single text file
+- The exported file includes a small header with the export title and ruleset count for easier archiving
+
+Typical uses:
+
+- Back up a full diachronic ruleset library for a family
+- Move an entire sound change pipeline to another language
+- Share an import-ready ruleset pack with collaborators
+
 ## Preview
 
 - **Single word test**: Input a word → see sound change result + step-by-step log

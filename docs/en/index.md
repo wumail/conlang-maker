@@ -23,7 +23,7 @@ features:
   - title: 🔬 Word Generator
     details: Phonotactics-based random word generation, Swadesh 100 mapping, decay coefficient control
   - title: 🌳 Family Tree & Sound Change Engine
-    details: Child language derivation, pull sync, borrowing management, diachronic sound change simulation
+    details: Child language derivation, pull sync, borrowing management, ruleset import/export, and diachronic sound change simulation
   - title: 📊 Corpus & Interlinear Glossing
     details: Leipzig glossing standard interlinear annotations, auto-glossing with lexicon integration
   - title: 📤 Multi-Format Export

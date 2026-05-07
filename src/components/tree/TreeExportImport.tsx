@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { save } from "@tauri-apps/plugin-dialog";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { BTN_GHOST } from "../../lib/ui";
+import { savePathSafely } from "../../utils/safeDialog";
 
 export function TreeExportImport() {
   const { t } = useTranslation();
@@ -13,7 +13,7 @@ export function TreeExportImport() {
   const handleExport = async () => {
     setExporting(true);
     try {
-      const filePath = await save({
+      const filePath = await savePathSafely({
         title: t("tree.exportProject"),
         defaultPath: `conlang-project-${new Date().toISOString().slice(0, 10)}.conlang.json`,
         filters: [

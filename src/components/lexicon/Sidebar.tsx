@@ -67,21 +67,25 @@ export const Sidebar: React.FC = () => {
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] =
     useState(false);
   const [showCleanBlankConfirm, setShowCleanBlankConfirm] = useState(false);
-  const [parentWordsById, setParentWordsById] = useState<Record<string, WordEntry>>({});
+  const [parentWordsById, setParentWordsById] = useState<
+    Record<string, WordEntry>
+  >({});
   const [parentPhonoConfig, setParentPhonoConfig] =
     useState<PhonologyConfig | null>(null);
   const [parentWordsLoaded, setParentWordsLoaded] = useState(false);
 
   const activeLanguage = useMemo(
-    () => workspaceLanguages.find((lang) => lang.language_id === activeLanguageId),
+    () =>
+      workspaceLanguages.find((lang) => lang.language_id === activeLanguageId),
     [workspaceLanguages, activeLanguageId],
   );
 
   const parentLanguage = useMemo(() => {
     if (!activeLanguage?.parent_id) return null;
     return (
-      workspaceLanguages.find((lang) => lang.language_id === activeLanguage.parent_id) ??
-      null
+      workspaceLanguages.find(
+        (lang) => lang.language_id === activeLanguage.parent_id,
+      ) ?? null
     );
   }, [workspaceLanguages, activeLanguage]);
 
@@ -167,7 +171,14 @@ export const Sidebar: React.FC = () => {
     });
 
     return result;
-  }, [wordsList, parentLanguage, parentWordsById, parentPhonoConfig, config, parentWordsLoaded]);
+  }, [
+    wordsList,
+    parentLanguage,
+    parentWordsById,
+    parentPhonoConfig,
+    config,
+    parentWordsLoaded,
+  ]);
 
   const inventory = useMemo(
     () => [
@@ -590,7 +601,9 @@ export const Sidebar: React.FC = () => {
               )}
               <div className="flex-1 min-w-0 relative">
                 {lifecycle &&
-                  (lifecycle.isNew || lifecycle.isDeprecated || lifecycle.isChanged) && (
+                  (lifecycle.isNew ||
+                    lifecycle.isDeprecated ||
+                    lifecycle.isChanged) && (
                     <div className="absolute right-0 top-0 flex items-center gap-1">
                       {lifecycle.isNew && (
                         <span className={`${BADGE} badge-success`}>
@@ -618,9 +631,12 @@ export const Sidebar: React.FC = () => {
                   </div>
                 )}
                 {word.metadata?.tags && word.metadata.tags.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-1 flex flex-wrap gap-1 mb-2">
                     {word.metadata.tags.slice(0, 4).map((tag) => (
-                      <span key={`${word.entry_id}-${tag}`} className="badge badge-ghost badge-xs">
+                      <span
+                        key={`${word.entry_id}-${tag}`}
+                        className="badge badge-ghost badge-xs"
+                      >
                         {tag}
                       </span>
                     ))}

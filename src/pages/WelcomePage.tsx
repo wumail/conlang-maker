@@ -2,13 +2,13 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { Plus, FolderOpen, Trash2 } from "lucide-react";
-import { open, message } from "@tauri-apps/plugin-dialog";
 import { invoke } from "@tauri-apps/api/core";
 import { useRegistryStore } from "../store/registryStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { BTN_PRIMARY, BTN_GHOST, BTN_ERROR, BTN_PRIMARY_MD } from "../lib/ui";
 import { ConfirmModal } from "../components/common/ConfirmModal";
 import { ModalPortal } from "../components/common/ModalPortal";
+import { openPathSafely, messageSafely } from "../utils/safeDialog";
 
 import type { FamilyEntry } from "../types";
 
@@ -26,19 +26,19 @@ export function WelcomePage() {
 
   /** Open an existing .conlang file */
   const handleOpen = async () => {
-    const selected = await open({
+    const selected = await openPathSafely({
       title: t("welcome.openFile"),
       filters: [{ name: "Conlang File", extensions: ["conlang"] }],
     });
     if (!selected) return;
-    const filePath = typeof selected === "string" ? selected : String(selected);
+    const filePath = selected;
 
     try {
       const missing = await invoke<string[]>("validate_conlang_file", {
         conlangFilePath: filePath,
       });
       if (missing && missing.length > 0) {
-        await message(
+        await messageSafely(
           t("welcome.importFailed", { missing: missing.join(", ") }),
           { title: t("common.error", "Error"), kind: "error" },
         );
@@ -96,7 +96,7 @@ export function WelcomePage() {
         conlangFilePath: entry.conlang_file_path,
       });
       if (missing && missing.length > 0) {
-        await message(
+        await messageSafely(
           t("welcome.importFailed", { missing: missing.join(", ") }),
           { title: t("common.error", "Error"), kind: "error" },
         );
@@ -119,7 +119,6 @@ export function WelcomePage() {
 
   return (
     <div className="relative flex items-center justify-center h-full bg-base-200">
-
       <div className="max-w-md w-full p-8 space-y-6">
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">Conlang Maker</h1>
