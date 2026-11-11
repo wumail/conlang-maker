@@ -29,6 +29,21 @@
   unicode-bidi: isolate;
 }
 
+/* Conlang word and sentence text. Active only after a language font has loaded.
+   Kept outside Tailwind layers so it wins over font-bold / font-mono on those nodes. */
+html[data-conlang-font] .conlang-script {
+  font-family: var(--conlang-font), sans-serif;
+  font-weight: 400;
+  font-style: normal;
+  font-synthesis: none;
+  font-feature-settings: "ccmp" 1, "rlig" 1, "liga" 1, "clig" 1, "calt" 1, "locl" 1, "mark" 1, "mkmk" 1, "kern" 1;
+  font-variant-ligatures: common-ligatures contextual;
+  text-transform: none;
+  letter-spacing: normal;
+  text-rendering: optimizeLegibility;
+  unicode-bidi: isolate;
+}
+
 /* Utility: hide scrollbar but keep scrolling */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

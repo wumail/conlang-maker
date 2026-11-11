@@ -25,7 +25,7 @@ interface CorpusStore {
 const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function debouncedSave(projectPath: string, languagePath: string, text: CorpusText) {
-    const key = text.corpus_id;
+    const key = JSON.stringify([projectPath, languagePath, text.corpus_id]);
     const existing = saveTimers.get(key);
     if (existing) clearTimeout(existing);
     saveTimers.set(key, setTimeout(async () => {
@@ -38,6 +38,9 @@ function debouncedSave(projectPath: string, languagePath: string, text: CorpusTe
     }, 500));
 }
 
+let loadGeneration = 0;
+let corpusGeneration = 0;
+
 export const useCorpusStore = create<CorpusStore>((set, get) => ({
     index: [],
     activeCorpusId: null,
@@ -46,18 +49,26 @@ export const useCorpusStore = create<CorpusStore>((set, get) => ({
     languagePath: 'proto_language',
 
     loadIndex: async (projectPath, languagePath) => {
+        const generation = ++loadGeneration;
+        corpusGeneration += 1;
         try {
             const index = await invoke<CorpusIndexEntry[]>('load_corpus_index', { projectPath, languagePath });
-            set({ index, projectPath, languagePath });
+            if (generation !== loadGeneration) return;
+            set({ index, projectPath, languagePath, activeCorpus: null, activeCorpusId: null });
         } catch (err) {
+            if (generation !== loadGeneration) return;
             console.warn(`加载语料索引失败：${err}`);
+            throw err;
         }
     },
 
     loadCorpus: async (corpusId) => {
+        const generation = ++corpusGeneration;
         const { projectPath, languagePath } = get();
+        set({ activeCorpusId: corpusId, activeCorpus: null });
         try {
             const text = await invoke<CorpusText>('load_corpus_text', { projectPath, languagePath, corpusId });
+            if (generation !== corpusGeneration || get().projectPath !== projectPath || get().languagePath !== languagePath || get().activeCorpusId !== corpusId) return;
             set({ activeCorpus: text, activeCorpusId: corpusId });
         } catch (err) {
             console.warn(`加载语料失败：${err}`);
@@ -85,10 +96,11 @@ export const useCorpusStore = create<CorpusStore>((set, get) => ({
     deleteCorpus: async (corpusId) => {
         const { projectPath, languagePath } = get();
         // Cancel any pending debounced save for this corpus
-        const pendingTimer = saveTimers.get(corpusId);
+        const saveKey = JSON.stringify([projectPath, languagePath, corpusId]);
+        const pendingTimer = saveTimers.get(saveKey);
         if (pendingTimer) {
             clearTimeout(pendingTimer);
-            saveTimers.delete(corpusId);
+            saveTimers.delete(saveKey);
         }
         // Optimistic UI update first
         set((state) => ({

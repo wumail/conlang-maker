@@ -1,53 +1,139 @@
-import { RomanizationMap, AllophonyRule, PhonologyConfig } from '../types';
+import { RomanizationMap, RomanizationRule, AllophonyRule, PhonologyConfig } from '../types';
+
+const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
+
+interface CompiledRomanizationRule {
+  rule: RomanizationRule;
+  foldedInput: string;
+  charCount: number;
+  beforeBoundary: boolean;
+  beforeFolded: string;
+  beforeCharCount: number;
+  afterBoundary: boolean;
+  afterFolded: string;
+  afterCharCount: number;
+  contextSpecificity: number;
+}
+
+function compileRules(rules: RomanizationRule[]): CompiledRomanizationRule[] {
+  const compiled: CompiledRomanizationRule[] = [];
+  for (const rule of rules) {
+    const rawInput = rule.input.normalize('NFC');
+    if (!rawInput) continue;
+
+    const rawBefore = (rule.context_before ?? '').trim().normalize('NFC');
+    const normBefore = rawBefore === '_' ? '' : rawBefore;
+    const beforeBoundary = normBefore.startsWith('#');
+    const beforeLiteral = beforeBoundary ? normBefore.slice(1) : normBefore;
+
+    const rawAfter = (rule.context_after ?? '').trim().normalize('NFC');
+    const normAfter = rawAfter === '_' ? '' : rawAfter;
+    const afterBoundary = normAfter.endsWith('#');
+    const afterLiteral = afterBoundary ? normAfter.slice(0, -1) : normAfter;
+
+    const beforeCharCount = Array.from(beforeLiteral).length;
+    const afterCharCount = Array.from(afterLiteral).length;
+    const contextSpecificity =
+      beforeCharCount + afterCharCount + (beforeBoundary ? 1 : 0) + (afterBoundary ? 1 : 0);
+
+    compiled.push({
+      rule,
+      foldedInput: rawInput.toLowerCase(),
+      charCount: Array.from(rawInput).length,
+      beforeBoundary,
+      beforeFolded: beforeLiteral.toLowerCase(),
+      beforeCharCount,
+      afterBoundary,
+      afterFolded: afterLiteral.toLowerCase(),
+      afterCharCount,
+      contextSpecificity,
+    });
+  }
+
+  compiled.sort(
+    (a, b) => b.charCount - a.charCount || b.contextSpecificity - a.contextSpecificity,
+  );
+  return compiled;
+}
+
+function matchesBefore(
+  chars: string[],
+  pos: number,
+  entry: CompiledRomanizationRule,
+): boolean {
+  if (entry.beforeCharCount > 0) {
+    if (pos < entry.beforeCharCount) return false;
+    const slice = chars.slice(pos - entry.beforeCharCount, pos).join('').toLowerCase();
+    if (slice !== entry.beforeFolded) return false;
+  }
+  if (entry.beforeBoundary) {
+    const boundaryIdx = pos - entry.beforeCharCount;
+    if (boundaryIdx > 0 && WORD_CHAR_RE.test(chars[boundaryIdx - 1])) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function matchesAfter(
+  chars: string[],
+  end: number,
+  entry: CompiledRomanizationRule,
+): boolean {
+  if (entry.afterCharCount > 0) {
+    if (end + entry.afterCharCount > chars.length) return false;
+    const slice = chars.slice(end, end + entry.afterCharCount).join('').toLowerCase();
+    if (slice !== entry.afterFolded) return false;
+  }
+  if (entry.afterBoundary) {
+    const boundaryIdx = end + entry.afterCharCount;
+    if (boundaryIdx < chars.length && WORD_CHAR_RE.test(chars[boundaryIdx])) {
+      return false;
+    }
+  }
+  return true;
+}
 
 /**
  * Convert romanized text to phoneme string using the given romanization map.
- * Rules are sorted by input length (longest first) for greedy matching.
- * Context-sensitive rules are checked but simple string prefix matching is used
- * (Phase 1 simplification — full regex context will come in Phase 2).
+ * Greedy longest-input matching (with context specificity tie-breaking and `#` word boundaries).
  */
 export const romanizationToPhonemes = (
   romanized: string,
-  map: RomanizationMap
+  map: RomanizationMap,
 ): string => {
-  if (!map || map.rules.length === 0) return romanized;
+  if (!romanized) return '';
+  const source = romanized.normalize('NFC');
+  if (!map || map.rules.length === 0) return source;
 
-  // Sort rules by input length descending for greedy match
-  const sorted = [...map.rules].sort((a, b) => b.input.length - a.input.length);
+  const compiled = compileRules(map.rules);
+  if (compiled.length === 0) return source;
 
-  let result = '';
-  let i = 0;
-  const lower = romanized.toLowerCase();
+  const chars = Array.from(source);
+  const out: string[] = [];
+  let pos = 0;
 
-  while (i < lower.length) {
+  while (pos < chars.length) {
     let matched = false;
-    for (const rule of sorted) {
-      if (!rule.input) continue;
-      if (lower.startsWith(rule.input, i)) {
-        // Context check (simple: _ means "any", empty also means "any")
-        const beforeOk =
-          !rule.context_before || rule.context_before === '_' ||
-          (i > 0 && lower[i - 1] === rule.context_before);
-        const afterOk =
-          !rule.context_after || rule.context_after === '_' ||
-          (i + rule.input.length < lower.length &&
-            lower[i + rule.input.length] === rule.context_after);
+    for (const entry of compiled) {
+      const end = pos + entry.charCount;
+      if (end > chars.length) continue;
+      const candidate = chars.slice(pos, end).join('').toLowerCase();
+      if (candidate !== entry.foldedInput) continue;
+      if (!matchesBefore(chars, pos, entry) || !matchesAfter(chars, end, entry)) continue;
 
-        if (beforeOk && afterOk) {
-          result += rule.output_phoneme;
-          i += rule.input.length;
-          matched = true;
-          break;
-        }
-      }
+      out.push(entry.rule.output_phoneme.normalize('NFC'));
+      pos = end;
+      matched = true;
+      break;
     }
     if (!matched) {
-      // Pass through character as-is (identity mapping)
-      result += lower[i];
-      i++;
+      out.push(chars[pos].toLowerCase());
+      pos += 1;
     }
   }
-  return result;
+
+  return out.join('');
 };
 
 /**
@@ -108,7 +194,7 @@ const applyRule = (
 
     const regex = new RegExp(pattern, 'g');
     return phonemes.replace(regex, `$1${rule.replacement}`);
-  } catch (err) {
+  } catch {
     console.warn(`[Allophony] Invalid regex for rule "${rule.rule_id}": target="${rule.target}"`);
     return phonemes;
   }
@@ -136,7 +222,6 @@ export const generateIPA = (
   romanized: string,
   config: PhonologyConfig
 ): { phonemic: string; surface: string } => {
-  // Find the default romanization map, fallback to first
   const defaultMap =
     config.romanization_maps.find(m => m.is_default) ??
     config.romanization_maps[0];

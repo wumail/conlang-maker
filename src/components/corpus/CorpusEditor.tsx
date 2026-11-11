@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { useCorpusStore } from "../../store/corpusStore";
 import { GlossingEditor } from "./GlossingEditor";
 import { INPUT, TEXTAREA, CARD, CARD_BODY } from "../../lib/ui";
+import { ScriptPreview } from "../writing/ScriptText";
 
 export function CorpusEditor() {
   const { t } = useTranslation();
@@ -52,6 +53,7 @@ export function CorpusEditor() {
               value={corpus.original_text}
               onChange={(e) => update("original_text", e.target.value)}
             />
+            <ScriptPreview text={corpus.original_text} className="text-2xl mt-1" />
           </div>
           <div>
             <label className="text-xs text-base-content/60">

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Download } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../../store/workspaceStore";
+import { usePhonoStore } from "../../store/phonoStore";
 import { BTN_GHOST } from "../../lib/ui";
 import { savePathSafely } from "../../utils/safeDialog";
 
@@ -24,9 +25,9 @@ export function TreeExportImport() {
         setExporting(false);
         return;
       }
-      const bundleJson = await invoke<string>("export_workspace_bundle", {
-        projectPath: useWorkspaceStore.getState().projectPath,
-      });
+      await usePhonoStore.getState().flushSaves();
+      const { projectPath, conlangFilePath } = useWorkspaceStore.getState();
+      const bundleJson = await invoke<string>("export_workspace_bundle", { projectPath, conlangFilePath });
       await invoke("write_text_file", { filePath, content: bundleJson });
     } catch (err) {
       console.warn(`Export failed: ${err}`);

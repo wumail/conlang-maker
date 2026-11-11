@@ -15,7 +15,8 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { LanguageEntry } from "../types";
+import { LanguageEntry, LanguageFontStatus } from "../types";
+import { useFontStore } from "../store/fontStore";
 import { BTN_PRIMARY, BTN_GHOST, BTN_OUTLINE_ERROR, INPUT } from "../lib/ui";
 import { TreeNode } from "../components/tree/TreeNodeRF";
 import { PullSync } from "../components/tree/PullSync";
@@ -42,9 +43,14 @@ export function FamilyTree() {
     setActiveLanguage,
     loadWorkspace,
     projectPath,
+    conlangFilePath,
     createRootLanguage,
   } = useWorkspaceStore();
+  const fontRevision = useFontStore((state) => state.revision);
   const { registerFamily, setActiveFamily } = useRegistryStore();
+  const [fontStatuses, setFontStatuses] = useState<
+    Record<string, LanguageFontStatus>
+  >({});
   const [languageStats, setLanguageStats] = useState<
     Record<
       string,
@@ -96,6 +102,26 @@ export function FamilyTree() {
     loadWordCounts();
   }, [loadWordCounts]);
 
+  const loadFonts = useCallback(async () => {
+    if (!projectPath || !conlangFilePath) return;
+    try {
+      const list = await invoke<LanguageFontStatus[]>("list_language_fonts", {
+        projectPath,
+        conlangFilePath,
+      });
+      setFontStatuses(
+        Object.fromEntries(list.map((item) => [item.language_id, item])),
+      );
+    } catch (err) {
+      console.warn(`Failed to load language fonts: ${err}`);
+    }
+  }, [projectPath, conlangFilePath]);
+
+  const languageKey = config.languages.map((lang) => lang.language_id).join("|");
+  useEffect(() => {
+    loadFonts();
+  }, [loadFonts, fontRevision, languageKey]);
+
   // Callbacks for tree nodes — stabilise with useCallback
   const handleNodeFork = useCallback((parentId: string) => {
     setForkParentId(parentId);
@@ -126,6 +152,7 @@ export function FamilyTree() {
   const { nodes: layoutNodes, edges: layoutEdges } = useTreeLayout(
     config.languages,
     languageStats,
+    fontStatuses,
     callbacks,
   );
 

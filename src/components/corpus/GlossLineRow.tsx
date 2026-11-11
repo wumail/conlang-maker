@@ -8,6 +8,7 @@ import { GlossTokenEdit } from "./GlossTokenEdit";
 import { WordPopover } from "./WordPopover";
 import { INPUT, BTN_ERROR } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
+import { ScriptText } from "../writing/ScriptText";
 
 interface GlossLineRowProps {
   line: GlossedLine;
@@ -93,9 +94,10 @@ export function GlossLineRow({ line }: GlossLineRowProps) {
               onMouseLeave={() => setHoverTokenId(null)}
             >
               {/* Row 1: Surface form */}
-              <span className="h-5 flex items-center font-semibold text-sm">
-                {token.surface_form || "—"}
-              </span>
+              <ScriptText
+                text={token.surface_form || "—"}
+                className="h-5 flex items-center font-semibold text-sm"
+              />
               {/* Row 2: Morpheme break */}
               <span className="h-4 flex items-center text-xs text-base-content/70 font-mono">
                 {token.morpheme_break || "—"}

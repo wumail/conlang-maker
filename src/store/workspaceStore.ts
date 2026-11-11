@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { WorkspaceConfig, LanguageEntry, CreateProjectResult } from "../types";
 import { invoke } from "@tauri-apps/api/core";
+import { usePhonoStore } from "./phonoStore";
 import { openPathSafely } from "../utils/safeDialog";
 import {
   DEFAULT_LANGUAGE_ID,
@@ -140,6 +141,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   forkLanguage: async (parentId, newName, newId, newPath) => {
     const { projectPath, conlangFilePath } = get();
+    await usePhonoStore.getState().flushSaves();
     await invoke("fork_language", {
       projectPath,
       conlangFilePath,
@@ -154,6 +156,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
 
   deleteLanguage: async (languageId: string) => {
     const { projectPath, conlangFilePath, activeLanguageId, config } = get();
+    await usePhonoStore.getState().flushSaves();
     await invoke("delete_language", {
       projectPath,
       conlangFilePath,
@@ -224,6 +227,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
   },
 
   copyProject: async (sourceConlangFilePath: string, destDir: string, newName: string) => {
+    await usePhonoStore.getState().flushSaves();
     const newConlangPath = await invoke<string>("copy_project", {
       sourceConlangFilePath,
       destDir,

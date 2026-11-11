@@ -41,7 +41,7 @@ function debouncedSaveWord(
   word: WordEntry,
   old_romanized?: string,
 ) {
-  const key = word.entry_id;
+  const key = JSON.stringify([projectPath, languagePath, word.entry_id]);
   if (old_romanized && !pendingOldRomanized.has(key)) {
     pendingOldRomanized.set(key, old_romanized);
   }
@@ -70,6 +70,8 @@ function rebuildList(wordsMap: Record<string, WordEntry>): WordEntry[] {
   );
 }
 
+let loadGeneration = 0;
+
 export const useLexiconStore = create<LexiconStore>((set, get) => ({
   wordsMap: {},
   wordsList: [],
@@ -90,11 +92,13 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
   },
 
   loadFromBackend: async (projectPath: string, languagePath: string) => {
+    const generation = ++loadGeneration;
     try {
       const words = await invoke<WordEntry[]>("load_all_words", {
         projectPath,
         languagePath,
       });
+      if (generation !== loadGeneration) return;
       const wordsMap: Record<string, WordEntry> = {};
       words.forEach((w) => {
         wordsMap[w.entry_id] = w;
@@ -106,7 +110,9 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
         languagePath,
       });
     } catch (err) {
+      if (generation !== loadGeneration) return;
       console.error("Failed to load words:", err);
+      throw err;
     }
   },
 
@@ -156,12 +162,14 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
     if (!wordToDelete) return;
 
     // 取消该词条的任何待保存 timer
-    const timer = saveTimers.get(entryId);
+    const { projectPath, languagePath } = get();
+    const saveKey = JSON.stringify([projectPath, languagePath, entryId]);
+    const timer = saveTimers.get(saveKey);
     if (timer) {
       clearTimeout(timer);
-      saveTimers.delete(entryId);
+      saveTimers.delete(saveKey);
     }
-    pendingOldRomanized.delete(entryId);
+    pendingOldRomanized.delete(saveKey);
 
     set((state) => {
       const wordsMap = { ...state.wordsMap };
@@ -169,7 +177,6 @@ export const useLexiconStore = create<LexiconStore>((set, get) => ({
       return { wordsMap, wordsList: rebuildList(wordsMap), activeWordId: null };
     });
 
-    const { projectPath, languagePath } = get();
     invoke("delete_word", {
       projectPath,
       languagePath,

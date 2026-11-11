@@ -1,5 +1,7 @@
 pub mod corpus;
 pub mod dialog;
+pub mod font;
+pub mod font_info;
 pub mod export_import;
 pub mod fork;
 pub mod grammar;

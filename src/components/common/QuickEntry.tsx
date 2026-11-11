@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useLexiconStore } from "../../store/lexiconStore";
-import { DEFAULT_LANGUAGE_ID } from "../../constants";
+import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { generateIPA } from "../../utils/ipaGenerator";
@@ -15,6 +15,7 @@ import {
   BADGE,
 } from "../../lib/ui";
 import { ModalPortal } from "./ModalPortal";
+import { ScriptPreview } from "../writing/ScriptText";
 
 interface QuickEntryProps {
   isOpen: boolean;
@@ -49,7 +50,7 @@ export const QuickEntry: React.FC<QuickEntryProps> = ({ isOpen, onClose }) => {
     const { phonemic } = generateIPA(word, phonoConfig);
     upsertWord({
       entry_id: crypto.randomUUID(),
-      language_id: DEFAULT_LANGUAGE_ID,
+      language_id: useWorkspaceStore.getState().activeLanguageId,
       con_word_romanized: word.trim(),
       phonetic_ipa: phonemic,
       phonetic_override: false,
@@ -148,6 +149,7 @@ export const QuickEntry: React.FC<QuickEntryProps> = ({ isOpen, onClose }) => {
                 placeholder={t("quickEntry.wordPlaceholder")}
                 autoFocus
               />
+              <ScriptPreview text={word} className="text-2xl mt-1" />
               {phonemic && (
                 <div className="mt-1 text-sm font-mono text-primary">
                   /{phonemic}/

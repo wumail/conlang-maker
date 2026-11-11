@@ -239,6 +239,8 @@ function migrateInflectionRule(raw: RawInflectionRule): InflectionRule {
   };
 }
 
+let loadGeneration = 0;
+
 export const useGrammarStore = create<GrammarStore>((set, get) => ({
   config: defaultConfig,
   projectPath: ".",
@@ -248,11 +250,13 @@ export const useGrammarStore = create<GrammarStore>((set, get) => ({
   setLanguagePath: (path) => set({ languagePath: path }),
 
   loadConfig: async (projectPath: string, languagePath: string) => {
+    const generation = ++loadGeneration;
     try {
       const raw = await invoke<RawGrammarConfig>("load_grammar", {
         projectPath,
         languagePath,
       });
+      if (generation !== loadGeneration) return;
       const rawRules = raw.inflection_rules || raw.inflections || [];
       const config: GrammarConfig = {
         language_id: raw.language_id || DEFAULT_LANGUAGE_ID,
@@ -273,7 +277,9 @@ export const useGrammarStore = create<GrammarStore>((set, get) => ({
       };
       set({ config, projectPath, languagePath });
     } catch (err) {
+      if (generation !== loadGeneration) return;
       console.warn(`加载语法配置失败：${err}`);
+      throw err;
     }
   },
 

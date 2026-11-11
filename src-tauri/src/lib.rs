@@ -48,7 +48,14 @@ pub fn run() {
             commands::workspace::show_in_folder,
             commands::dialog::pick_file_path_macos,
             commands::dialog::pick_directory_path_macos,
-            commands::dialog::pick_save_file_path_macos
+            commands::dialog::pick_save_file_path_macos,
+            commands::font::list_language_fonts,
+            commands::font::read_resolved_font,
+            commands::font::import_language_font,
+            commands::font::read_font_candidate,
+            commands::font::import_checked_language_font,
+            commands::font::clear_language_font,
+            commands::font::inspect_language_font
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -6,6 +6,7 @@ export interface PhonemeInventory {
 }
 
 export interface RomanizationRule {
+  rule_id: string;
   input: string;
   output_phoneme: string;
   context_before: string;
@@ -17,6 +18,19 @@ export interface RomanizationMap {
   name: string;
   is_default: boolean;
   rules: RomanizationRule[];
+}
+
+export type GlyphKind = "base" | "vowel" | "carrier" | "mark" | "punctuation";
+
+export interface GlyphAnnotation {
+  /** Representative Unicode codepoint of the glyph in the font cmap. */
+  codepoint: number;
+  /** Reference label or romanized name for documentation. */
+  label: string;
+  /** Optional glyph structural category for reference. */
+  kind?: GlyphKind;
+  /** Optional phoneme / empty-set (∅) reference tokens. */
+  phonemes?: string[];
 }
 
 export interface VowelHarmony {
@@ -58,6 +72,7 @@ export interface PhonologyConfig {
   language_id: string;
   phoneme_inventory: PhonemeInventory;
   romanization_maps: RomanizationMap[];
+  glyph_annotations?: GlyphAnnotation[];
   phonotactics: Phonotactics;
   allophony_rules: AllophonyRule[];
 }
@@ -312,6 +327,33 @@ export interface LanguageEntry {
   name: string;
   path: string; // relative dir name, e.g. "proto_language"
   parent_id: string | null;
+}
+
+/** Which font file a language displays, after walking parent_id. */
+export interface LanguageFontStatus {
+  language_id: string;
+  has_own: boolean;
+  own_file_name: string | null;
+  resolved_owner_id: string | null;
+  resolved_owner_name: string | null;
+  resolved_file_name: string | null;
+}
+
+/** Parsed face for the active language, after walking parent_id. */
+export interface FontInspection {
+  present: boolean;
+  has_own: boolean;
+  inherited: boolean;
+  owner_language_id: string | null;
+  owner_name: string | null;
+  owner_path: string | null;
+  file_name: string | null;
+  family_name: string | null;
+  version: string | null;
+  codepoints: number[];
+  /** Codepoints that draw the same glyph, one group per glyph. */
+  glyphs?: number[][];
+  warning: string | null;
 }
 
 export interface WorkspaceConfig {

@@ -4,6 +4,9 @@ import { TitleBar } from "./components/nav/TitleBar";
 import { AppNav } from "./components/nav/AppNav";
 import { ProjectStats } from "./components/nav/ProjectStats";
 import { PhonologyPage } from "./pages/PhonologyPage";
+import { WritingPage } from "./pages/WritingPage";
+import { FontPanel } from "./components/writing/FontPanel";
+import { GlyphPanel } from "./components/writing/GlyphPanel";
 import { IPAPanel } from "./components/phonology/IPAPanel";
 import { RomanizationEditor } from "./components/phonology/RomanizationEditor";
 import { PhonotacticsEditor } from "./components/phonology/PhonotacticsEditor";
@@ -31,13 +34,17 @@ import { useWorkspaceStore } from "./store/workspaceStore";
 import { useSCAStore } from "./store/scaStore";
 import { useCorpusStore } from "./store/corpusStore";
 import { useRegistryStore } from "./store/registryStore";
+import { useConlangFont } from "./utils/conlangFont";
+import { useFontStore } from "./store/fontStore";
 import { check } from "@tauri-apps/plugin-updater";
+import { useTranslation } from "react-i18next";
 import "./App.css";
 
 /** Routes that don't require a loaded workspace */
 const PUBLIC_ROUTES = ["/welcome", "/about"];
 
 function App() {
+  const { t } = useTranslation();
   const { loadFromBackend } = useLexiconStore();
   const { projectPath, activeLanguagePath, conlangFilePath } =
     useWorkspaceStore();
@@ -49,6 +56,12 @@ function App() {
   const { loadRegistry, registry } = useRegistryStore();
   const location = useLocation();
   const [initDone, setInitDone] = useState(false);
+  const [loadedLanguage, setLoadedLanguage] = useState("");
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadRevision, setReloadRevision] = useState(0);
+  const saveError = usePhonoStore((s) => s.saveError);
+  const fontError = useFontStore((s) => s.error);
+  useConlangFont();
 
   // 1. On mount, load registry and resolve active family
   useEffect(() => {
@@ -75,17 +88,30 @@ function App() {
 
   // 3. Reload data when active language changes
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
+  const languageKey = JSON.stringify([projectPath, activeLanguagePath, activeLanguageId]);
   useEffect(() => {
     if (!conlangFilePath) return;
+    let cancelled = false;
+    setLoadedLanguage("");
+    setLoadError(null);
     const reload = async () => {
-      await loadFromBackend(projectPath, activeLanguagePath);
-      await phonoLoadConfig(projectPath, activeLanguagePath);
-      await grammarLoadConfig(projectPath, activeLanguagePath);
-      await scaLoadConfig(projectPath, activeLanguagePath);
-      await corpusLoadIndex(projectPath, activeLanguagePath);
+      try {
+        await phonoLoadConfig(projectPath, activeLanguagePath);
+        if (cancelled) return;
+        await Promise.all([
+          loadFromBackend(projectPath, activeLanguagePath),
+          grammarLoadConfig(projectPath, activeLanguagePath),
+          scaLoadConfig(projectPath, activeLanguagePath),
+          corpusLoadIndex(projectPath, activeLanguagePath),
+        ]);
+        if (!cancelled) setLoadedLanguage(languageKey);
+      } catch (error) {
+        if (!cancelled) setLoadError(String(error));
+      }
     };
-    reload();
-  }, [projectPath, activeLanguagePath, activeLanguageId]);
+    void reload();
+    return () => { cancelled = true; };
+  }, [projectPath, activeLanguagePath, activeLanguageId, conlangFilePath, reloadRevision]);
 
   // 4. Silent updater check on startup; installs in background if a signed update is available.
   useEffect(() => {
@@ -121,12 +147,27 @@ function App() {
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-200 font-sans">
       {/* Always visible title bar (replaces native OS title bar) */}
-      <TitleBar />
+      <TitleBar ready={loadedLanguage === languageKey && !loadError} />
 
       {/* Hide nav on welcome page */}
       {location.pathname !== "/welcome" && <AppNav />}
 
+      {saveError && (
+        <div role="alert" className="alert alert-error rounded-none whitespace-pre-wrap">
+          <span>{t("writing.saveFailed")} {saveError}</span>
+          <button type="button" className="btn btn-sm" onClick={() => { void usePhonoStore.getState().flushSaves().catch(() => {}); }}>
+            {t("writing.retry")}
+          </button>
+        </div>
+      )}
+      {fontError && <div role="alert" className="alert alert-warning rounded-none">{t("writing.fontLoadFailed")} {fontError}</div>}
+
       <main className="flex-1 flex flex-col overflow-hidden">
+        {!isPublicRoute && (loadedLanguage !== languageKey || loadError) ? (
+          <div role={loadError ? "alert" : "status"} className="flex-1 flex flex-col items-center justify-center gap-3 p-6">
+            {loadError ? <><p>{loadError}</p><button type="button" className="btn" onClick={() => { setLoadedLanguage(""); setReloadRevision((value) => value + 1); }}>{t("writing.retry")}</button></> : <span className="loading loading-spinner loading-lg" />}
+          </div>
+        ) : (
         <Routes>
           {/* Welcome page (no workspace required) */}
           <Route path="/welcome" element={<WelcomePage />} />
@@ -146,6 +187,11 @@ function App() {
             <Route path="romanization" element={<RomanizationEditor />} />
             <Route path="phonotactics" element={<PhonotacticsEditor />} />
             <Route path="allophony" element={<AllophonyEditor />} />
+          </Route>
+
+          <Route path="/writing/*" element={<WritingPage />}>
+            <Route path="font" element={<FontPanel />} />
+            <Route path="glyphs" element={<GlyphPanel />} />
           </Route>
 
           {/* 语法（嵌套子路由） */}
@@ -221,6 +267,7 @@ function App() {
             }
           />
         </Routes>
+        )}
       </main>
 
       {/* Footer Stats Bar */}

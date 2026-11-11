@@ -26,6 +26,7 @@ import {
   hasWordChangedFromParent,
   WordLifecycleFlags,
 } from "../../utils/wordLifecycle";
+import { ScriptPreview } from "../writing/ScriptText";
 
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
@@ -335,9 +336,10 @@ export const EditorPane: React.FC = () => {
             type="text"
             value={word.con_word_romanized}
             onChange={(e) => handleChange("con_word_romanized", e.target.value)}
-            className="text-4xl font-bold border-b-2 border-transparent hover:border-base-300 focus:border-primary outline-none w-full bg-transparent"
+            className={`text-4xl font-bold border-b-2 border-transparent hover:border-base-300 focus:border-primary outline-none w-full bg-transparent`}
             placeholder={t("lexicon.word")}
           />
+          <ScriptPreview text={word.con_word_romanized} className="text-3xl leading-tight mt-1" />
           <div className="flex items-center gap-2 mt-2 text-base-content/60">
             <span className="font-mono text-lg">
               {word.phonetic_override ? (

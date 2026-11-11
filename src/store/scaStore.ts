@@ -41,17 +41,23 @@ const debouncedSave = (projectPath: string, languagePath: string, config: SCACon
     }, 500);
 };
 
+let loadGeneration = 0;
+
 export const useSCAStore = create<SCAStore>((set, get) => ({
     config: defaultConfig,
     projectPath: '.',
     languagePath: 'proto_language',
 
     loadConfig: async (projectPath: string, languagePath: string) => {
+        const generation = ++loadGeneration;
         try {
             const config = await invoke<SCAConfig>('load_sca', { projectPath, languagePath });
+            if (generation !== loadGeneration) return;
             set({ config, projectPath, languagePath });
         } catch (err) {
+            if (generation !== loadGeneration) return;
             console.warn(`加载 SCA 配置失败：${err}`);
+            throw err;
         }
     },
 

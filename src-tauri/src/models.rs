@@ -11,6 +11,8 @@ pub struct PhonemeInventory {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct RomanizationRule {
+    #[serde(default)]
+    pub rule_id: String,
     pub input: String,
     pub output_phoneme: String,
     #[serde(default)]
@@ -25,6 +27,17 @@ pub struct RomanizationMap {
     pub name: String,
     pub is_default: bool,
     pub rules: Vec<RomanizationRule>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct GlyphAnnotation {
+    pub codepoint: u32,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub phonemes: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -102,9 +115,30 @@ pub struct PhonologyConfig {
     pub phoneme_inventory: PhonemeInventory,
     #[serde(default)]
     pub romanization_maps: Vec<RomanizationMap>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub glyph_annotations: Vec<GlyphAnnotation>,
     pub phonotactics: Phonotactics,
     #[serde(default)]
     pub allophony_rules: Vec<AllophonyRule>,
+}
+
+impl Default for PhonologyConfig {
+    fn default() -> Self {
+        Self {
+            language_id: default_language_id(),
+            phoneme_inventory: PhonemeInventory { consonants: Vec::new(), vowels: Vec::new() },
+            romanization_maps: Vec::new(),
+            glyph_annotations: Vec::new(),
+            phonotactics: Phonotactics {
+                macros: HashMap::new(),
+                syllable_structure: "(C)V(C)".to_string(),
+                blacklist_patterns: Vec::new(),
+                vowel_harmony: VowelHarmony::default(),
+                tone_system: ToneSystem::default(),
+            },
+            allophony_rules: Vec::new(),
+        }
+    }
 }
 
 // ── 词典相关 ──────────────────────────────────────────────

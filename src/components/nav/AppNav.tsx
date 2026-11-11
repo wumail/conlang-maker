@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import {
   Book,
   AudioLines,
+  PenLine,
   ScrollText,
   Package,
   Wand2,
@@ -25,13 +26,18 @@ export function AppNav() {
 
   const navRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
-  const [overflowIdx, setOverflowIdx] = useState(9);
+  const [overflowIdx, setOverflowIdx] = useState(10);
 
   const navItems = [
     {
       to: "/phonology",
       icon: <AudioLines className="w-4 h-4" />,
       label: t("nav.phonology"),
+    },
+    {
+      to: "/writing",
+      icon: <PenLine className="w-4 h-4" />,
+      label: t("nav.writing"),
     },
     {
       to: "/lexicon",

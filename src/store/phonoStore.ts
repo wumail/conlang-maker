@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { PhonologyConfig, RomanizationMap, AllophonyRule, VowelHarmony, ToneSystem } from '../types';
+import { PhonologyConfig, RomanizationMap, AllophonyRule, VowelHarmony, ToneSystem, GlyphAnnotation } from '../types';
 import { invoke } from '@tauri-apps/api/core';
 import { DEFAULT_LANGUAGE_ID } from '../constants';
 
@@ -7,11 +7,15 @@ interface PhonoStore {
   config: PhonologyConfig;
   projectPath: string;
   languagePath: string;
+  loading: boolean;
+  loadError: string | null;
+  saveError: string | null;
 
   setProjectPath: (path: string) => void;
   setLanguagePath: (path: string) => void;
   loadConfig: (projectPath: string, languagePath: string) => Promise<void>;
   saveConfig: () => void;
+  flushSaves: () => Promise<void>;
 
   // Phoneme inventory
   togglePhoneme: (phoneme: string, kind: 'consonants' | 'vowels') => void;
@@ -22,6 +26,7 @@ interface PhonoStore {
   updateRomanizationMap: (mapId: string, map: RomanizationMap) => void;
   addRomanizationMap: (map: RomanizationMap) => void;
   deleteRomanizationMap: (mapId: string) => void;
+  setGlyphAnnotations: (annotations: GlyphAnnotation[]) => void;
 
   // Phonotactics
   updateSyllableStructure: (structure: string) => void;
@@ -41,6 +46,7 @@ const defaultConfig: PhonologyConfig = {
   language_id: DEFAULT_LANGUAGE_ID,
   phoneme_inventory: { consonants: [], vowels: [] },
   romanization_maps: [],
+  glyph_annotations: [],
   phonotactics: {
     macros: {},
     syllable_structure: '(C)V(C)',
@@ -51,34 +57,93 @@ const defaultConfig: PhonologyConfig = {
   allophony_rules: [],
 };
 
-/** 单一配置实体，共享 timer 无风险 */
-let saveTimeout: ReturnType<typeof setTimeout>;
+interface PendingSave {
+  projectPath: string;
+  languagePath: string;
+  config: PhonologyConfig;
+  timer: ReturnType<typeof setTimeout> | null;
+  revision: number;
+}
+const pendingSaves = new Map<string, PendingSave>();
+const saveRevisions = new Map<string, number>();
+const writes = new Map<string, Promise<void>>();
+const saveErrors = new Map<string, string>();
+let loadGeneration = 0;
+
+async function flushSave(key: string): Promise<void> {
+  const pending = pendingSaves.get(key);
+  if (!pending) return writes.get(key);
+  if (pending.timer) clearTimeout(pending.timer);
+  pendingSaves.delete(key);
+  const write = (writes.get(key) ?? Promise.resolve()).catch(() => {}).then(async () => {
+    await invoke('save_phonology', { projectPath: pending.projectPath, languagePath: pending.languagePath, config: pending.config });
+  });
+  writes.set(key, write);
+  try {
+    await write;
+    saveErrors.delete(key);
+  } catch (error) {
+    if (saveRevisions.get(key) === pending.revision && !pendingSaves.has(key)) {
+      pendingSaves.set(key, { ...pending, timer: null });
+    }
+    saveErrors.set(key, `${pending.languagePath}: ${String(error)}`);
+    throw error;
+  } finally {
+    if (writes.get(key) === write) writes.delete(key);
+    usePhonoStore.setState({ saveError: saveErrors.size ? [...saveErrors.values()].join("\n") : null });
+  }
+}
+
+async function flushSaves(): Promise<void> {
+  await Promise.all([...new Set([...pendingSaves.keys(), ...writes.keys()])].map(flushSave));
+}
 
 const debouncedSave = (projectPath: string, languagePath: string, config: PhonologyConfig) => {
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(async () => {
-    try {
-      await invoke('save_phonology', { projectPath, languagePath, config });
-    } catch (err) {
-      console.warn(`音系配置保存失败：${err}`);
-    }
-  }, 500);
+  const key = JSON.stringify([projectPath, languagePath]);
+  const previous = pendingSaves.get(key);
+  if (previous?.timer) clearTimeout(previous.timer);
+  const revision = (saveRevisions.get(key) ?? 0) + 1;
+  saveRevisions.set(key, revision);
+  const timer = setTimeout(() => { void flushSave(key).catch(() => {}); }, 500);
+  pendingSaves.set(key, { projectPath, languagePath, config, timer, revision });
 };
 
 export const usePhonoStore = create<PhonoStore>((set, get) => ({
   config: defaultConfig,
   projectPath: '.',
   languagePath: 'proto_language',
+  loading: false,
+  loadError: null,
+  saveError: null,
+  flushSaves,
 
   setProjectPath: (path) => set({ projectPath: path }),
   setLanguagePath: (path) => set({ languagePath: path }),
 
   loadConfig: async (projectPath: string, languagePath: string) => {
+    const generation = ++loadGeneration;
+    set({ config: { ...defaultConfig }, projectPath, languagePath, loading: true, loadError: null });
     try {
-      const config = await invoke<PhonologyConfig>('load_phonology', { projectPath, languagePath });
-      set({ config, projectPath, languagePath });
+      await flushSaves();
+      if (generation !== loadGeneration) return;
+      const loaded = await invoke<PhonologyConfig>('load_phonology', { projectPath, languagePath });
+      if (generation !== loadGeneration) return;
+      const config: PhonologyConfig = {
+        ...loaded,
+        romanization_maps: (loaded.romanization_maps ?? []).map((map) => ({
+          ...map,
+          rules: (map.rules ?? []).map((rule) => ({
+            ...rule,
+            rule_id: rule.rule_id || crypto.randomUUID(),
+          })),
+        })),
+        glyph_annotations: loaded.glyph_annotations ?? [],
+      };
+      set({ config, projectPath, languagePath, loading: false });
     } catch (err) {
-      console.error(`加载音系配置失败：${err}`);
+      if (generation !== loadGeneration) return;
+      set({ loading: false, loadError: String(err) });
+      throw err;
     }
   },
 
@@ -149,6 +214,11 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         romanization_maps: state.config.romanization_maps.filter(m => m.map_id !== mapId),
       },
     }));
+    get().saveConfig();
+  },
+
+  setGlyphAnnotations: (annotations) => {
+    set(state => ({ config: { ...state.config, glyph_annotations: annotations } }));
     get().saveConfig();
   },
 

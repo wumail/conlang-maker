@@ -25,6 +25,7 @@ import { PhonologyConfig, WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
 import { TagSelector } from "../common/TagSelector";
 import { ConfirmModal } from "../common/ConfirmModal";
+import { ScriptLine } from "../writing/ScriptText";
 import {
   getWordEvolution,
   hasWordChangedFromParent,
@@ -625,6 +626,10 @@ export const Sidebar: React.FC = () => {
                 <div className="font-semibold text-base-content truncate">
                   {word.con_word_romanized}
                 </div>
+                <ScriptLine
+                  text={word.con_word_romanized}
+                  className="block text-lg leading-tight truncate"
+                />
                 {ipaMode && word.phonetic_ipa && (
                   <div className="text-xs font-mono text-primary truncate">
                     /{word.phonetic_ipa}/

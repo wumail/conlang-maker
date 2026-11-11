@@ -1,4 +1,5 @@
 import { useState, memo } from "react";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import {
   GitFork,
@@ -17,13 +18,28 @@ import { BTN_GHOST, BTN_ERROR, CARD, CARD_BODY, INPUT } from "../../lib/ui";
 import type { TreeFlowNode } from "../../utils/useTreeLayout";
 
 function TreeNodeInner({ data }: NodeProps<TreeFlowNode>) {
-  const { language, stats, onFork, onSwitch, onDelete, canDelete } = data;
+  const { language, stats, fontStatus, onFork, onSwitch, onDelete, canDelete } =
+    data;
   const { t } = useTranslation();
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const renameLanguage = useWorkspaceStore((s) => s.renameLanguage);
+  const languages = useWorkspaceStore((s) => s.config.languages);
   const isActive = activeLanguageId === language.language_id;
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(language.name);
+
+  const owner = languages.find(
+    (item) => item.language_id === fontStatus?.resolved_owner_id,
+  );
+  const fontLabel = !fontStatus
+    ? ""
+    : fontStatus.has_own
+      ? t("tree.fontOwn")
+      : fontStatus.resolved_owner_id
+        ? t("tree.fontInherited", {
+            name: owner?.name ?? fontStatus.resolved_owner_name ?? "",
+          })
+        : t("tree.fontNone");
 
   const handleRenameConfirm = () => {
     const trimmed = editName.trim();
@@ -103,6 +119,14 @@ function TreeNodeInner({ data }: NodeProps<TreeFlowNode>) {
               {stats?.word_count ?? 0} {t("tree.words")}
             </p>
           </div>
+          {fontLabel && (
+            <p
+              className="text-[10px] leading-snug text-base-content/50 truncate mt-1"
+              title={fontLabel}
+            >
+              {fontLabel}
+            </p>
+          )}
           <div className="flex justify-center gap-1 mt-2">
             <button
               className={BTN_GHOST}
@@ -145,6 +169,16 @@ function TreeNodeInner({ data }: NodeProps<TreeFlowNode>) {
               </button>
             )}
           </div>
+          <Link
+            to="/writing/font"
+            className="nodrag nopan mt-1 inline-block text-[11px] text-primary hover:underline"
+            onClick={(event) => {
+              event.stopPropagation();
+              onSwitch(language.language_id);
+            }}
+          >
+            {t("tree.openWriting")}
+          </Link>
         </div>
       </div>
 

@@ -9,6 +9,7 @@ import { BTN_PRIMARY, BTN_ERROR, BTN_LINK, BADGE } from "../../lib/ui";
 import { RuleTable } from "./RuleTable";
 
 const emptyRule = (): RomanizationRule => ({
+  rule_id: crypto.randomUUID(),
   input: "",
   output_phoneme: "",
   context_before: "",
@@ -57,11 +58,10 @@ export const RomanizationEditor: React.FC = () => {
   const handleUpdateRule = (
     map: RomanizationMap,
     ruleIdx: number,
-    field: keyof RomanizationRule,
-    value: string,
+    patch: Partial<RomanizationRule>,
   ) => {
     const newRules = [...map.rules];
-    newRules[ruleIdx] = { ...newRules[ruleIdx], [field]: value };
+    newRules[ruleIdx] = { ...newRules[ruleIdx], ...patch };
     updateRomanizationMap(map.map_id, { ...map, rules: newRules });
   };
 
@@ -112,7 +112,7 @@ export const RomanizationEditor: React.FC = () => {
                 )
               }
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 {expandedMapId === map.map_id ? (
                   <ChevronDown size={16} />
                 ) : (
@@ -123,10 +123,10 @@ export const RomanizationEditor: React.FC = () => {
                   value={map.name}
                   onChange={(e) => handleMapNameChange(map, e.target.value)}
                   onClick={(e) => e.stopPropagation()}
-                  className="bg-transparent border-b border-transparent hover:border-base-300 focus:border-primary outline-none font-semibold text-base-content"
+                  className="min-w-0 bg-transparent border-b border-transparent hover:border-base-300 focus:border-primary outline-none font-semibold text-base-content"
                 />
                 {map.is_default && (
-                  <span className={`${BADGE} badge-info`}>
+                  <span className={`${BADGE} badge-info shrink-0 whitespace-nowrap`}>
                     {t("common.default")}
                   </span>
                 )}

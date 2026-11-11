@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { WordEntry } from "../../types";
 import { BADGE } from "../../lib/ui";
+import { ScriptLine } from "../writing/ScriptText";
 
 interface WordPopoverProps {
   entry: WordEntry;
@@ -16,7 +17,10 @@ export function WordPopover({ entry, position }: WordPopoverProps) {
       style={{ left: position.x, top: position.y + 20 }}
     >
       <div className="flex items-center gap-2 mb-1">
-        <span className="font-semibold">{entry.con_word_romanized}</span>
+        <div className="min-w-0">
+          <div className="font-semibold truncate">{entry.con_word_romanized}</div>
+          <ScriptLine text={entry.con_word_romanized} className="block text-lg leading-tight" />
+        </div>
         {entry.phonetic_ipa && (
           <span className="text-base-content/50 font-mono">
             /{entry.phonetic_ipa}/

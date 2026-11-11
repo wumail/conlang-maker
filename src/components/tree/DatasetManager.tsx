@@ -33,21 +33,21 @@ function saveDatasets(datasets: DatasetEntry[]) {
 /** Compact dropdown for switching datasets — placed in the page header. */
 export function DatasetSelector() {
   const { t } = useTranslation();
-  const { projectPath, setConlangFilePath, loadWorkspace } =
+  const { conlangFilePath, setConlangFilePath, loadWorkspace } =
     useWorkspaceStore();
   const [datasets, setDatasets] = useState<DatasetEntry[]>(() =>
     loadDatasets(),
   );
 
   useEffect(() => {
-    if (projectPath && projectPath !== ".") {
-      const existing = datasets.find((d) => d.path === projectPath);
+    if (conlangFilePath && conlangFilePath !== ".") {
+      const existing = datasets.find((d) => d.path === conlangFilePath);
       if (!existing) {
         const updated = [
           ...datasets,
           {
-            path: projectPath,
-            label: projectPath.split("/").pop() || projectPath,
+            path: conlangFilePath,
+            label: conlangFilePath.split("/").pop() || conlangFilePath,
             lastOpened: new Date().toISOString(),
           },
         ];
@@ -55,11 +55,11 @@ export function DatasetSelector() {
         saveDatasets(updated);
       }
     }
-  }, [projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conlangFilePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const selectedPath = e.target.value;
-    if (!selectedPath || selectedPath === projectPath) return;
+    if (!selectedPath || selectedPath === conlangFilePath) return;
     const updated = datasets.map((d) =>
       d.path === selectedPath
         ? { ...d, lastOpened: new Date().toISOString() }
@@ -76,7 +76,7 @@ export function DatasetSelector() {
   return (
     <select
       className={`${SELECT} select-sm`}
-      value={projectPath}
+      value={conlangFilePath}
       onChange={handleChange}
       title={t("dataset.title")}
     >
@@ -92,7 +92,7 @@ export function DatasetSelector() {
 /** "Manage" button that opens a modal for importing / removing datasets. */
 export function DatasetManager() {
   const { t } = useTranslation();
-  const { projectPath, setConlangFilePath, loadWorkspace } =
+  const { conlangFilePath, setConlangFilePath, loadWorkspace } =
     useWorkspaceStore();
   const [datasets, setDatasets] = useState<DatasetEntry[]>(() =>
     loadDatasets(),
@@ -103,14 +103,14 @@ export function DatasetManager() {
   const importInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (projectPath && projectPath !== ".") {
-      const existing = datasets.find((d) => d.path === projectPath);
+    if (conlangFilePath && conlangFilePath !== ".") {
+      const existing = datasets.find((d) => d.path === conlangFilePath);
       if (!existing) {
         const updated = [
           ...datasets,
           {
-            path: projectPath,
-            label: projectPath.split("/").pop() || projectPath,
+            path: conlangFilePath,
+            label: conlangFilePath.split("/").pop() || conlangFilePath,
             lastOpened: new Date().toISOString(),
           },
         ];
@@ -118,7 +118,7 @@ export function DatasetManager() {
         saveDatasets(updated);
       }
     }
-  }, [projectPath]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [conlangFilePath]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSwitch = async (entry: DatasetEntry) => {
     const updated = datasets.map((d) =>
@@ -164,29 +164,31 @@ export function DatasetManager() {
         bundleName.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, "_") ||
         "imported_project";
       const newProjectPath = `${targetPath}/${safeName}`;
+      const newConlangFilePath = `${newProjectPath}/${safeName}.conlang`;
 
       await invoke("import_workspace_bundle", {
         projectPath: newProjectPath,
+        conlangFilePath: newConlangFilePath,
         bundleJson: text,
       });
 
       // Register the new dataset and switch to it
       const now = new Date().toISOString();
       const entry: DatasetEntry = {
-        path: newProjectPath,
+        path: newConlangFilePath,
         label: bundleName,
         lastOpened: now,
       };
-      const existing = datasets.find((d) => d.path === newProjectPath);
+      const existing = datasets.find((d) => d.path === newConlangFilePath);
       const updated = existing
         ? datasets.map((d) =>
-            d.path === newProjectPath ? { ...d, lastOpened: now } : d,
+            d.path === newConlangFilePath ? { ...d, lastOpened: now } : d,
           )
         : [...datasets, entry];
       setDatasets(updated);
       saveDatasets(updated);
-      setConlangFilePath(newProjectPath);
-      await loadWorkspace(newProjectPath);
+      setConlangFilePath(newConlangFilePath);
+      await loadWorkspace(newConlangFilePath);
       setShowModal(false);
     } catch (err) {
       console.warn(`Import failed: ${err}`);
@@ -232,7 +234,7 @@ export function DatasetManager() {
                 <div
                   key={entry.path}
                   className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
-                    entry.path === projectPath
+                    entry.path === conlangFilePath
                       ? "bg-primary/10 border border-primary/30"
                       : "hover:bg-base-200 border border-transparent"
                   }`}
@@ -247,12 +249,12 @@ export function DatasetManager() {
                       {entry.path}
                     </div>
                   </div>
-                  {entry.path === projectPath && (
+                  {entry.path === conlangFilePath && (
                     <span className="badge badge-sm badge-primary">
                       {t("dataset.active")}
                     </span>
                   )}
-                  {entry.path !== projectPath && (
+                  {entry.path !== conlangFilePath && (
                     <button
                       className={BTN_ERROR}
                       onClick={(e) => {

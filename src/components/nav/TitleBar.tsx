@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -34,12 +34,15 @@ const MaximizeIcon = () => (
   </svg>
 );
 
-export function TitleBar() {
+export function TitleBar({ ready = true }: { ready?: boolean }) {
   const { t } = useTranslation();
   const { theme, toggle: toggleTheme } = useTheme();
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
   const location = useLocation();
   const isWelcome = location.pathname === "/welcome";
+  useEffect(() => {
+    if (!ready) setQuickEntryOpen(false);
+  }, [ready]);
 
   return (
     <header
@@ -85,6 +88,7 @@ export function TitleBar() {
           <>
             <button
               onClick={() => setQuickEntryOpen(true)}
+              disabled={!ready}
               className="btn btn-ghost btn-xs text-warning"
               title={t("quickEntry.title")}
             >
@@ -119,7 +123,7 @@ export function TitleBar() {
       </div>
 
       <QuickEntry
-        isOpen={quickEntryOpen}
+        isOpen={quickEntryOpen && ready}
         onClose={() => setQuickEntryOpen(false)}
       />
     </header>

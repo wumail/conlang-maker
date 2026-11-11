@@ -10,6 +10,7 @@ import {
   BTN_OUTLINE_ERROR,
 } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
+import { ScriptLine, ScriptPreview } from "../writing/ScriptText";
 
 interface GlossTokenEditProps {
   token: GlossToken;
@@ -62,10 +63,11 @@ export function GlossTokenEdit({
       >
         <h3 className="font-semibold text-sm">{t("corpus.surfaceForm")}</h3>
         <input
-          className={`${INPUT} w-full`}
+          className={`${INPUT} w-full font-mono`}
           value={draft.surface_form}
           onChange={(e) => setDraft({ ...draft, surface_form: e.target.value })}
         />
+        <ScriptPreview text={draft.surface_form} className="text-xl" />
 
         {suggestions.length > 0 && !draft.linked_entry_id && (
           <div className="border rounded p-1 space-y-1 max-h-32 overflow-y-auto">
@@ -75,7 +77,10 @@ export function GlossTokenEdit({
                 className="text-xs p-1 hover:bg-info/10 cursor-pointer rounded"
                 onClick={() => linkEntry(w.entry_id)}
               >
-                <span className="font-mono">{w.con_word_romanized}</span>
+                <div className="min-w-0">
+                  <span className="font-mono">{w.con_word_romanized}</span>
+                  <ScriptLine text={w.con_word_romanized} className="ml-2" />
+                </div>
                 <span className="text-base-content/50 ml-2">
                   {w.senses[0]?.gloss}
                 </span>
@@ -124,10 +129,7 @@ export function GlossTokenEdit({
         {draft.linked_entry_id && (
           <div className="text-xs text-green-600">
             {t("corpus.linkedEntry")}:{" "}
-            {
-              wordsList.find((w) => w.entry_id === draft.linked_entry_id)
-                ?.con_word_romanized
-            }
+            {wordsList.find((w) => w.entry_id === draft.linked_entry_id)?.con_word_romanized}
           </div>
         )}
 

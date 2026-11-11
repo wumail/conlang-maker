@@ -17,8 +17,7 @@ interface RuleTableProps {
   onUpdateRule: (
     map: RomanizationMap,
     ruleIdx: number,
-    field: keyof RomanizationRule,
-    value: string,
+    patch: Partial<RomanizationRule>,
   ) => void;
   onAddRule: (map: RomanizationMap) => void;
   onDeleteRule: (map: RomanizationMap, ruleIdx: number) => void;
@@ -40,16 +39,16 @@ export const RuleTable: React.FC<RuleTableProps> = ({
   const [confirmDeleteRuleIdx, setConfirmDeleteRuleIdx] = useState<number | null>(null);
   const outputRefs = useRef<Record<number, HTMLInputElement | null>>({});
 
+  const ruleGrid =
+    "grid grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)_minmax(0,0.7fr)_minmax(0,0.7fr)_auto] gap-2";
+
   const handleQuickInsert = (phoneme: string) => {
     if (activeRuleIdx === null) return;
     const rule = map.rules[activeRuleIdx];
     if (!rule) return;
-    onUpdateRule(
-      map,
-      activeRuleIdx,
-      "output_phoneme",
-      rule.output_phoneme + phoneme,
-    );
+    onUpdateRule(map, activeRuleIdx, {
+      output_phoneme: rule.output_phoneme + phoneme,
+    });
     setTimeout(() => outputRefs.current[activeRuleIdx]?.focus(), 0);
   };
 
@@ -65,27 +64,23 @@ export const RuleTable: React.FC<RuleTableProps> = ({
 
       {/* Rule table header */}
       {map.rules.length > 0 && (
-        <div className="grid grid-cols-12 gap-2 text-xs font-medium text-base-content/60 px-1">
-          <div className="col-span-3">{t("phonology.romanization.input")}</div>
-          <div className="col-span-3">{t("phonology.romanization.output")}</div>
-          <div className="col-span-2">
-            {t("phonology.romanization.contextBefore")}
-          </div>
-          <div className="col-span-2">
-            {t("phonology.romanization.contextAfter")}
-          </div>
-          <div className="col-span-2"></div>
+        <div className={`${ruleGrid} text-xs font-medium text-base-content/60 px-1`}>
+          <div>{t("phonology.romanization.input")}</div>
+          <div>{t("phonology.romanization.output")}</div>
+          <div>{t("phonology.romanization.contextBefore")}</div>
+          <div>{t("phonology.romanization.contextAfter")}</div>
+          <div></div>
         </div>
       )}
 
       {map.rules.map((rule, idx) => (
-        <div key={idx} className="grid grid-cols-12 gap-2 items-center">
+        <div key={rule.rule_id || idx} className={`${ruleGrid} items-center`}>
           <input
             type="text"
             value={rule.input}
-            onChange={(e) => onUpdateRule(map, idx, "input", e.target.value)}
-            className={`col-span-3 ${INPUT_MONO}`}
-            placeholder={"sh"}
+            onChange={(e) => onUpdateRule(map, idx, { input: e.target.value })}
+            className={INPUT_MONO}
+            placeholder="sh"
           />
           <input
             type="text"
@@ -94,38 +89,34 @@ export const RuleTable: React.FC<RuleTableProps> = ({
             }}
             value={rule.output_phoneme}
             onChange={(e) =>
-              onUpdateRule(map, idx, "output_phoneme", e.target.value)
+              onUpdateRule(map, idx, {
+                output_phoneme: e.target.value,
+              })
             }
             onFocus={() => setActiveRuleIdx(idx)}
-            className={`col-span-3 ${INPUT_MONO} ${activeRuleIdx === idx ? "ring-2 ring-primary/50" : ""}`}
-            placeholder={"ʃ"}
+            className={`${INPUT_MONO} w-full ${activeRuleIdx === idx ? "ring-2 ring-primary/50" : ""}`}
+            placeholder="ʃ"
           />
           <input
             type="text"
             value={rule.context_before}
-            onChange={(e) =>
-              onUpdateRule(map, idx, "context_before", e.target.value)
-            }
-            className={`col-span-2 ${INPUT_MONO}`}
+            onChange={(e) => onUpdateRule(map, idx, { context_before: e.target.value })}
+            className={INPUT_MONO}
           />
           <input
             type="text"
             value={rule.context_after}
-            onChange={(e) =>
-              onUpdateRule(map, idx, "context_after", e.target.value)
-            }
-            className={`col-span-2 ${INPUT_MONO}`}
-            placeholder={"_"}
+            onChange={(e) => onUpdateRule(map, idx, { context_after: e.target.value })}
+            className={INPUT_MONO}
+            placeholder="_"
           />
-          <div className="col-span-2 flex justify-end">
-            <button
-              onClick={() => setConfirmDeleteRuleIdx(idx)}
-              className={BTN_ERROR}
-              title={t("common.delete")}
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
+          <button
+            onClick={() => setConfirmDeleteRuleIdx(idx)}
+            className={BTN_ERROR}
+            title={t("common.delete")}
+          >
+            <Trash2 size={14} />
+          </button>
         </div>
       ))}
 

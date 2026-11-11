@@ -5,12 +5,13 @@
 import { useMemo } from "react";
 import dagre from "@dagrejs/dagre";
 import type { Node, Edge } from "@xyflow/react";
-import type { LanguageEntry } from "../types";
+import type { LanguageEntry, LanguageFontStatus } from "../types";
 
 /** Data payload attached to every ReactFlow node */
 export type TreeNodeData = {
   language: LanguageEntry;
   stats?: { word_count: number; created_at: number | null; updated_at: number | null };
+  fontStatus?: LanguageFontStatus;
   canDelete: boolean;
   onFork: (parentId: string) => void;
   onSwitch: (languageId: string) => void;
@@ -20,12 +21,13 @@ export type TreeNodeData = {
 
 export type TreeFlowNode = Node<TreeNodeData, "treeNode">;
 
-const NODE_WIDTH = 200;
-const NODE_HEIGHT = 120;
+const NODE_WIDTH = 220;
+const NODE_HEIGHT = 164;
 
 export function useTreeLayout(
   languages: LanguageEntry[],
   languageStats: Record<string, { word_count: number; created_at: number | null; updated_at: number | null }>,
+  fontStatuses: Record<string, LanguageFontStatus>,
   callbacks: {
     onFork: (parentId: string) => void;
     onSwitch: (languageId: string) => void;
@@ -88,6 +90,7 @@ export function useTreeLayout(
         data: {
           language: lang,
           stats: languageStats[lang.language_id],
+          fontStatus: fontStatuses[lang.language_id],
           canDelete,
           onFork: callbacks.onFork,
           onSwitch: callbacks.onSwitch,
@@ -97,5 +100,5 @@ export function useTreeLayout(
     });
 
     return { nodes, edges };
-  }, [languages, languageStats, callbacks]);
+  }, [languages, languageStats, fontStatuses, callbacks]);
 }
