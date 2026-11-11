@@ -1,0 +1,30 @@
+{
+  "config": {
+    "language_id": "lang_child",
+    "rule_sets": [
+      {
+        "name": "Intervocalic Labial Voicing",
+        "order": 1,
+        "rules": [
+          {
+            "context_after": "V",
+            "context_after_features": null,
+            "context_before": "V",
+            "context_before_features": null,
+            "description": "p > b / V_V",
+            "exceptions": [],
+            "feature_mode": false,
+            "replacement": "b",
+            "replacement_features": null,
+            "rule_id": "rule_sca_child_pb",
+            "target": "p",
+            "target_features": null
+          }
+        ],
+        "ruleset_id": "ruleset_child_lenition"
+      }
+    ],
+    "x_unknown_child_sca": "keep_child_sca"
+  },
+  "revision": "23a1b83070c320cd"
+}

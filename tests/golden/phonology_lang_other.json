@@ -1,0 +1,237 @@
+{
+  "annotations_owner_id": null,
+  "annotations_source": "none",
+  "config": {
+    "allophony_rules": [],
+    "language_id": "lang_other",
+    "phoneme_inventory": {
+      "consonants": [
+        "m",
+        "t"
+      ],
+      "vowels": [
+        "a",
+        "o"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "m",
+          "t"
+        ],
+        "V": [
+          "a",
+          "o"
+        ]
+      },
+      "syllable_structure": "CV",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_other_default",
+        "name": "Default",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "m",
+            "output_phoneme": "m",
+            "rule_id": "rule_other_m"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "t",
+            "output_phoneme": "t",
+            "rule_id": "rule_other_t"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_other_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "o",
+            "output_phoneme": "o",
+            "rule_id": "rule_other_o"
+          }
+        ]
+      }
+    ],
+    "x_unknown_other_phono": "keep_other_phono"
+  },
+  "dependencies": {
+    "local_phonology": "86b9ad93ae6dfa81",
+    "own_font": "missing",
+    "workspace": "3b3f41d6a8cb2e9a"
+  },
+  "effective_config": {
+    "allophony_rules": [],
+    "language_id": "lang_other",
+    "phoneme_inventory": {
+      "consonants": [
+        "m",
+        "t"
+      ],
+      "vowels": [
+        "a",
+        "o"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "m",
+          "t"
+        ],
+        "V": [
+          "a",
+          "o"
+        ]
+      },
+      "syllable_structure": "CV",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_other_default",
+        "name": "Default",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "m",
+            "output_phoneme": "m",
+            "rule_id": "rule_other_m"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "t",
+            "output_phoneme": "t",
+            "rule_id": "rule_other_t"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_other_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "o",
+            "output_phoneme": "o",
+            "rule_id": "rule_other_o"
+          }
+        ]
+      }
+    ],
+    "x_unknown_other_phono": "keep_other_phono"
+  },
+  "effective_revision": "fed1559940835333",
+  "legacy_fields_present": false,
+  "local_config": {
+    "allophony_rules": [],
+    "language_id": "lang_other",
+    "phoneme_inventory": {
+      "consonants": [
+        "m",
+        "t"
+      ],
+      "vowels": [
+        "a",
+        "o"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "m",
+          "t"
+        ],
+        "V": [
+          "a",
+          "o"
+        ]
+      },
+      "syllable_structure": "CV",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_other_default",
+        "name": "Default",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "m",
+            "output_phoneme": "m",
+            "rule_id": "rule_other_m"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "t",
+            "output_phoneme": "t",
+            "rule_id": "rule_other_t"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_other_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "o",
+            "output_phoneme": "o",
+            "rule_id": "rule_other_o"
+          }
+        ]
+      }
+    ],
+    "x_unknown_other_phono": "keep_other_phono"
+  },
+  "revision": "86b9ad93ae6dfa81"
+}

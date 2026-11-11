@@ -1,0 +1,90 @@
+import { describe, expect, test } from "bun:test";
+import type { WordEntry } from "../../types";
+import {
+  getWordComparableDigest,
+  getWordEvolution,
+  getWordSyncDigest,
+  hasWordChangedFromParent,
+} from "./wordLifecycle";
+
+function makeSampleWord(overrides?: Partial<WordEntry>): WordEntry {
+  return {
+    entry_id: "entry_001",
+    language_id: "lang_proto",
+    con_word_romanized: "kapa",
+    phonetic_ipa: "/kapa/",
+    phonetic_override: false,
+    senses: [
+      {
+        sense_id: "sense_001",
+        pos_id: "pos_n",
+        gloss: "stone",
+        definitions: ["hard mineral"],
+        examples: [],
+      },
+    ],
+    etymology: {
+      origin_type: "a_priori",
+      parent_entry_id: null,
+      source_language_id: null,
+      applied_sound_changes: [],
+      semantic_shift_note: "",
+    },
+    metadata: {
+      tags: [],
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+    },
+    ...overrides,
+  };
+}
+
+describe("wordLifecycle pure synchronous digests (T1.2)", () => {
+  test("pins exact deterministic DJB2 hex digests for known inputs", () => {
+    const word = makeSampleWord();
+    expect(getWordSyncDigest(word)).toBe("ab70fc92");
+    expect(getWordComparableDigest(word)).toBe("bf5cdd85");
+
+    const overridden = makeSampleWord({
+      phonetic_override: true,
+      phonetic_ipa: "/kʰa.pa/",
+    });
+    expect(getWordSyncDigest(overridden)).toBe("b253d19c");
+    expect(getWordComparableDigest(overridden)).toBe("d6c02bcb");
+  });
+
+  test("ignores auto-generated phonetic_ipa when phonetic_override is false", () => {
+    const w1 = makeSampleWord({ phonetic_ipa: "/kapa/", phonetic_override: false });
+    const w2 = makeSampleWord({ phonetic_ipa: "/gaba/", phonetic_override: false });
+    expect(getWordSyncDigest(w1)).toBe(getWordSyncDigest(w2));
+    expect(getWordComparableDigest(w1)).toBe(getWordComparableDigest(w2));
+    expect(hasWordChangedFromParent(w1, w2)).toBe(false);
+  });
+
+  test("normalizes default evolution fields and detects gloss changes", () => {
+    const base = makeSampleWord();
+    expect(getWordEvolution(base)).toEqual({
+      is_deprecated: false,
+      deprecated_since_language_id: null,
+      parent_snapshot_hash: null,
+      last_synced_word_hash: null,
+    });
+
+    const changedGloss = makeSampleWord({
+      senses: [
+        {
+          sense_id: "sense_001",
+          pos_id: "pos_n",
+          gloss: "rock",
+          definitions: ["hard mineral"],
+          examples: [],
+        },
+      ],
+    });
+    expect(hasWordChangedFromParent(changedGloss, base)).toBe(true);
+    expect(getWordComparableDigest(changedGloss)).not.toBe(
+      getWordComparableDigest(base),
+    );
+    expect(getWordSyncDigest(changedGloss)).toBe(getWordSyncDigest(base));
+  });
+});

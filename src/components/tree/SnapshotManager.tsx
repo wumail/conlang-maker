@@ -1,153 +1,294 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { History, RotateCcw, AlertTriangle } from "lucide-react";
+import { History, RefreshCw } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useWorkspaceStore } from "../../store/workspaceStore";
-import { INPUT } from "../../lib/ui";
-import { ConfirmModal } from "../common/ConfirmModal";
+import type {
+  OperationLog,
+  OperationLogEntry,
+  SnapshotDiffSummary,
+  SnapshotRollbackResult,
+  SnapshotSummary,
+  TrashedLanguageEntry,
+} from "../../types";
+import { flushAllDomainStores, useWorkspaceStore } from "../../store/workspaceStore";
+import {
+  generateOperationId,
+  isConflictError,
+  recordGuiOperationId,
+} from "../../store/conflictStore";
+import { reloadAllActiveStoresAndFonts } from "../../utils/externalChanges";
+import { BTN_GHOST, INPUT } from "../../lib/ui";
+import {
+  resolveExpectedRevisionForSnapshot,
+  type ManualSnapshotTarget,
+  type SnapshotScopeFilter,
+} from "./snapshotHelpers";
+import { SnapshotListSection } from "./SnapshotListSection";
+import { SnapshotRollbackModal } from "./SnapshotRollbackModal";
+import { LanguageTrashSection } from "./LanguageTrashSection";
 
-export interface OperationLogEntry {
-    log_id: string;
-    operation_type: string;
-    timestamp: string;
-    source_language_id: string;
-    target_language_id: string;
-    description: string;
-    snapshot_dir: string;
-}
-
-export interface OperationLog {
-    max_snapshots: number;
-    entries: OperationLogEntry[];
-}
+export type { OperationLog, OperationLogEntry };
 
 export function SnapshotManager() {
-    const { t } = useTranslation();
-    const { projectPath, activeLanguagePath } = useWorkspaceStore();
+  const { t } = useTranslation();
+  const {
+    projectPath,
+    conlangFilePath,
+    activeLanguageId,
+    activeLanguagePath,
+    config: wsConfig,
+  } = useWorkspaceStore();
 
-    const [log, setLog] = useState<OperationLog | null>(null);
-    const [loading, setLoading] = useState(false);
-    const [maxSnapshotsInput, setMaxSnapshotsInput] = useState("10");
-    const [rollbackTarget, setRollbackTarget] = useState<OperationLogEntry | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotSummary[]>([]);
+  const [trashItems, setTrashItems] = useState<TrashedLanguageEntry[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [maxSnapshotsInput, setMaxSnapshotsInput] = useState("10");
 
-    const loadLog = async () => {
-        setLoading(true);
-        try {
-            const data = await invoke<OperationLog>("load_operation_log", {
-                projectPath,
-                languagePath: activeLanguagePath,
-            });
-            setLog(data);
-            setMaxSnapshotsInput(data.max_snapshots.toString());
-        } catch (err) {
-            console.warn("Failed to load oplog:", err);
-        } finally {
-            setLoading(false);
-        }
-    };
+  const [manualScope, setManualScope] = useState<ManualSnapshotTarget>("project");
+  const [manualDesc, setManualDesc] = useState("");
+  const [creating, setCreating] = useState(false);
 
-    useEffect(() => {
-        loadLog();
-    }, [projectPath, activeLanguagePath]);
+  const [scopeFilter, setScopeFilter] = useState<SnapshotScopeFilter>("all");
+  const [langFilter, setLangFilter] = useState<string>("all");
 
-    const handleUpdateLimit = async () => {
-        const parsed = parseInt(maxSnapshotsInput, 10);
-        if (isNaN(parsed) || parsed < 1 || parsed > 100) return;
-        try {
-            const updated = await invoke<OperationLog>("set_max_snapshots", {
-                projectPath,
-                languagePath: activeLanguagePath,
-                maxSnapshots: parsed,
-            });
-            setLog(updated);
-        } catch (err) {
-            console.warn("Failed to set max snapshots", err);
-        }
-    };
+  const [rollbackTarget, setRollbackTarget] = useState<SnapshotSummary | null>(null);
+  const [rollbackDiff, setRollbackDiff] = useState<SnapshotDiffSummary | null>(null);
+  const [loadingDiff, setLoadingDiff] = useState(false);
+  const [rollingBack, setRollingBack] = useState(false);
+  const [rollbackError, setRollbackError] = useState<string | null>(null);
 
-    const confirmRollback = async () => {
-        if (!rollbackTarget) return;
-        try {
-            const updated = await invoke<OperationLog>("rollback_to_snapshot", {
-                projectPath,
-                languagePath: activeLanguagePath,
-                logId: rollbackTarget.log_id,
-            });
-            setLog(updated);
-            setRollbackTarget(null);
-            // We must reload the lexicon after rollback, but the page handles that
-            // when activeLanguage changes or we could force a workspace reload
-            useWorkspaceStore.getState().loadWorkspace(useWorkspaceStore.getState().conlangFilePath);
-        } catch (err) {
-            console.warn("Rollback failed:", err);
-        }
-    };
-
-    if (loading && !log) {
-        return <div className="p-4 text-center"><span className="loading loading-spinner" /></div>;
+  const loadAllData = useCallback(async (): Promise<void> => {
+    if (!projectPath) return;
+    setLoading(true);
+    try {
+      const [allSnaps, trash, activeLog] = await Promise.all([
+        invoke<SnapshotSummary[]>("list_all_snapshots", {
+          projectPath,
+          conlangFilePath: conlangFilePath || undefined,
+        }),
+        invoke<TrashedLanguageEntry[]>("list_language_trash", { projectPath }),
+        activeLanguagePath
+          ? invoke<OperationLog>("load_operation_log", {
+              projectPath,
+              languagePath: activeLanguagePath,
+            }).catch((err) => {
+              console.warn(`Optional active oplog load failed: ${err}`);
+              return null;
+            })
+          : Promise.resolve(null),
+      ]);
+      setSnapshots(allSnaps);
+      setTrashItems(trash);
+      if (activeLog) setMaxSnapshotsInput(String(activeLog.max_snapshots));
+    } catch (err) {
+      console.warn("Failed to load snapshots & trash:", err);
+    } finally {
+      setLoading(false);
     }
+  }, [projectPath, conlangFilePath, activeLanguagePath]);
 
-    return (
-        <div className="space-y-4">
-            <div className="flex items-center justify-between">
-                <h3 className="font-bold text-lg flex items-center gap-2">
-                    <History className="w-5 h-5" /> {t("tree.snapshots")}
-                </h3>
-                <div className="flex items-center gap-2">
-                    <label className="text-xs text-base-content/60">{t("tree.maxSnapshots")}</label>
-                    <input
-                        type="number"
-                        className={`${INPUT} input-xs w-16`}
-                        value={maxSnapshotsInput}
-                        onChange={e => setMaxSnapshotsInput(e.target.value)}
-                        onBlur={handleUpdateLimit}
-                        min={1} max={100}
-                    />
-                </div>
-            </div>
+  useEffect(() => {
+    void loadAllData();
+  }, [loadAllData]);
 
-            <div className="bg-base-200/50 rounded-lg border border-base-300 max-h-96 overflow-y-auto">
-                {(!log?.entries || log.entries.length === 0) ? (
-                    <div className="p-8 text-center text-base-content/50 text-sm">
-                        {t("tree.noSnapshots")}
-                    </div>
-                ) : (
-                    <div className="divide-y divide-base-300">
-                        {log.entries.slice().reverse().map(entry => (
-                            <div key={entry.log_id} className="p-3 flex items-center justify-between hover:bg-base-200 transition-colors">
-                                <div>
-                                    <div className="text-sm font-medium">{entry.description}</div>
-                                    <div className="text-xs text-base-content/50 mt-0.5">
-                                        {new Date(parseInt(entry.timestamp) * 1000).toLocaleString()} • {entry.operation_type}
-                                    </div>
-                                </div>
-                                <button
-                                    className="btn btn-sm btn-ghost text-error"
-                                    onClick={() => setRollbackTarget(entry)}
-                                    title={t("tree.rollbackHere")}
-                                >
-                                    <RotateCcw className="w-4 h-4" />
-                                </button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
+  const handleUpdateLimit = async (): Promise<void> => {
+    if (!activeLanguagePath) return;
+    const parsed = Number.parseInt(maxSnapshotsInput, 10);
+    if (Number.isNaN(parsed) || parsed < 1 || parsed > 100) return;
+    try {
+      const opId = generateOperationId();
+      recordGuiOperationId(opId);
+      const updated = await invoke<OperationLog>("set_max_snapshots", {
+        projectPath,
+        languagePath: activeLanguagePath,
+        maxSnapshots: parsed,
+        operationId: opId,
+      });
+      setMaxSnapshotsInput(String(updated.max_snapshots));
+      await loadAllData();
+    } catch (err) {
+      console.warn("Failed to set max snapshots:", err);
+    }
+  };
 
-            <p className="text-xs text-base-content/50 flex items-start gap-1">
-                <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                {t("tree.snapshotWarning")}
-            </p>
+  const handleCreateSnapshot = async (): Promise<void> => {
+    if (!projectPath) return;
+    setCreating(true);
+    try {
+      await flushAllDomainStores();
+      const opId = generateOperationId();
+      recordGuiOperationId(opId);
+      const description = manualDesc.trim() || t("snapshots.manualDefaultDesc");
 
-            {rollbackTarget && (
-                <ConfirmModal
-                    open={true}
-                    title={t("tree.rollbackTitle")}
-                    message={t("tree.rollbackConfirm", { desc: rollbackTarget.description })}
-                    onConfirm={confirmRollback}
-                    onCancel={() => setRollbackTarget(null)}
-                />
-            )}
+      if (manualScope === "project") {
+        await invoke<SnapshotSummary>("create_project_snapshot", {
+          projectPath,
+          conlangFilePath: conlangFilePath || undefined,
+          operationType: "manual_project_snapshot",
+          description,
+          origin: "gui",
+          operationId: opId,
+        });
+      } else if (activeLanguagePath) {
+        await invoke<OperationLog>("create_snapshot", {
+          projectPath,
+          languagePath: activeLanguagePath,
+          operationType: "manual_snapshot",
+          sourceLanguageId: activeLanguageId,
+          targetLanguageId: activeLanguageId,
+          description,
+          scope: manualScope,
+          origin: "gui",
+          operationId: opId,
+        });
+      }
+      setManualDesc("");
+      await loadAllData();
+    } catch (err) {
+      console.warn("Failed to create manual snapshot:", err);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const openRollbackPreview = async (snap: SnapshotSummary): Promise<void> => {
+    setRollbackTarget(snap);
+    setRollbackDiff(null);
+    setRollbackError(null);
+    setLoadingDiff(true);
+    try {
+      const diff = await invoke<SnapshotDiffSummary>("preview_snapshot_rollback", {
+        projectPath,
+        conlangFilePath: conlangFilePath || undefined,
+        snapshotId: snap.snapshot_id,
+        languageId: snap.level === "project" ? undefined : (snap.language_id ?? undefined),
+      });
+      setRollbackDiff(diff);
+    } catch (err) {
+      setRollbackError(String(err));
+    } finally {
+      setLoadingDiff(false);
+    }
+  };
+
+  const confirmRollback = async (): Promise<void> => {
+    if (!rollbackTarget) return;
+    setRollingBack(true);
+    setRollbackError(null);
+    try {
+      await flushAllDomainStores();
+      const expectedRevision = await resolveExpectedRevisionForSnapshot(
+        rollbackTarget,
+        projectPath,
+        conlangFilePath,
+      );
+      const opId = generateOperationId();
+      recordGuiOperationId(opId);
+      await invoke<SnapshotRollbackResult>("rollback_any_snapshot", {
+        projectPath,
+        conlangFilePath: conlangFilePath || undefined,
+        snapshotId: rollbackTarget.snapshot_id,
+        languageId:
+          rollbackTarget.level === "project"
+            ? undefined
+            : (rollbackTarget.language_id ?? undefined),
+        dryRun: false,
+        expectedRevision,
+        operationId: opId,
+      });
+      setRollbackTarget(null);
+      setRollbackDiff(null);
+      await reloadAllActiveStoresAndFonts();
+      await loadAllData();
+    } catch (err) {
+      if (isConflictError(err) && conlangFilePath) {
+        await useWorkspaceStore.getState().triggerExternalConflict(conlangFilePath);
+      }
+      setRollbackError(String(err));
+    } finally {
+      setRollingBack(false);
+    }
+  };
+
+  const filteredSnapshots = useMemo(
+    () =>
+      snapshots.filter((item) => {
+        if (scopeFilter !== "all" && item.scope !== scopeFilter) return false;
+        if (langFilter !== "all") {
+          return langFilter === "__project__"
+            ? item.level === "project"
+            : item.language_id === langFilter;
+        }
+        return true;
+      }),
+    [snapshots, scopeFilter, langFilter],
+  );
+
+  const langNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    wsConfig.languages.forEach((l) => map.set(l.language_id, l.name));
+    return map;
+  }, [wsConfig.languages]);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-bold text-lg flex items-center gap-2">
+          <History className="w-5 h-5" /> {t("tree.snapshots")}
+        </h3>
+        <div className="flex items-center gap-2">
+          <label className="text-xs text-base-content/60">{t("tree.maxSnapshots")}</label>
+          <input
+            type="number"
+            className={`${INPUT} input-xs w-16`}
+            value={maxSnapshotsInput}
+            onChange={(e) => setMaxSnapshotsInput(e.target.value)}
+            onBlur={() => void handleUpdateLimit()}
+            min={1}
+            max={100}
+          />
+          <button
+            type="button"
+            className={BTN_GHOST}
+            onClick={() => void loadAllData()}
+            disabled={loading}
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+          </button>
         </div>
-    );
+      </div>
+
+      <SnapshotListSection
+        languages={wsConfig.languages}
+        langNameMap={langNameMap}
+        manualScope={manualScope}
+        onManualScopeChange={setManualScope}
+        manualDesc={manualDesc}
+        onManualDescChange={setManualDesc}
+        creating={creating}
+        onCreateSnapshot={() => void handleCreateSnapshot()}
+        scopeFilter={scopeFilter}
+        onScopeFilterChange={setScopeFilter}
+        langFilter={langFilter}
+        onLangFilterChange={setLangFilter}
+        filteredSnapshots={filteredSnapshots}
+        onPreviewRollback={(snap) => void openRollbackPreview(snap)}
+      />
+
+      <LanguageTrashSection trashItems={trashItems} onRestored={loadAllData} />
+
+      <SnapshotRollbackModal
+        target={rollbackTarget}
+        diff={rollbackDiff}
+        loadingDiff={loadingDiff}
+        rollingBack={rollingBack}
+        error={rollbackError}
+        onConfirm={() => void confirmRollback()}
+        onCancel={() => {
+          setRollbackTarget(null);
+          setRollbackDiff(null);
+        }}
+      />
+    </div>
+  );
 }

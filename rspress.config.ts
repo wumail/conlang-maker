@@ -34,6 +34,7 @@ const zhSidebar = {
         { text: "语系树", link: "/modules/family-tree" },
         { text: "历时音变引擎", link: "/modules/sca" },
         { text: "导出与导入", link: "/modules/export-import" },
+        { text: "MCP 服务与 AI 协作", link: "/modules/mcp" },
       ],
     },
   ],
@@ -81,6 +82,10 @@ const enSidebar = {
         {
           text: "Export & Import",
           link: "/en/modules/export-import",
+        },
+        {
+          text: "MCP Server & AI Integration",
+          link: "/en/modules/mcp",
         },
       ],
     },

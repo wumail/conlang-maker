@@ -1,0 +1,484 @@
+{
+  "revision": "bef7057172a4eb5f",
+  "skipped": [],
+  "words": [
+    {
+      "con_word_romanized": "Ata",
+      "entry_id": "entry_root_ata_upper",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "kinship"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/ata/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic elder"
+          ],
+          "examples": [],
+          "gloss": "elder",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_ata_upper"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "acika",
+      "entry_id": "entry_root_acika",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/asika/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic river"
+          ],
+          "examples": [],
+          "gloss": "river",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_acika",
+          "x_unknown_sense_sentinel": "keep_sense"
+        }
+      ],
+      "x_unknown_word_sentinel": {
+        "origin_ref": "root_1"
+      }
+    },
+    {
+      "con_word_romanized": "apa",
+      "entry_id": "entry_root_apa",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/apa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic water"
+          ],
+          "examples": [],
+          "gloss": "water",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_apa"
+        }
+      ],
+      "x_unknown_word_sentinel": {
+        "origin_ref": "root_2"
+      }
+    },
+    {
+      "con_word_romanized": "aq̄ama",
+      "entry_id": "entry_root_aqama",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "Recorded with supplementary marker 𐐀",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "𐐀-glyph-tag"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/akːama/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic mountain"
+          ],
+          "examples": [],
+          "gloss": "mountain",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_aqama"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "asha",
+      "entry_id": "entry_root_asha",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic fire"
+          ],
+          "examples": [],
+          "gloss": "fire",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_asha"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "axa",
+      "entry_id": "entry_root_axa",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic wind"
+          ],
+          "examples": [],
+          "gloss": "wind",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_axa"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "āta",
+      "entry_id": "entry_root_nfd_aata",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "nfd-sample"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aːta/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic stone"
+          ],
+          "examples": [],
+          "gloss": "stone",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_nfd_aata"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "pata",
+      "entry_id": "entry_root_pata",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "body",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/pata/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic hand"
+          ],
+          "examples": [],
+          "gloss": "hand",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_pata"
+        }
+      ],
+      "x_unknown_word_sentinel": {
+        "origin_ref": "root_p1"
+      }
+    },
+    {
+      "con_word_romanized": "pita",
+      "entry_id": "entry_root_pita",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "perception",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/pita/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic see"
+          ],
+          "examples": [],
+          "gloss": "see",
+          "pos_id": "pos_verb",
+          "sense_id": "sense_entry_root_pita"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "pāta",
+      "entry_id": "entry_root_paata",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/paːta/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic tree"
+          ],
+          "examples": [],
+          "gloss": "tree",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_paata"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "sana",
+      "entry_id": "entry_root_sana",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "motion"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/sana/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic walk"
+          ],
+          "examples": [],
+          "gloss": "walk",
+          "pos_id": "pos_verb",
+          "sense_id": "sense_entry_root_sana"
+        }
+      ],
+      "x_unknown_word_sentinel": {
+        "origin_ref": "root_s1"
+      }
+    },
+    {
+      "con_word_romanized": "sula",
+      "entry_id": "entry_root_sula",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_root",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "sky",
+          "swadesh"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/sula/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic moon"
+          ],
+          "examples": [],
+          "gloss": "moon",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_sula"
+        }
+      ]
+    }
+  ]
+}

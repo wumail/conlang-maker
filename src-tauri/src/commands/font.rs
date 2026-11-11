@@ -1,11 +1,17 @@
-use crate::models::{LanguageEntry, WorkspaceConfig};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use tauri::command;
-use base64::Engine;
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use base64::Engine;
+use tauri::command;
+
+use crate::commands::oplog::{collect_protected_snapshot_ids, record_language_snapshot_in_tx};
+use crate::commands::transaction::{
+    execute_project_transaction, with_consistent_read, PlannedMutation, RevisionExpectation,
+    TransactionPlan,
+};
+use crate::models::{LanguageEntry, WorkspaceConfig, WriteResult};
+use crate::utils::revision::{file_revision, language_own_font_revision, normalize_rel_path};
 
 pub(crate) const MAX_FONT_BYTES: u64 = 20 * 1024 * 1024;
 pub(crate) static FONT_WRITE_LOCK: Mutex<()> = Mutex::new(());
@@ -15,9 +21,11 @@ pub struct LanguageFontStatus {
     pub language_id: String,
     pub has_own: bool,
     pub own_file_name: Option<String>,
+    pub revision: String,
     pub resolved_owner_id: Option<String>,
     pub resolved_owner_name: Option<String>,
     pub resolved_file_name: Option<String>,
+    pub resolved_revision: Option<String>,
 }
 
 #[derive(Debug, serde::Serialize, Clone, PartialEq, Eq)]
@@ -25,6 +33,8 @@ pub struct FontInspection {
     pub present: bool,
     pub has_own: bool,
     pub inherited: bool,
+    pub revision: String,
+    pub resolved_revision: Option<String>,
     pub owner_language_id: Option<String>,
     pub owner_name: Option<String>,
     pub owner_path: Option<String>,
@@ -42,6 +52,7 @@ pub struct ResolvedFontBytes {
     pub owner_name: String,
     pub inherited: bool,
     pub file_name: String,
+    pub revision: String,
     pub bytes_base64: String,
 }
 
@@ -79,7 +90,9 @@ pub(crate) fn language_dir(project_path: &str, language_path: &str) -> Result<Pa
         let project_abs = project.canonicalize().map_err(|e| e.to_string())?;
         let mut existing = dir.as_path();
         while !existing.exists() {
-            existing = existing.parent().ok_or_else(|| "Invalid language path".to_string())?;
+            existing = existing
+                .parent()
+                .ok_or_else(|| "Invalid language path".to_string())?;
         }
         let anchor = existing.canonicalize().map_err(|error| error.to_string())?;
         if !anchor.starts_with(&project_abs) {
@@ -126,16 +139,30 @@ fn resolve_owned_font(
     None
 }
 
-fn status_for(project_path: &str, languages: &[LanguageEntry], lang: &LanguageEntry) -> LanguageFontStatus {
-    let own = find_font_file(&Path::new(project_path).join(&lang.path));
+fn status_for(
+    project_path: &str,
+    languages: &[LanguageEntry],
+    lang: &LanguageEntry,
+) -> LanguageFontStatus {
+    let lang_dir = Path::new(project_path).join(&lang.path);
+    let own = find_font_file(&lang_dir);
+    let own_rev = own
+        .as_ref()
+        .and_then(|p| file_revision(p).ok())
+        .unwrap_or_else(|| "missing".to_string());
     let resolved = resolve_owned_font(project_path, languages, &lang.language_id);
+    let resolved_rev = resolved
+        .as_ref()
+        .and_then(|item| file_revision(&item.path).ok());
     LanguageFontStatus {
         language_id: lang.language_id.clone(),
         has_own: own.is_some(),
         own_file_name: own.as_ref().and_then(|path| file_name(path)),
+        revision: own_rev,
         resolved_owner_id: resolved.as_ref().map(|item| item.language_id.clone()),
         resolved_owner_name: resolved.as_ref().map(|item| item.language_name.clone()),
         resolved_file_name: resolved.as_ref().and_then(|item| file_name(&item.path)),
+        resolved_revision: resolved_rev,
     }
 }
 
@@ -173,42 +200,17 @@ pub(crate) fn validate_font_bytes(bytes: &[u8]) -> Result<(), String> {
     let face = ttf_parser::Face::parse(bytes, 0)
         .map_err(|error| format!("File is not a valid font: {error}"))?;
     let tables = face.tables();
-    if face.number_of_glyphs() == 0 || tables.cmap.is_none()
-        || (tables.glyf.is_none() && tables.cff.is_none() && tables.cff2.is_none()) {
+    if face.number_of_glyphs() == 0
+        || tables.cmap.is_none()
+        || (tables.glyf.is_none() && tables.cff.is_none() && tables.cff2.is_none())
+    {
         return Err("Font is missing a readable character map or outline table".to_string());
     }
     Ok(())
 }
 
 pub(crate) fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
-    static NEXT_WRITE: AtomicU64 = AtomicU64::new(0);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
-    }
-    let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
-        .map_err(|error| error.to_string())?.as_nanos();
-    let id = format!("{timestamp}-{}", NEXT_WRITE.fetch_add(1, Ordering::Relaxed));
-    let tmp_path = path.with_extension(format!("{id}.tmp"));
-    if let Err(err) = fs::write(&tmp_path, bytes) {
-        let _ = fs::remove_file(&tmp_path);
-        return Err(err.to_string());
-    }
-    if fs::rename(&tmp_path, path).is_ok() { return Ok(()); }
-    let backup = path.with_extension(format!("{id}.backup"));
-    let had_original = path.is_file();
-    if had_original {
-        fs::rename(path, &backup).map_err(|error| {
-            let _ = fs::remove_file(&tmp_path);
-            error.to_string()
-        })?;
-    }
-    if let Err(error) = fs::rename(&tmp_path, path) {
-        let rollback = if had_original { fs::rename(&backup, path) } else { Ok(()) };
-        let _ = fs::remove_file(&tmp_path);
-        return Err(format!("File write failed ({error}). Rollback result {rollback:?}"));
-    }
-    if had_original { let _ = fs::remove_file(backup); }
-    Ok(())
+    crate::utils::fs_util::atomic_write_bytes(path, bytes)
 }
 
 pub(crate) fn encode_base64(data: &[u8]) -> String {
@@ -247,12 +249,15 @@ pub fn list_language_fonts(
     project_path: String,
     conlang_file_path: String,
 ) -> Result<Vec<LanguageFontStatus>, String> {
-    let workspace = load_workspace(&conlang_file_path)?;
-    Ok(workspace
-        .languages
-        .iter()
-        .map(|lang| status_for(&project_path, &workspace.languages, lang))
-        .collect())
+    let project = Path::new(&project_path);
+    with_consistent_read(project, "list_language_fonts", true, None, |_, _| {
+        let workspace = load_workspace(&conlang_file_path)?;
+        Ok(workspace
+            .languages
+            .iter()
+            .map(|lang| status_for(&project_path, &workspace.languages, lang))
+            .collect())
+    })
 }
 
 #[command]
@@ -261,21 +266,27 @@ pub fn read_resolved_font(
     conlang_file_path: String,
     language_id: String,
 ) -> Result<Option<ResolvedFontBytes>, String> {
-    let workspace = load_workspace(&conlang_file_path)?;
-    let Some(owned) = resolve_owned_font(&project_path, &workspace.languages, &language_id) else {
-        return Ok(None);
-    };
-    let bytes = fs::read(&owned.path).map_err(|e| e.to_string())?;
-    if bytes.len() as u64 > MAX_FONT_BYTES {
-        return Err("Resolved font exceeds the 20 MiB limit".to_string());
-    }
-    Ok(Some(ResolvedFontBytes {
-        inherited: owned.language_id != language_id,
-        owner_language_id: owned.language_id,
-        owner_name: owned.language_name,
-        file_name: file_name(&owned.path).unwrap_or_else(|| "font.otf".to_string()),
-        bytes_base64: encode_base64(&bytes),
-    }))
+    let project = Path::new(&project_path);
+    with_consistent_read(project, "read_resolved_font", true, None, |_, _| {
+        let workspace = load_workspace(&conlang_file_path)?;
+        let Some(owned) = resolve_owned_font(&project_path, &workspace.languages, &language_id)
+        else {
+            return Ok(None);
+        };
+        let bytes = fs::read(&owned.path).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_FONT_BYTES {
+            return Err("Resolved font exceeds the 20 MiB limit".to_string());
+        }
+        let rev = file_revision(&owned.path)?;
+        Ok(Some(ResolvedFontBytes {
+            inherited: owned.language_id != language_id,
+            owner_language_id: owned.language_id,
+            owner_name: owned.language_name,
+            file_name: file_name(&owned.path).unwrap_or_else(|| "font.otf".to_string()),
+            revision: rev,
+            bytes_base64: encode_base64(&bytes),
+        }))
+    })
 }
 
 #[command]
@@ -283,8 +294,17 @@ pub fn import_language_font(
     project_path: String,
     language_path: String,
     source_path: String,
-) -> Result<(), String> {
-    import_font_checked(project_path, language_path, source_path, None)
+    expected_revision: Option<String>,
+    operation_id: Option<String>,
+) -> Result<WriteResult, String> {
+    import_font_checked(
+        project_path,
+        language_path,
+        source_path,
+        None,
+        expected_revision,
+        operation_id,
+    )
 }
 
 #[command]
@@ -292,19 +312,44 @@ pub fn read_font_candidate(source_path: String) -> Result<String, String> {
     let source = PathBuf::from(source_path);
     font_extension(&source)?;
     let length = fs::metadata(&source).map_err(|error| error.to_string())?.len();
-    if length > MAX_FONT_BYTES { return Err("Font exceeds the 20 MiB limit".to_string()); }
+    if length > MAX_FONT_BYTES {
+        return Err("Font exceeds the 20 MiB limit".to_string());
+    }
     let bytes = fs::read(source).map_err(|error| error.to_string())?;
     validate_font_bytes(&bytes)?;
     Ok(encode_base64(&bytes))
 }
 
 #[command]
-pub fn import_checked_language_font(project_path: String, language_path: String, source_path: String, expected_base64: String) -> Result<(), String> {
-    import_font_checked(project_path, language_path, source_path, Some(expected_base64))
+pub fn import_checked_language_font(
+    project_path: String,
+    language_path: String,
+    source_path: String,
+    expected_base64: String,
+    expected_revision: Option<String>,
+    operation_id: Option<String>,
+) -> Result<WriteResult, String> {
+    import_font_checked(
+        project_path,
+        language_path,
+        source_path,
+        Some(expected_base64),
+        expected_revision,
+        operation_id,
+    )
 }
 
-fn import_font_checked(project_path: String, language_path: String, source_path: String, expected_base64: Option<String>) -> Result<(), String> {
+fn import_font_checked(
+    project_path: String,
+    language_path: String,
+    source_path: String,
+    expected_base64: Option<String>,
+    expected_revision: Option<String>,
+    operation_id: Option<String>,
+) -> Result<WriteResult, String> {
     let _guard = FONT_WRITE_LOCK.lock().map_err(|error| error.to_string())?;
+    // Validate path & font bytes BEFORE touching project files or creating transaction journals
+    let _ = language_dir(&project_path, &language_path)?;
     let source = PathBuf::from(&source_path);
     let ext = font_extension(&source)?;
     let meta = fs::metadata(&source).map_err(|e| e.to_string())?;
@@ -322,36 +367,110 @@ fn import_font_checked(project_path: String, language_path: String, source_path:
     }
     let bytes = fs::read(&source).map_err(|e| e.to_string())?;
     validate_font_bytes(&bytes)?;
-    if let Some(expected) = expected_base64 {
-        let decoded = base64::engine::general_purpose::STANDARD.decode(expected).map_err(|error| error.to_string())?;
-        if decoded != bytes { return Err("Font changed during validation. Please choose the file again.".to_string()); }
-    }
-
-    let dir = language_dir(&project_path, &language_path)?;
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-    let dest = dir.join(format!("font.{ext}"));
-    let original = if dest.is_file() { Some(fs::read(&dest).map_err(|error| error.to_string())?) } else { None };
-    atomic_write_bytes(&dest, &bytes)?;
-
-    let other = if ext == "otf" { "font.ttf" } else { "font.otf" };
-    let other_path = dir.join(other);
-    if other_path.is_file() {
-        if let Err(error) = fs::remove_file(other_path) {
-            let rollback = match original {
-                Some(previous) => atomic_write_bytes(&dest, &previous),
-                None => fs::remove_file(&dest).map_err(|error| error.to_string()),
-            };
-            return Err(format!("Could not replace the previous font ({error}). Rollback result {rollback:?}"));
+    if let Some(ref expected) = expected_base64 {
+        let decoded = base64::engine::general_purpose::STANDARD
+            .decode(expected)
+            .map_err(|error| error.to_string())?;
+        if decoded != bytes {
+            return Err("Font changed during validation. Please choose the file again.".to_string());
         }
     }
-    Ok(())
+
+    let project = Path::new(&project_path);
+    let source_sha = crate::utils::revision::sha256_hex(&bytes);
+    let payload = serde_json::json!({
+        "language_path": &language_path,
+        "ext": ext,
+        "source_sha256": source_sha,
+        "expected_revision": &expected_revision,
+    });
+
+    execute_project_transaction(
+        project,
+        "import_language_font",
+        "gui",
+        operation_id,
+        &payload,
+        None,
+        |proj, op_id, _ctx| {
+            let lang_rel = normalize_rel_path(&language_path)?;
+            let lang_dir = proj.join(&lang_rel);
+
+            // Check CAS against current own font (whichever of font.otf / font.ttf exists, else missing)
+            if let Some(ref exp_rev) = expected_revision {
+                let (_, actual_rev) = language_own_font_revision(&lang_dir)?;
+                let trimmed = exp_rev.trim();
+                if !trimmed.is_empty() && trimmed != actual_rev {
+                    return Err(format!(
+                        "CONFLICT: Revision mismatch on 'font': expected '{trimmed}', actual '{actual_rev}'"
+                    ));
+                }
+            }
+
+            let mut mutations: Vec<PlannedMutation> = Vec::new();
+            mutations.push(PlannedMutation::CreateDir {
+                rel_path: lang_rel.clone(),
+            });
+
+            // Automatic `"font"` language snapshot (captures previous font OR `font_file: None`!)
+            let protected = collect_protected_snapshot_ids(proj);
+            let (snap_id, _) = record_language_snapshot_in_tx(
+                proj,
+                &lang_rel,
+                "font",
+                "gui",
+                "import_font",
+                "",
+                "",
+                &format!("Before importing font.{ext}"),
+                None,
+                &protected,
+                &mut mutations,
+            )?;
+
+            let dest_rel = format!("{lang_rel}/font.{ext}");
+            let dest_abs = proj.join(&dest_rel);
+            mutations.push(PlannedMutation::WriteFile {
+                rel_path: dest_rel,
+                bytes: bytes.clone(),
+            });
+
+            let other = if ext == "otf" { "font.ttf" } else { "font.otf" };
+            let other_rel = format!("{lang_rel}/{other}");
+            if proj.join(&other_rel).exists() {
+                mutations.push(PlannedMutation::DeletePath {
+                    rel_path: other_rel,
+                });
+            }
+
+            let op_id_owned = op_id.to_string();
+            let snap_id_clone = snap_id.clone();
+
+            Ok(TransactionPlan {
+                expectations: vec![RevisionExpectation::file("font", dest_abs, None)],
+                mutations,
+                audit_summary: format!("Imported font.{ext} into '{lang_rel}'"),
+                language_id: None,
+                snapshot_id: Some(snap_id),
+                build_response: Box::new(move |revs, warnings| WriteResult {
+                    operation_id: op_id_owned,
+                    revision: revs.get("font").cloned().unwrap_or_default(),
+                    revisions: Some(revs.clone()),
+                    snapshot_id: Some(snap_id_clone),
+                    warnings,
+                }),
+            })
+        },
+    )
 }
 
-fn empty_inspection() -> FontInspection {
+fn empty_inspection(own_rev: String) -> FontInspection {
     FontInspection {
         present: false,
         has_own: false,
         inherited: false,
+        revision: own_rev,
+        resolved_revision: None,
         owner_language_id: None,
         owner_name: None,
         owner_path: None,
@@ -370,63 +489,152 @@ pub fn inspect_language_font(
     conlang_file_path: String,
     language_id: String,
 ) -> Result<FontInspection, String> {
-    let workspace = load_workspace(&conlang_file_path)?;
-    let lang = workspace
-        .languages
-        .iter()
-        .find(|item| item.language_id == language_id)
-        .ok_or_else(|| "Language not found".to_string())?;
-    let has_own = find_font_file(&Path::new(&project_path).join(&lang.path)).is_some();
-    let Some(owned) = resolve_owned_font(&project_path, &workspace.languages, &language_id) else {
-        return Ok(empty_inspection());
-    };
-    let owner_path = workspace
-        .languages
-        .iter()
-        .find(|item| item.language_id == owned.language_id)
-        .map(|item| item.path.clone());
-    let mut inspection = FontInspection {
-        present: true,
-        has_own,
-        inherited: owned.language_id != language_id,
-        owner_language_id: Some(owned.language_id),
-        owner_name: Some(owned.language_name),
-        owner_path,
-        file_name: file_name(&owned.path),
-        family_name: None,
-        version: None,
-        codepoints: Vec::new(),
-        glyphs: Vec::new(),
-        warning: None,
-    };
-    let bytes = fs::read(&owned.path).map_err(|e| e.to_string())?;
-    if bytes.len() as u64 > MAX_FONT_BYTES {
-        inspection.warning = Some("Resolved font exceeds the 20 MiB limit".to_string());
-        return Ok(inspection);
-    }
-    match super::font_info::inspect_font_bytes(&bytes) {
-        Ok(info) => {
-            inspection.family_name = info.family_name;
-            inspection.version = info.version;
-            inspection.codepoints = info.codepoints;
-            inspection.glyphs = info.glyphs;
+    let project = Path::new(&project_path);
+    with_consistent_read(project, "inspect_language_font", true, None, |_, _| {
+        let workspace = load_workspace(&conlang_file_path)?;
+        let lang = workspace
+            .languages
+            .iter()
+            .find(|item| item.language_id == language_id)
+            .ok_or_else(|| "Language not found".to_string())?;
+        let lang_dir = Path::new(&project_path).join(&lang.path);
+        let own_file = find_font_file(&lang_dir);
+        let has_own = own_file.is_some();
+        let own_rev = own_file
+            .as_ref()
+            .and_then(|p| file_revision(p).ok())
+            .unwrap_or_else(|| "missing".to_string());
+        let Some(owned) = resolve_owned_font(&project_path, &workspace.languages, &language_id)
+        else {
+            return Ok(empty_inspection(own_rev));
+        };
+        let resolved_rev = file_revision(&owned.path).ok();
+        let owner_path = workspace
+            .languages
+            .iter()
+            .find(|item| item.language_id == owned.language_id)
+            .map(|item| item.path.clone());
+        let mut inspection = FontInspection {
+            present: true,
+            has_own,
+            inherited: owned.language_id != language_id,
+            revision: own_rev,
+            resolved_revision: resolved_rev,
+            owner_language_id: Some(owned.language_id),
+            owner_name: Some(owned.language_name),
+            owner_path,
+            file_name: file_name(&owned.path),
+            family_name: None,
+            version: None,
+            codepoints: Vec::new(),
+            glyphs: Vec::new(),
+            warning: None,
+        };
+        let bytes = fs::read(&owned.path).map_err(|e| e.to_string())?;
+        if bytes.len() as u64 > MAX_FONT_BYTES {
+            inspection.warning = Some("Resolved font exceeds the 20 MiB limit".to_string());
+            return Ok(inspection);
         }
-        Err(err) => inspection.warning = Some(err),
-    }
-    Ok(inspection)
+        match super::font_info::inspect_font_bytes(&bytes) {
+            Ok(info) => {
+                inspection.family_name = info.family_name;
+                inspection.version = info.version;
+                inspection.codepoints = info.codepoints;
+                inspection.glyphs = info.glyphs;
+            }
+            Err(err) => inspection.warning = Some(err),
+        }
+        Ok(inspection)
+    })
 }
 
 #[command]
-pub fn clear_language_font(project_path: String, language_path: String) -> Result<(), String> {
+pub fn clear_language_font(
+    project_path: String,
+    language_path: String,
+    expected_revision: Option<String>,
+    operation_id: Option<String>,
+) -> Result<WriteResult, String> {
     let _guard = FONT_WRITE_LOCK.lock().map_err(|error| error.to_string())?;
-    let dir = language_dir(&project_path, &language_path)?;
-    for name in ["font.otf", "font.ttf"] {
-        let path = dir.join(name);
-        if path.is_file() {
-            fs::remove_file(path).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    let _ = language_dir(&project_path, &language_path)?;
+    let project = Path::new(&project_path);
+    let payload = serde_json::json!({
+        "language_path": &language_path,
+        "expected_revision": &expected_revision,
+    });
+
+    execute_project_transaction(
+        project,
+        "clear_language_font",
+        "gui",
+        operation_id,
+        &payload,
+        None,
+        |proj, op_id, _ctx| {
+            let lang_rel = normalize_rel_path(&language_path)?;
+            let lang_dir = proj.join(&lang_rel);
+
+            let (_, actual_rev) = language_own_font_revision(&lang_dir)?;
+            if let Some(ref exp_rev) = expected_revision {
+                let trimmed = exp_rev.trim();
+                if !trimmed.is_empty() && trimmed != actual_rev {
+                    return Err(format!(
+                        "CONFLICT: Revision mismatch on 'font': expected '{trimmed}', actual '{actual_rev}'"
+                    ));
+                }
+            }
+
+            let mut mutations: Vec<PlannedMutation> = Vec::new();
+            let mut snap_id: Option<String> = None;
+
+            if actual_rev != "missing" {
+                let protected = collect_protected_snapshot_ids(proj);
+                let (sid, _) = record_language_snapshot_in_tx(
+                    proj,
+                    &lang_rel,
+                    "font",
+                    "gui",
+                    "clear_font",
+                    "",
+                    "",
+                    "Before clearing language own font",
+                    None,
+                    &protected,
+                    &mut mutations,
+                )?;
+                snap_id = Some(sid);
+            }
+
+            for name in ["font.otf", "font.ttf"] {
+                let rel = format!("{lang_rel}/{name}");
+                if proj.join(&rel).is_file() {
+                    mutations.push(PlannedMutation::DeletePath { rel_path: rel });
+                }
+            }
+
+            let op_id_owned = op_id.to_string();
+            let snap_id_clone = snap_id.clone();
+
+            Ok(TransactionPlan {
+                expectations: Vec::new(),
+                mutations,
+                audit_summary: format!("Cleared own font in '{lang_rel}'"),
+                language_id: None,
+                snapshot_id: snap_id,
+                build_response: Box::new(move |_, warnings| {
+                    let mut revs = BTreeMap::new();
+                    revs.insert("font".to_string(), "missing".to_string());
+                    WriteResult {
+                        operation_id: op_id_owned,
+                        revision: "missing".to_string(),
+                        revisions: Some(revs),
+                        snapshot_id: snap_id_clone,
+                        warnings,
+                    }
+                }),
+            })
+        },
+    )
 }
 
 #[cfg(test)]
@@ -472,11 +680,13 @@ mod tests {
                 name: (*name).to_string(),
                 path: (*id).to_string(),
                 parent_id: parent.map(|value| value.to_string()),
+                extra: BTreeMap::new(),
             })
             .collect();
         let config = WorkspaceConfig {
             workspace_version: "3.0".to_string(),
             languages: entries,
+            extra: BTreeMap::new(),
         };
         let conlang = project.join("family.conlang");
         fs::write(&conlang, serde_json::to_string(&config).unwrap()).unwrap();
@@ -510,7 +720,11 @@ mod tests {
             ],
         );
         fs::write(project.dir.join("root").join("font.otf"), fake_face(b"OTTO")).unwrap();
-        fs::write(project.dir.join("middle").join("font.ttf"), fake_face(b"true")).unwrap();
+        fs::write(
+            project.dir.join("middle").join("font.ttf"),
+            fake_face(b"true"),
+        )
+        .unwrap();
 
         let statuses = list_language_fonts(project.path(), conlang).unwrap();
         let by_id = |id: &str| statuses.iter().find(|item| item.language_id == id).unwrap();
@@ -538,17 +752,18 @@ mod tests {
         let project = TempProject::new();
         let conlang = write_workspace(
             &project.dir,
-            &[
-                ("root", "Root", None),
-                ("child", "Child", Some("root")),
-            ],
+            &[("root", "Root", None), ("child", "Child", Some("root"))],
         );
         let outside = TempProject::new();
         let source = write_source(&outside.dir, "Custom.otf", &fake_face(b"OTTO"));
         fs::write(project.dir.join("root").join("font.otf"), fake_face(b"OTTO")).unwrap();
-        fs::write(project.dir.join("child").join("font.ttf"), fake_face(b"true")).unwrap();
+        fs::write(
+            project.dir.join("child").join("font.ttf"),
+            fake_face(b"true"),
+        )
+        .unwrap();
 
-        import_language_font(project.path(), "child".to_string(), source).unwrap();
+        import_language_font(project.path(), "child".to_string(), source, None, None).unwrap();
 
         assert!(project.dir.join("child").join("font.otf").is_file());
         assert!(!project.dir.join("child").join("font.ttf").is_file());
@@ -566,15 +781,12 @@ mod tests {
         let project = TempProject::new();
         let conlang = write_workspace(
             &project.dir,
-            &[
-                ("root", "Root", None),
-                ("child", "Child", Some("root")),
-            ],
+            &[("root", "Root", None), ("child", "Child", Some("root"))],
         );
         fs::write(project.dir.join("root").join("font.otf"), fake_face(b"OTTO")).unwrap();
         fs::write(project.dir.join("child").join("font.otf"), fake_face(b"OTTO")).unwrap();
 
-        clear_language_font(project.path(), "child".to_string()).unwrap();
+        clear_language_font(project.path(), "child".to_string(), None, None).unwrap();
 
         let loaded = read_resolved_font(project.path(), conlang, "child".to_string())
             .unwrap()
@@ -596,7 +808,9 @@ mod tests {
             ],
         );
         let statuses = list_language_fonts(project.path(), conlang).unwrap();
-        assert!(statuses.iter().all(|item| item.resolved_owner_id.is_none()));
+        assert!(statuses
+            .iter()
+            .all(|item| item.resolved_owner_id.is_none()));
     }
 
     #[test]
@@ -604,11 +818,19 @@ mod tests {
         let project = TempProject::new();
         let outside = TempProject::new();
         let text = write_source(&outside.dir, "notes.otf", b"this is not a font");
-        let err = import_language_font(project.path(), "root".to_string(), text).unwrap_err();
+        let err =
+            import_language_font(project.path(), "root".to_string(), text, None, None).unwrap_err();
         assert!(err.contains("not a valid"));
 
         let font = write_source(&outside.dir, "Face.otf", &fake_face(b"OTTO"));
-        let escaped = import_language_font(project.path(), "../outside".to_string(), font).unwrap_err();
+        let escaped = import_language_font(
+            project.path(),
+            "../outside".to_string(),
+            font,
+            None,
+            None,
+        )
+        .unwrap_err();
         assert!(escaped.contains("Invalid language path"));
     }
 
@@ -621,13 +843,24 @@ mod tests {
         let previous = fake_face(b"true");
         fs::write(dir.join("font.ttf"), &previous).unwrap();
         let truncated = write_source(&sources.dir, "truncated.otf", b"OTTO");
-        assert!(import_language_font(project.path(), "root".to_string(), truncated).is_err());
+        assert!(
+            import_language_font(project.path(), "root".to_string(), truncated, None, None)
+                .is_err()
+        );
         assert_eq!(fs::read(dir.join("font.ttf")).unwrap(), previous);
         assert!(!dir.join("font.otf").exists());
         let valid = write_source(&sources.dir, "valid.otf", &previous);
         let candidate = read_font_candidate(valid.clone()).unwrap();
         assert_eq!(candidate, encode_base64(&previous));
-        assert!(import_checked_language_font(project.path(), "root".to_string(), valid, encode_base64(b"changed")).is_err());
+        assert!(import_checked_language_font(
+            project.path(),
+            "root".to_string(),
+            valid,
+            encode_base64(b"changed"),
+            None,
+            None,
+        )
+        .is_err());
         assert_eq!(fs::read(dir.join("font.ttf")).unwrap(), previous);
         assert!(!dir.join("font.otf").exists());
     }
@@ -658,6 +891,8 @@ mod tests {
             project.path(),
             "parent".to_string(),
             otf.to_str().unwrap().to_string(),
+            None,
+            None,
         )
         .unwrap();
 
@@ -682,6 +917,8 @@ mod tests {
             project.path(),
             "child".to_string(),
             ttf.to_str().unwrap().to_string(),
+            None,
+            None,
         )
         .unwrap();
         let own =
@@ -691,7 +928,7 @@ mod tests {
         assert_eq!(own.family_name.as_deref(), Some("Conlang Test"));
         assert!(!project.dir.join("child").join("font.otf").exists());
 
-        clear_language_font(project.path(), "child".to_string()).unwrap();
+        clear_language_font(project.path(), "child".to_string(), None, None).unwrap();
         let restored =
             inspect_language_font(project.path(), conlang, "child".to_string()).unwrap();
         assert!(restored.inherited && !restored.has_own);

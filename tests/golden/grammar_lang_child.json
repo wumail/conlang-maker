@@ -1,0 +1,79 @@
+{
+  "config": {
+    "affix_slots": [],
+    "conjugation_classes": [],
+    "derivation_rules": [],
+    "grammar_manual": [],
+    "inflection_dimensions": [
+      {
+        "applies_to_pos": [
+          "pos_noun"
+        ],
+        "dim_id": "dim_num",
+        "name": "Number",
+        "values": [
+          {
+            "gloss": "SG",
+            "name": "Singular",
+            "val_id": "val_sg"
+          },
+          {
+            "gloss": "PL",
+            "name": "Plural",
+            "val_id": "val_pl"
+          }
+        ]
+      }
+    ],
+    "inflection_rules": [
+      {
+        "affix": "ta",
+        "condition": null,
+        "dimension_values": {
+          "dim_num": "val_pl"
+        },
+        "disabled": false,
+        "match_regex": ".*",
+        "pos_id": "pos_noun",
+        "rule_id": "infl_child_pl",
+        "sca_mutable": true,
+        "tag": "PL",
+        "type": "suffix"
+      }
+    ],
+    "irregular_overrides": [],
+    "language_id": "lang_child",
+    "parts_of_speech": [
+      {
+        "gloss_abbr": "N",
+        "name": "Noun",
+        "pos_id": "pos_noun",
+        "requires_definition": true,
+        "requires_pronunciation": false,
+        "word_pattern": ""
+      },
+      {
+        "gloss_abbr": "V",
+        "name": "Verb",
+        "pos_id": "pos_verb",
+        "requires_definition": true,
+        "requires_pronunciation": false,
+        "word_pattern": ""
+      }
+    ],
+    "syntax": {
+      "adposition_type": "postposition",
+      "modifier_position": "before_head",
+      "word_order": "SOV"
+    },
+    "typology": {
+      "auto_estimated": true,
+      "fusion_index": 1.2,
+      "head_marking": "dependent",
+      "morphological_type": "agglutinative",
+      "synthesis_index": 2.0
+    },
+    "x_unknown_child_grammar": "keep_child_grammar"
+  },
+  "revision": "ee11ee67260650c4"
+}

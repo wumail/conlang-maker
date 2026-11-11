@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { check } from "@tauri-apps/plugin-updater";
+import { useTranslation } from "react-i18next";
 import { TitleBar } from "./components/nav/TitleBar";
 import { AppNav } from "./components/nav/AppNav";
 import { ProjectStats } from "./components/nav/ProjectStats";
+import { ExternalConflictModal } from "./components/common/ExternalConflictModal";
 import { PhonologyPage } from "./pages/PhonologyPage";
 import { WritingPage } from "./pages/WritingPage";
 import { FontPanel } from "./components/writing/FontPanel";
@@ -27,6 +30,7 @@ import { ExportImport } from "./pages/ExportImport";
 import { CorpusPage } from "./pages/CorpusPage";
 import { WelcomePage } from "./pages/WelcomePage";
 import { AboutPage } from "./pages/AboutPage";
+import { McpSettingsPage } from "./pages/McpSettingsPage";
 import { useLexiconStore } from "./store/lexiconStore";
 import { usePhonoStore } from "./store/phonoStore";
 import { useGrammarStore } from "./store/grammarStore";
@@ -34,20 +38,18 @@ import { useWorkspaceStore } from "./store/workspaceStore";
 import { useSCAStore } from "./store/scaStore";
 import { useCorpusStore } from "./store/corpusStore";
 import { useRegistryStore } from "./store/registryStore";
-import { useConlangFont } from "./utils/conlangFont";
 import { useFontStore } from "./store/fontStore";
-import { check } from "@tauri-apps/plugin-updater";
-import { useTranslation } from "react-i18next";
+import { useConlangFont } from "./utils/conlangFont";
+import { useProjectWatcher } from "./utils/externalChanges";
 import "./App.css";
 
 /** Routes that don't require a loaded workspace */
-const PUBLIC_ROUTES = ["/welcome", "/about"];
+const PUBLIC_ROUTES = ["/welcome", "/about", "/mcp"];
 
 function App() {
   const { t } = useTranslation();
   const { loadFromBackend } = useLexiconStore();
-  const { projectPath, activeLanguagePath, conlangFilePath } =
-    useWorkspaceStore();
+  const { projectPath, activeLanguagePath, conlangFilePath } = useWorkspaceStore();
   const phonoLoadConfig = usePhonoStore((s) => s.loadConfig);
   const grammarLoadConfig = useGrammarStore((s) => s.loadConfig);
   const workspaceLoad = useWorkspaceStore((s) => s.loadWorkspace);
@@ -61,30 +63,31 @@ function App() {
   const [reloadRevision, setReloadRevision] = useState(0);
   const saveError = usePhonoStore((s) => s.saveError);
   const fontError = useFontStore((s) => s.error);
+
   useConlangFont();
+  useProjectWatcher(projectPath, conlangFilePath);
 
   // 1. On mount, load registry and resolve active family
   useEffect(() => {
-    const init = async () => {
+    const init = async (): Promise<void> => {
       await loadRegistry();
       setInitDone(true);
     };
-    init();
-  }, []);
+    void init();
+  }, [loadRegistry]);
 
   // 2. When registry loads, auto-open active family if set
   useEffect(() => {
-    if (!initDone) return;
-    if (conlangFilePath) return; // already loaded
+    if (!initDone || conlangFilePath) return;
     if (
       registry.active_family_index !== null &&
       registry.active_family_index >= 0 &&
       registry.active_family_index < registry.families.length
     ) {
       const family = registry.families[registry.active_family_index];
-      workspaceLoad(family.conlang_file_path);
+      void workspaceLoad(family.conlang_file_path);
     }
-  }, [initDone, registry.active_family_index]);
+  }, [initDone, conlangFilePath, registry.active_family_index, registry.families, workspaceLoad]);
 
   // 3. Reload data when active language changes
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
@@ -94,7 +97,7 @@ function App() {
     let cancelled = false;
     setLoadedLanguage("");
     setLoadError(null);
-    const reload = async () => {
+    const reload = async (): Promise<void> => {
       try {
         await phonoLoadConfig(projectPath, activeLanguagePath);
         if (cancelled) return;
@@ -110,32 +113,44 @@ function App() {
       }
     };
     void reload();
-    return () => { cancelled = true; };
-  }, [projectPath, activeLanguagePath, activeLanguageId, conlangFilePath, reloadRevision]);
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    projectPath,
+    activeLanguagePath,
+    activeLanguageId,
+    conlangFilePath,
+    reloadRevision,
+    languageKey,
+    phonoLoadConfig,
+    loadFromBackend,
+    grammarLoadConfig,
+    scaLoadConfig,
+    corpusLoadIndex,
+  ]);
 
-  // 4. Silent updater check on startup; installs in background if a signed update is available.
+  // 4. Silent updater check on startup
   useEffect(() => {
     if (!initDone) return;
-    const runSilentUpdate = async () => {
+    const runSilentUpdate = async (): Promise<void> => {
       try {
         const update = await check();
         if (update?.available) {
           await update.downloadAndInstall();
         }
-      } catch {}
+      } catch (err) {
+        console.warn("Updater check skipped:", err);
+      }
     };
-    runSilentUpdate();
+    void runSilentUpdate();
   }, [initDone]);
 
-  // Route guard: if no workspace loaded, redirect to /welcome (except public routes)
-  const isPublicRoute = PUBLIC_ROUTES.some((r) =>
-    location.pathname.startsWith(r),
-  );
+  const isPublicRoute = PUBLIC_ROUTES.some((r) => location.pathname.startsWith(r));
   if (initDone && !conlangFilePath && !isPublicRoute) {
     return <Navigate to="/welcome" replace />;
   }
 
-  // Show nothing while registry is loading
   if (!initDone) {
     return (
       <div className="flex items-center justify-center h-screen w-screen bg-base-200">
@@ -144,134 +159,125 @@ function App() {
     );
   }
 
+  const showWorkspaceChrome = location.pathname !== "/welcome" && Boolean(conlangFilePath);
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-200 font-sans">
-      {/* Always visible title bar (replaces native OS title bar) */}
       <TitleBar ready={loadedLanguage === languageKey && !loadError} />
 
-      {/* Hide nav on welcome page */}
-      {location.pathname !== "/welcome" && <AppNav />}
+      {showWorkspaceChrome && <AppNav />}
 
       {saveError && (
         <div role="alert" className="alert alert-error rounded-none whitespace-pre-wrap">
-          <span>{t("writing.saveFailed")} {saveError}</span>
-          <button type="button" className="btn btn-sm" onClick={() => { void usePhonoStore.getState().flushSaves().catch(() => {}); }}>
+          <span>
+            {t("writing.saveFailed")} {saveError}
+          </span>
+          <button
+            type="button"
+            className="btn btn-sm"
+            onClick={() => {
+              void usePhonoStore
+                .getState()
+                .flushSaves()
+                .catch((err) => console.warn("Retry phonology save failed:", err));
+            }}
+          >
             {t("writing.retry")}
           </button>
         </div>
       )}
-      {fontError && <div role="alert" className="alert alert-warning rounded-none">{t("writing.fontLoadFailed")} {fontError}</div>}
+      {fontError && (
+        <div role="alert" className="alert alert-warning rounded-none">
+          {t("writing.fontLoadFailed")} {fontError}
+        </div>
+      )}
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {!isPublicRoute && (loadedLanguage !== languageKey || loadError) ? (
-          <div role={loadError ? "alert" : "status"} className="flex-1 flex flex-col items-center justify-center gap-3 p-6">
-            {loadError ? <><p>{loadError}</p><button type="button" className="btn" onClick={() => { setLoadedLanguage(""); setReloadRevision((value) => value + 1); }}>{t("writing.retry")}</button></> : <span className="loading loading-spinner loading-lg" />}
+          <div
+            role={loadError ? "alert" : "status"}
+            className="flex-1 flex flex-col items-center justify-center gap-3 p-6"
+          >
+            {loadError ? (
+              <>
+                <p>{loadError}</p>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => {
+                    setLoadedLanguage("");
+                    setReloadRevision((value) => value + 1);
+                  }}
+                >
+                  {t("writing.retry")}
+                </button>
+              </>
+            ) : (
+              <span className="loading loading-spinner loading-lg" />
+            )}
           </div>
         ) : (
-        <Routes>
-          {/* Welcome page (no workspace required) */}
-          <Route path="/welcome" element={<WelcomePage />} />
-
-          {/* About page */}
-          <Route path="/about" element={<AboutPage />} />
-
-          {/* 默认跳转 */}
-          <Route path="/" element={<Navigate to="/lexicon" replace />} />
-
-          {/* 词典 */}
-          <Route path="/lexicon" element={<LexiconPage />} />
-
-          {/* 音系学（嵌套子路由） */}
-          <Route path="/phonology/*" element={<PhonologyPage />}>
-            <Route path="inventory" element={<IPAPanel />} />
-            <Route path="romanization" element={<RomanizationEditor />} />
-            <Route path="phonotactics" element={<PhonotacticsEditor />} />
-            <Route path="allophony" element={<AllophonyEditor />} />
-          </Route>
-
-          <Route path="/writing/*" element={<WritingPage />}>
-            <Route path="font" element={<FontPanel />} />
-            <Route path="glyphs" element={<GlyphPanel />} />
-          </Route>
-
-          {/* 语法（嵌套子路由） */}
-          <Route path="/grammar/*" element={<GrammarPage />}>
-            <Route path="typology" element={<TypologySection />} />
-            <Route path="syntax" element={<SyntaxSection />} />
-            <Route path="pos" element={<POSSection />} />
+          <Routes>
+            <Route path="/welcome" element={<WelcomePage />} />
+            <Route path="/about" element={<AboutPage />} />
             <Route
-              path="inflectionSystem"
-              element={<InflectionSystemSection />}
+              path="/mcp"
+              element={
+                <div className="flex-1 p-8 overflow-y-auto">
+                  <McpSettingsPage />
+                </div>
+              }
             />
-            <Route path="derivation" element={<DerivationEditor />} />
-            <Route path="reference" element={<ReferenceSection />} />
-          </Route>
-
-          {/* 沙盒 */}
-          <Route
-            path="/sandbox"
-            element={
-              <div className="flex-1 p-8 overflow-y-auto">
-                <Sandbox />
-              </div>
-            }
-          />
-
-          {/* 词语生成器 */}
-          <Route
-            path="/wordgen"
-            element={
-              <div className="flex-1 p-8 overflow-y-auto">
-                <WordGenerator />
-              </div>
-            }
-          />
-
-          {/* SCA 历时音变 (Sprint 6) */}
-          <Route
-            path="/sca"
-            element={
-              <div className="flex-1 p-8 overflow-y-auto">
-                <SCAEditor />
-              </div>
-            }
-          />
-
-          {/* 语系树 (Sprint 7) */}
-          <Route
-            path="/tree"
-            element={
-              <div className="flex-1 p-8 overflow-y-auto flex min-h-0">
-                <FamilyTree />
-              </div>
-            }
-          />
-
-          {/* 语料库 */}
-          <Route
-            path="/corpus"
-            element={
-              <div className="flex-1 flex overflow-hidden">
-                <CorpusPage />
-              </div>
-            }
-          />
-
-          {/* 导出导入 (Sprint 8) */}
-          <Route
-            path="/export"
-            element={
-              <div className="flex-1 p-8 overflow-y-auto">
-                <ExportImport />
-              </div>
-            }
-          />
-        </Routes>
+            <Route path="/" element={<Navigate to="/lexicon" replace />} />
+            <Route path="/lexicon" element={<LexiconPage />} />
+            <Route path="/phonology/*" element={<PhonologyPage />}>
+              <Route path="inventory" element={<IPAPanel />} />
+              <Route path="romanization" element={<RomanizationEditor />} />
+              <Route path="phonotactics" element={<PhonotacticsEditor />} />
+              <Route path="allophony" element={<AllophonyEditor />} />
+            </Route>
+            <Route path="/writing/*" element={<WritingPage />}>
+              <Route path="font" element={<FontPanel />} />
+              <Route path="glyphs" element={<GlyphPanel />} />
+            </Route>
+            <Route path="/grammar/*" element={<GrammarPage />}>
+              <Route path="typology" element={<TypologySection />} />
+              <Route path="syntax" element={<SyntaxSection />} />
+              <Route path="pos" element={<POSSection />} />
+              <Route path="inflectionSystem" element={<InflectionSystemSection />} />
+              <Route path="derivation" element={<DerivationEditor />} />
+              <Route path="reference" element={<ReferenceSection />} />
+            </Route>
+            <Route
+              path="/sandbox"
+              element={<div className="flex-1 p-8 overflow-y-auto"><Sandbox /></div>}
+            />
+            <Route
+              path="/wordgen"
+              element={<div className="flex-1 p-8 overflow-y-auto"><WordGenerator /></div>}
+            />
+            <Route
+              path="/sca"
+              element={<div className="flex-1 p-8 overflow-y-auto"><SCAEditor /></div>}
+            />
+            <Route
+              path="/tree"
+              element={<div className="flex-1 p-8 overflow-y-auto flex min-h-0"><FamilyTree /></div>}
+            />
+            <Route
+              path="/corpus"
+              element={<div className="flex-1 flex overflow-hidden"><CorpusPage /></div>}
+            />
+            <Route
+              path="/export"
+              element={<div className="flex-1 p-8 overflow-y-auto"><ExportImport /></div>}
+            />
+          </Routes>
         )}
       </main>
 
-      {/* Footer Stats Bar */}
-      {location.pathname !== "/welcome" && <ProjectStats />}
+      {showWorkspaceChrome && <ProjectStats />}
+      <ExternalConflictModal />
     </div>
   );
 }

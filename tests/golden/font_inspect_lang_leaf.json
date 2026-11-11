@@ -1,0 +1,38 @@
+{
+  "codepoints": [
+    32,
+    97,
+    99,
+    104,
+    120
+  ],
+  "family_name": "Conlang Liga Test",
+  "file_name": "font.ttf",
+  "glyphs": [
+    [
+      32
+    ],
+    [
+      97
+    ],
+    [
+      99
+    ],
+    [
+      104
+    ],
+    [
+      120
+    ]
+  ],
+  "has_own": true,
+  "inherited": false,
+  "owner_language_id": "lang_leaf",
+  "owner_name": "Modern-Synth",
+  "owner_path": "branches/leaf",
+  "present": true,
+  "resolved_revision": "46c9a4c0932d937f",
+  "revision": "46c9a4c0932d937f",
+  "version": "Version 1.0",
+  "warning": null
+}

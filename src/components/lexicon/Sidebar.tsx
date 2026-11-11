@@ -21,7 +21,7 @@ import { exportToCSV } from "../../utils/exportCSV";
 import { ipaFuzzySearch } from "../../utils/ipaSearch";
 import { generateIPA } from "../../utils/ipaGenerator";
 import { BTN_GHOST_SQ, TOGGLE, SELECT, BADGE } from "../../lib/ui";
-import { PhonologyConfig, WordEntry } from "../../types";
+import { PhonologyConfig, PhonologyLoadResult, WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
 import { TagSelector } from "../common/TagSelector";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -107,7 +107,7 @@ export const Sidebar: React.FC = () => {
           projectPath,
           languagePath: parentLanguage.path,
         });
-        const parentPhono = await invoke<PhonologyConfig>("load_phonology", {
+        const parentPhono = await invoke<PhonologyLoadResult>("load_phonology", {
           projectPath,
           languagePath: parentLanguage.path,
         });
@@ -119,7 +119,7 @@ export const Sidebar: React.FC = () => {
         });
 
         setParentWordsById(byId);
-        setParentPhonoConfig(parentPhono);
+        setParentPhonoConfig(parentPhono.config);
         setParentWordsLoaded(true);
       } catch (error) {
         if (!cancelled) {

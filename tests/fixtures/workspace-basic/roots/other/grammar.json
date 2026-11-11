@@ -1,0 +1,32 @@
+{
+  "language_id": "lang_other",
+  "syntax": {
+    "word_order": "SVO",
+    "modifier_position": "before_head",
+    "adposition_type": "preposition"
+  },
+  "parts_of_speech": [
+    {
+      "pos_id": "pos_noun",
+      "name": "Noun",
+      "gloss_abbr": "N",
+      "word_pattern": "",
+      "requires_definition": true,
+      "requires_pronunciation": false
+    }
+  ],
+  "inflection_dimensions": [],
+  "inflection_rules": [],
+  "derivation_rules": [],
+  "grammar_manual": [],
+  "typology": {
+    "morphological_type": "isolating",
+    "synthesis_index": 1.0,
+    "fusion_index": 1.0,
+    "head_marking": "none",
+    "auto_estimated": false
+  },
+  "affix_slots": [],
+  "conjugation_classes": [],
+  "irregular_overrides": []
+}

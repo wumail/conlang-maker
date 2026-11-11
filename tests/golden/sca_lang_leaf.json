@@ -1,0 +1,32 @@
+{
+  "config": {
+    "language_id": "lang_leaf",
+    "rule_sets": [
+      {
+        "name": "Intervocalic Velar Voicing",
+        "order": 1,
+        "rules": [
+          {
+            "context_after": "V",
+            "context_after_features": null,
+            "context_before": "V",
+            "context_before_features": null,
+            "description": "k > g / V_V",
+            "exceptions": [],
+            "feature_mode": false,
+            "replacement": "g",
+            "replacement_features": null,
+            "rule_id": "rule_sca_leaf_kg",
+            "target": "k",
+            "target_features": null,
+            "x_unknown_sca_rule_sentinel": "keep_sca_rule"
+          }
+        ],
+        "ruleset_id": "ruleset_leaf_velar",
+        "x_unknown_ruleset_sentinel": "keep_ruleset"
+      }
+    ],
+    "x_unknown_leaf_sca": "keep_leaf_sca"
+  },
+  "revision": "a89c86b2b866ffbf"
+}

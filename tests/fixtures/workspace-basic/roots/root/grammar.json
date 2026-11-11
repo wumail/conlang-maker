@@ -1,0 +1,117 @@
+{
+  "language_id": "lang_root",
+  "syntax": {
+    "word_order": "SOV",
+    "modifier_position": "before_head",
+    "adposition_type": "postposition"
+  },
+  "parts_of_speech": [
+    {
+      "pos_id": "pos_noun",
+      "name": "Noun",
+      "gloss_abbr": "N",
+      "word_pattern": "",
+      "requires_definition": true,
+      "requires_pronunciation": false,
+      "x_unknown_pos_sentinel": "keep_pos"
+    },
+    {
+      "pos_id": "pos_verb",
+      "name": "Verb",
+      "gloss_abbr": "V",
+      "word_pattern": "",
+      "requires_definition": true,
+      "requires_pronunciation": false
+    }
+  ],
+  "inflection_dimensions": [
+    {
+      "dim_id": "dim_num",
+      "name": "Number",
+      "applies_to_pos": [
+        "pos_noun"
+      ],
+      "values": [
+        {
+          "val_id": "val_sg",
+          "name": "Singular",
+          "gloss": "SG"
+        },
+        {
+          "val_id": "val_pl",
+          "name": "Plural",
+          "gloss": "PL"
+        }
+      ]
+    }
+  ],
+  "inflection_rules": [
+    {
+      "rule_id": "infl_root_pl",
+      "pos_id": "pos_noun",
+      "dimension_values": {
+        "dim_num": "val_pl"
+      },
+      "type": "suffix",
+      "affix": "ta",
+      "tag": "PL",
+      "match_regex": ".*",
+      "disabled": false,
+      "condition": null,
+      "sca_mutable": true,
+      "x_unknown_infl_sentinel": "keep_infl"
+    }
+  ],
+  "derivation_rules": [
+    {
+      "rule_id": "deriv_root_n2v",
+      "name": "Verbalizer",
+      "source_pos_id": "pos_noun",
+      "target_pos_id": "pos_verb",
+      "type": "suffix",
+      "affix": "i",
+      "condition": null,
+      "semantic_note": "to act with X",
+      "sca_mutable": true,
+      "x_unknown_deriv_sentinel": "keep_deriv"
+    }
+  ],
+  "grammar_manual": [
+    {
+      "chapter_id": "chap_root_1",
+      "title": "Nominal Number",
+      "content": "Plural nouns take the suffix `-ta`.",
+      "order": 1,
+      "embedded_paradigms": [
+        {
+          "paradigm_id": "para_root_1",
+          "pos_id": "pos_noun",
+          "dimension_ids": [
+            "dim_num"
+          ],
+          "test_word": "pata"
+        }
+      ],
+      "x_unknown_chapter_sentinel": "keep_chapter"
+    }
+  ],
+  "typology": {
+    "morphological_type": "agglutinative",
+    "synthesis_index": 2.2,
+    "fusion_index": 1.1,
+    "head_marking": "dependent",
+    "auto_estimated": false
+  },
+  "affix_slots": [
+    {
+      "slot_id": "slot_num",
+      "position": 1,
+      "dimension_id": "dim_num",
+      "is_obligatory": false,
+      "label": "Number"
+    }
+  ],
+  "conjugation_classes": [],
+  "irregular_overrides": [],
+  "x_unknown_grammar_sentinel": "keep_grammar"
+}

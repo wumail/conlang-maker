@@ -2,24 +2,31 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Download, AlertTriangle } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
-import { useWorkspaceStore } from "../../store/workspaceStore";
+import {
+  flushAllDomainStores,
+  useWorkspaceStore,
+} from "../../store/workspaceStore";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useSCAStore } from "../../store/scaStore";
-import { applySoundChanges, buildMacrosFromInventory } from "../../utils/scaEngine";
-import { BTN_PRIMARY } from "../../lib/ui";
-import { WordEntry } from "../../types";
-import { getWordComparableDigest, getWordEvolution, getWordSyncDigest } from "../../utils/wordLifecycle";
+import {
+  generateOperationId,
+  isConflictError,
+  recordGuiOperationId,
+} from "../../store/conflictStore";
+import { buildMacrosFromInventory } from "../../utils/scaEngine";
+import { BADGE, BTN_PRIMARY } from "../../lib/ui";
+import type {
+  LexiconLoadResult,
+  MigrationStats,
+  OperationLog,
+  WordEntry,
+} from "../../types";
+import { computePullSync, isValidWordEntry } from "../../core";
 
 interface PendingSyncWord {
   word: WordEntry;
   mode: "add" | "update";
-}
-
-function isValidWordEntry(word: WordEntry): boolean {
-  const romanized = (word.con_word_romanized || "").trim();
-  if (!romanized || romanized === "new_word") return false;
-  return word.senses.some((sense) => (sense.gloss || "").trim().length > 0);
 }
 
 export function PullSync() {
@@ -34,7 +41,9 @@ export function PullSync() {
   const { config: phonoConfig } = usePhonoStore();
   const { config: scaConfig } = useSCAStore();
 
-  const [pendingSyncWords, setPendingSyncWords] = useState<PendingSyncWord[]>([]);
+  const [pendingSyncWords, setPendingSyncWords] = useState<PendingSyncWord[]>(
+    [],
+  );
   const [conflictCount, setConflictCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [migrating, setMigrating] = useState(false);
@@ -54,7 +63,9 @@ export function PullSync() {
     (language) => language.language_id === activeLanguageId,
   );
   const parentLang = activeLang?.parent_id
-    ? wsConfig.languages.find((language) => language.language_id === activeLang.parent_id)
+    ? wsConfig.languages.find(
+        (language) => language.language_id === activeLang.parent_id,
+      )
     : null;
 
   const macros = useMemo(
@@ -67,119 +78,31 @@ export function PullSync() {
     [phonoConfig],
   );
 
-  const handleCheckForUpdates = async () => {
+  const handleCheckForUpdates = async (): Promise<void> => {
     if (!parentLang) return;
     setLoading(true);
 
     try {
-      const parentWords = await invoke<WordEntry[]>("load_all_words", {
-        projectPath,
-        languagePath: parentLang.path,
-      });
-      const validParentWords = parentWords.filter(isValidWordEntry);
+      const parentLoaded = await invoke<LexiconLoadResult>(
+        "load_all_words_with_revision",
+        {
+          projectPath,
+          languagePath: parentLang.path,
+        },
+      );
+      const validParentWords = parentLoaded.words.filter(isValidWordEntry);
 
-      const childByParentId = new Map<string, WordEntry>();
-      wordsList.forEach((word) => {
-        const parentEntryId = word.etymology.parent_entry_id ?? word.entry_id;
-        childByParentId.set(parentEntryId, word);
-      });
-
-      const nextPending: PendingSyncWord[] = [];
-      let conflicts = 0;
-
-      validParentWords.forEach((parentWord) => {
-        const { result, changelog } = applySoundChanges(
-          parentWord.con_word_romanized,
-          scaConfig.rule_sets,
-          macros,
-        );
-        const appliedRuleIds = Array.from(new Set(changelog.map((step) => step.rule_id)));
-        const parentEvolution = getWordEvolution(parentWord);
-
-        const parentComparableHash = getWordComparableDigest(parentWord);
-        const parentSyncHash = getWordSyncDigest(parentWord);
-
-        const syncedCandidate: WordEntry = {
-          ...parentWord,
-          entry_id: parentWord.entry_id,
-          language_id: activeLanguageId,
-          con_word_romanized: result.trim(),
-          phonetic_ipa: "",
-          phonetic_override: false,
-          etymology: {
-            ...parentWord.etymology,
-            origin_type: "evolved",
-            parent_entry_id: parentWord.entry_id,
-            source_language_id: parentLang.language_id,
-            applied_sound_changes: appliedRuleIds,
-          },
-          evolution: {
-            ...parentEvolution,
-            parent_snapshot_hash: parentSyncHash,
-            last_synced_word_hash: null,
-          },
-        };
-
-        const syncedWordSyncHash = getWordSyncDigest(syncedCandidate);
-        const normalizedEvolution = getWordEvolution(syncedCandidate);
-        syncedCandidate.evolution = {
-          ...normalizedEvolution,
-          last_synced_word_hash: syncedWordSyncHash,
-        };
-
-        const existingChild = childByParentId.get(parentWord.entry_id);
-        if (!existingChild) {
-          nextPending.push({ word: syncedCandidate, mode: "add" });
-          return;
-        }
-
-        const existingEvolution = getWordEvolution(existingChild);
-        const currentChildHash = getWordComparableDigest(existingChild);
-        const currentChildSyncHash = getWordSyncDigest(existingChild);
-
-        // Never synced (freshly forked) — compare content directly
-        if (!existingEvolution.parent_snapshot_hash) {
-          if (syncedWordSyncHash !== currentChildSyncHash) {
-            nextPending.push({
-              word: { ...syncedCandidate, entry_id: existingChild.entry_id },
-              mode: "update",
-            });
-          }
-          return;
-        }
-
-        // Has been synced before — use hash-based comparison
-        const parentSnapshotHash = existingEvolution.parent_snapshot_hash;
-        const parentChanged =
-          parentSnapshotHash !== parentSyncHash &&
-          parentSnapshotHash !== parentComparableHash;
-
-        const lastSyncedHash = existingEvolution.last_synced_word_hash;
-        const childChangedSinceLastSync = lastSyncedHash
-          ? lastSyncedHash !== currentChildSyncHash &&
-            lastSyncedHash !== currentChildHash
-          : false;
-
-        if (parentChanged && childChangedSinceLastSync) {
-          conflicts += 1;
-          return;
-        }
-
-        if (!parentChanged && !childChangedSinceLastSync) {
-          return;
-        }
-
-        nextPending.push({
-          word: {
-            ...syncedCandidate,
-            entry_id: existingChild.entry_id,
-          },
-          mode: "update",
-        });
+      const { pending, conflicts } = computePullSync({
+        parentLanguageId: parentLang.language_id,
+        childLanguageId: activeLanguageId,
+        parentWords: validParentWords,
+        childWords: wordsList,
+        scaRuleSets: scaConfig.rule_sets,
+        macros,
       });
 
-      setPendingSyncWords(nextPending);
-      setConflictCount(conflicts);
+      setPendingSyncWords(pending);
+      setConflictCount(conflicts.length);
     } catch (error) {
       console.warn(`Pull sync check failed: ${error}`);
       setPendingSyncWords([]);
@@ -189,16 +112,21 @@ export function PullSync() {
     }
   };
 
-  const handlePullAll = async () => {
+  const handlePullAll = async (): Promise<void> => {
     try {
       if (activeLang) {
-        await invoke("create_snapshot", {
+        const opId = generateOperationId();
+        recordGuiOperationId(opId);
+        await invoke<OperationLog>("create_snapshot", {
           projectPath,
           languagePath: activeLang.path,
           operationType: "pull_sync",
           sourceLanguageId: parentLang?.language_id || "",
           targetLanguageId: activeLanguageId,
           description: `Pulled ${pendingSyncWords.length} words via sound changes`,
+          scope: "lexicon",
+          origin: "gui",
+          operationId: opId,
         });
       }
     } catch (error) {
@@ -210,7 +138,7 @@ export function PullSync() {
     setConflictCount(0);
   };
 
-  const runMigration = async (dryRun: boolean) => {
+  const runMigration = async (dryRun: boolean): Promise<void> => {
     if (!conlangFilePath) return;
     if (dryRun) {
       setPreviewingMigration(true);
@@ -219,19 +147,27 @@ export function PullSync() {
     }
     setMigrationMessage("");
     try {
-      const stats = await invoke<{
-        dry_run: boolean;
-        languages_processed: number;
-        words_scanned: number;
-        parent_link_filled: number;
-        source_language_filled: number;
-        origin_fixed: number;
-        files_changed: number;
-      }>("migrate_inherited_lexicon_links", {
-        projectPath,
-        conlangFilePath,
-        dryRun,
-      });
+      await flushAllDomainStores();
+      const opId = generateOperationId();
+      if (!dryRun) {
+        recordGuiOperationId(opId);
+      }
+      const stats = await invoke<MigrationStats>(
+        "migrate_inherited_lexicon_links",
+        {
+          projectPath,
+          conlangFilePath,
+          dryRun,
+          expectedRevision: useWorkspaceStore.getState().revision,
+          operationId: opId,
+        },
+      );
+
+      if (!dryRun && activeLang) {
+        await useLexiconStore
+          .getState()
+          .loadFromBackend(projectPath, activeLang.path);
+      }
 
       setMigrationMessage(
         t(stats.dry_run ? "tree.migrationPreviewDone" : "tree.migrationDone", {
@@ -243,8 +179,15 @@ export function PullSync() {
         }),
       );
     } catch (error) {
+      if (isConflictError(error)) {
+        await useWorkspaceStore
+          .getState()
+          .triggerExternalConflict(conlangFilePath);
+      }
       console.warn(`迁移旧词条失败：${error}`);
-      setMigrationMessage(t(dryRun ? "tree.migrationPreviewFailed" : "tree.migrationFailed"));
+      setMigrationMessage(
+        t(dryRun ? "tree.migrationPreviewFailed" : "tree.migrationFailed"),
+      );
     } finally {
       if (dryRun) {
         setPreviewingMigration(false);
@@ -254,13 +197,12 @@ export function PullSync() {
     }
   };
 
-  const handleMigrateLegacyData = async () => runMigration(false);
-  const handlePreviewMigration = async () => runMigration(true);
-
   if (!parentLang) {
     return (
       <div className="space-y-3">
-        <p className="text-sm text-base-content/50">{t("tree.noParentLanguage")}</p>
+        <p className="text-sm text-base-content/50">
+          {t("tree.noParentLanguage")}
+        </p>
       </div>
     );
   }
@@ -272,29 +214,31 @@ export function PullSync() {
       <p className="text-sm text-base-content/60">
         {t("tree.pullFrom")}: {parentLang.name}
       </p>
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
-        className={BTN_PRIMARY}
-        onClick={handleCheckForUpdates}
-        disabled={loading}
-      >
-        <Download className="w-4 h-4" />
-        {loading ? t("common.loading") : t("tree.checkUpdates")}
-      </button>
-      <button
-        className={BTN_PRIMARY}
-        onClick={handlePreviewMigration}
-        disabled={previewingMigration || migrating}
-      >
-        {previewingMigration ? t("common.loading") : t("tree.previewMigration")}
-      </button>
-      <button
-        className={BTN_PRIMARY}
-        onClick={handleMigrateLegacyData}
-        disabled={migrating || previewingMigration}
-      >
-        {migrating ? t("common.loading") : t("tree.migrateLegacy")}
-      </button>
+          className={BTN_PRIMARY}
+          onClick={() => void handleCheckForUpdates()}
+          disabled={loading}
+        >
+          <Download className="w-4 h-4" />
+          {loading ? t("common.loading") : t("tree.checkUpdates")}
+        </button>
+        <button
+          className={BTN_PRIMARY}
+          onClick={() => void runMigration(true)}
+          disabled={previewingMigration || migrating}
+        >
+          {previewingMigration
+            ? t("common.loading")
+            : t("tree.previewMigration")}
+        </button>
+        <button
+          className={BTN_PRIMARY}
+          onClick={() => void runMigration(false)}
+          disabled={migrating || previewingMigration}
+        >
+          {migrating ? t("common.loading") : t("tree.migrateLegacy")}
+        </button>
       </div>
       {migrationMessage && (
         <p className="text-xs text-base-content/60">{migrationMessage}</p>
@@ -326,7 +270,7 @@ export function PullSync() {
           )}
           <div className="max-h-40 overflow-y-auto space-y-1">
             {pendingSyncWords.slice(0, 20).map((item) => (
-              <span key={item.word.entry_id} className="badge badge-sm mr-1">
+              <span key={item.word.entry_id} className={`${BADGE} mr-1`}>
                 {item.word.con_word_romanized}
               </span>
             ))}
@@ -336,7 +280,7 @@ export function PullSync() {
               </span>
             )}
           </div>
-          <button className={BTN_PRIMARY} onClick={handlePullAll}>
+          <button className={BTN_PRIMARY} onClick={() => void handlePullAll()}>
             {t("tree.pullAndEvolve")}
           </button>
         </div>

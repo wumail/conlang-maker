@@ -1,0 +1,261 @@
+{
+  "revision": "47be390cba75bdd9",
+  "skipped": [],
+  "words": [
+    {
+      "con_word_romanized": "aca",
+      "entry_id": "entry_leaf_aca",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aka/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic cliff"
+          ],
+          "examples": [],
+          "gloss": "cliff",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_aca"
+        }
+      ],
+      "x_unknown_leaf_word": "keep_leaf_word"
+    },
+    {
+      "con_word_romanized": "acha",
+      "entry_id": "entry_leaf_acha",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/atʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic fire"
+          ],
+          "examples": [],
+          "gloss": "fire",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_acha"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "asha",
+      "entry_id": "entry_leaf_asha",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic smoke"
+          ],
+          "examples": [],
+          "gloss": "smoke",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_asha"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "axa",
+      "entry_id": "entry_leaf_axa",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic wind"
+          ],
+          "examples": [],
+          "gloss": "wind",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_axa"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "cha",
+      "entry_id": "entry_leaf_cha",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/tʃa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic burn"
+          ],
+          "examples": [],
+          "gloss": "burn",
+          "pos_id": "pos_verb",
+          "sense_id": "sense_entry_leaf_cha"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "chax",
+      "entry_id": "entry_leaf_chax",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/tʃaʃ/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic ember"
+          ],
+          "examples": [],
+          "gloss": "ember",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_chax"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "𐐀ca",
+      "entry_id": "entry_leaf_deseret",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_leaf",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "supplementary-plane"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/𐐨ka/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic ancient-sigil"
+          ],
+          "examples": [],
+          "gloss": "ancient-sigil",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_leaf_deseret"
+        }
+      ]
+    }
+  ]
+}

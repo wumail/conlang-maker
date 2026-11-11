@@ -1,0 +1,277 @@
+{
+  "language_id": "lang_child",
+  "phoneme_inventory": {
+    "consonants": [
+      "p",
+      "b",
+      "t",
+      "k",
+      "tʃ",
+      "s",
+      "ʃ",
+      "m",
+      "n",
+      "l"
+    ],
+    "vowels": [
+      "a",
+      "i",
+      "u",
+      "aː"
+    ]
+  },
+  "romanization_maps": [
+    {
+      "map_id": "map_child_default",
+      "name": "Middle Standard",
+      "is_default": true,
+      "writing_system_id": "synth_script",
+      "rules": [
+        {
+          "rule_id": "rule_child_p",
+          "input": "p",
+          "output_phoneme": "p",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "p"
+          ],
+          "phonemes_confirmed": true,
+          "writing_override": null,
+          "x_unknown_child_rule": "keep_child_rule"
+        },
+        {
+          "rule_id": "rule_child_b",
+          "input": "b",
+          "output_phoneme": "b",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "b"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_t",
+          "input": "t",
+          "output_phoneme": "t",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "t"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_k",
+          "input": "k",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "k"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_c",
+          "input": "c",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "k"
+          ],
+          "phonemes_confirmed": true,
+          "writing_override": "u.c"
+        },
+        {
+          "rule_id": "rule_child_h",
+          "input": "h",
+          "output_phoneme": "h",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "h"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_ch",
+          "input": "ch",
+          "output_phoneme": "tʃ",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "tʃ"
+          ],
+          "phonemes_confirmed": false,
+          "writing_override": "lig.ch",
+          "writing_overrides": [
+            "lig.ch"
+          ]
+        },
+        {
+          "rule_id": "rule_child_s",
+          "input": "s",
+          "output_phoneme": "s",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "s"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_sh",
+          "input": "sh",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "ʃ"
+          ],
+          "phonemes_confirmed": true
+        },
+        {
+          "rule_id": "rule_child_m",
+          "input": "m",
+          "output_phoneme": "m",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_child_n",
+          "input": "n",
+          "output_phoneme": "n",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_child_l",
+          "input": "l",
+          "output_phoneme": "l",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_child_a",
+          "input": "a",
+          "output_phoneme": "a",
+          "context_before": "",
+          "context_after": "",
+          "output_phonemes": [
+            "a"
+          ],
+          "phonemes_confirmed": true,
+          "writing_override": "u.a"
+        },
+        {
+          "rule_id": "rule_child_i",
+          "input": "i",
+          "output_phoneme": "i",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_child_u",
+          "input": "u",
+          "output_phoneme": "u",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_child_aa",
+          "input": "ā",
+          "output_phoneme": "aː",
+          "context_before": "",
+          "context_after": ""
+        }
+      ],
+      "x_unknown_child_map": "keep_child_map"
+    }
+  ],
+  "writing_systems": [
+    {
+      "writing_system_id": "synth_script",
+      "name": "Synth Script",
+      "encoding_profile_id": "prof_synth",
+      "active": true,
+      "units": [
+        {
+          "unit_id": "u.a",
+          "kind": "vowel",
+          "label": "child-a",
+          "phonemes": [
+            "a"
+          ]
+        },
+        {
+          "unit_id": "u.c",
+          "kind": "base",
+          "label": "child-ca",
+          "phonemes": [
+            "k",
+            "a"
+          ]
+        }
+      ]
+    }
+  ],
+  "font_encoding_profiles": [
+    {
+      "profile_id": "prof_synth",
+      "writing_system_id": "synth_script",
+      "name": "Synth Encoding",
+      "codes": [
+        {
+          "unit_id": "u.a",
+          "codepoints": [
+            97
+          ]
+        },
+        {
+          "unit_id": "u.c",
+          "codepoints": [
+            99
+          ]
+        }
+      ]
+    }
+  ],
+  "phonotactics": {
+    "macros": {
+      "V": [
+        "a",
+        "i",
+        "u",
+        "aː"
+      ],
+      "C": [
+        "p",
+        "b",
+        "t",
+        "k",
+        "tʃ",
+        "s",
+        "ʃ",
+        "m",
+        "n",
+        "l"
+      ]
+    },
+    "syllable_structure": "(C)V(C)",
+    "blacklist_patterns": [],
+    "vowel_harmony": {
+      "enabled": false,
+      "group_a": [],
+      "group_b": []
+    },
+    "tone_system": {
+      "enabled": false,
+      "tones": []
+    }
+  },
+  "allophony_rules": [],
+  "x_unknown_child_phono": "keep_child_phono"
+}

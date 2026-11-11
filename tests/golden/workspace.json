@@ -1,0 +1,37 @@
+{
+  "config": {
+    "languages": [
+      {
+        "language_id": "lang_root",
+        "name": "Proto-Synth",
+        "parent_id": null,
+        "path": "roots/root",
+        "x_unknown_lang_meta": "sentinel_lang"
+      },
+      {
+        "language_id": "lang_child",
+        "name": "Middle-Synth",
+        "parent_id": "lang_root",
+        "path": "stages/child"
+      },
+      {
+        "language_id": "lang_leaf",
+        "name": "Modern-Synth",
+        "parent_id": "lang_child",
+        "path": "branches/leaf"
+      },
+      {
+        "language_id": "lang_other",
+        "name": "Isolate-Other",
+        "parent_id": null,
+        "path": "roots/other"
+      }
+    ],
+    "workspace_version": "3.0",
+    "x_unknown_workspace_sentinel": {
+      "tag": "keep_me",
+      "version": 1
+    }
+  },
+  "revision": "3b3f41d6a8cb2e9a"
+}

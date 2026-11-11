@@ -1,0 +1,21 @@
+{
+  "fields": [
+    "font_encoding_profiles",
+    "romanization_maps.rules.output_phonemes",
+    "romanization_maps.rules.phonemes_confirmed",
+    "romanization_maps.rules.writing_override",
+    "romanization_maps.rules.writing_overrides",
+    "romanization_maps.writing_system_id",
+    "writing_systems"
+  ],
+  "needs_review": [
+    {
+      "input": "ch",
+      "map_id": "map_child_default",
+      "output_phoneme": "tʃ",
+      "reason": "phonemes_unconfirmed",
+      "rule_id": "rule_child_ch"
+    }
+  ],
+  "present": true
+}

@@ -1,7 +1,24 @@
 import { create } from "zustand";
-import { WorkspaceConfig, LanguageEntry, CreateProjectResult } from "../types";
 import { invoke } from "@tauri-apps/api/core";
+import {
+  CreateProjectResult,
+  LanguageEntry,
+  WorkspaceConfig,
+  WorkspaceLoadResult,
+  WriteResult,
+} from "../types";
 import { usePhonoStore } from "./phonoStore";
+import { useLexiconStore } from "./lexiconStore";
+import { useGrammarStore } from "./grammarStore";
+import { useSCAStore } from "./scaStore";
+import { useCorpusStore } from "./corpusStore";
+import {
+  computeJsonDiffSummary,
+  generateOperationId,
+  isConflictError,
+  recordGuiOperationId,
+  useConflictStore,
+} from "./conflictStore";
 import { openPathSafely } from "../utils/safeDialog";
 import {
   DEFAULT_LANGUAGE_ID,
@@ -17,10 +34,20 @@ interface WorkspaceStore {
   conlangFilePath: string;
   /** Derived: directory containing the .conlang file */
   projectPath: string;
+  revision: string;
+  dirty: boolean;
+  paused: boolean;
 
   setConlangFilePath: (path: string) => void;
   loadWorkspace: (conlangFilePath: string) => Promise<void>;
   saveWorkspace: () => void;
+  flushSaves: () => Promise<void>;
+  isDirty: (conlangFilePath?: string) => boolean;
+  pauseAutoSave: (conlangFilePath?: string) => void;
+  triggerExternalConflict: (
+    conlangFilePath: string,
+    origin?: "gui" | "mcp" | "external",
+  ) => Promise<void>;
   setActiveLanguage: (languageId: string) => void;
   forkLanguage: (
     parentId: string,
@@ -54,7 +81,7 @@ const defaultConfig: WorkspaceConfig = {
 };
 
 /** Derive projectPath (directory) from conlangFilePath */
-function deriveProjectPath(conlangFilePath: string): string {
+export function deriveProjectPath(conlangFilePath: string): string {
   const idx = Math.max(
     conlangFilePath.lastIndexOf("/"),
     conlangFilePath.lastIndexOf("\\"),
@@ -62,177 +89,451 @@ function deriveProjectPath(conlangFilePath: string): string {
   return idx > 0 ? conlangFilePath.substring(0, idx) : ".";
 }
 
-let saveTimeout: ReturnType<typeof setTimeout>;
+/** Flush pending debounced writes across all domain stores. */
+export async function flushAllDomainStores(): Promise<void> {
+  await Promise.all([
+    useWorkspaceStore.getState().flushSaves(),
+    usePhonoStore.getState().flushSaves(),
+    useLexiconStore.getState().flushSaves(),
+    useGrammarStore.getState().flushSaves(),
+    useSCAStore.getState().flushSaves(),
+    useCorpusStore.getState().flushSaves(),
+  ]);
+}
 
-const debouncedSave = (conlangFilePath: string, config: WorkspaceConfig) => {
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(async () => {
+interface PendingWorkspaceSave {
+  conlangFilePath: string;
+  config: WorkspaceConfig;
+  expectedRevision: string;
+  operationId: string;
+  version: number;
+}
+
+const pendingSaves = new Map<string, PendingWorkspaceSave>();
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const inFlightSaves = new Map<string, Promise<void>>();
+const saveVersions = new Map<string, number>();
+
+export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
+  const clearTimer = (key: string): void => {
+    const t = saveTimers.get(key);
+    if (t) {
+      clearTimeout(t);
+      saveTimers.delete(key);
+    }
+  };
+
+  const raiseConflict = async (
+    conlangFilePath: string,
+    localConfig: WorkspaceConfig,
+    localRevision: string,
+    origin: "gui" | "mcp" | "external" = "external",
+    reason = "CONFLICT",
+  ): Promise<void> => {
+    clearTimer(conlangFilePath);
+    if (get().conlangFilePath === conlangFilePath) {
+      set({ paused: true, dirty: true });
+    }
+
+    let diskConfig = localConfig;
+    let diskRevision = localRevision;
     try {
-      await invoke("save_workspace", { conlangFilePath, config });
-    } catch (err) {
-      console.warn(`工作区配置保存失败：${err}`);
-    }
-  }, 500);
-};
-
-export const useWorkspaceStore = create<WorkspaceStore>((set, get) => ({
-  config: defaultConfig,
-  activeLanguageId: DEFAULT_LANGUAGE_ID,
-  activeLanguagePath: DEFAULT_LANGUAGE_PATH,
-  conlangFilePath: "",
-  projectPath: ".",
-
-  setConlangFilePath: (path) =>
-    set({
-      conlangFilePath: path,
-      projectPath: deriveProjectPath(path),
-    }),
-
-  clearWorkspace: () => {
-    set({
-      projectPath: "",
-      conlangFilePath: "",
-      config: defaultConfig,
-      activeLanguageId: "",
-      activeLanguagePath: "",
-    });
-  },
-
-  loadWorkspace: async (conlangFilePath: string) => {
-    try {
-      const config = await invoke<WorkspaceConfig>("load_workspace", {
-        conlangFilePath,
-      });
-      const languages =
-        config.languages.length > 0
-          ? config.languages
-          : defaultConfig.languages;
-      const resolvedConfig = { ...config, languages };
-      const projectPath = deriveProjectPath(conlangFilePath);
-      set({
-        config: resolvedConfig,
-        conlangFilePath,
-        projectPath,
-        activeLanguageId: resolvedConfig.languages[0]?.language_id || "",
-        activeLanguagePath: resolvedConfig.languages[0]?.path || "",
-      });
-    } catch (err) {
-      console.warn(`加载工作区配置失败：${err}`);
-    }
-  },
-
-  saveWorkspace: () => {
-    const { conlangFilePath, config } = get();
-    if (conlangFilePath) {
-      debouncedSave(conlangFilePath, config);
-    }
-  },
-
-  setActiveLanguage: (languageId: string) => {
-    const { config } = get();
-    const lang = config.languages.find((item) => item.language_id === languageId);
-    if (lang) {
-      set({
-        activeLanguageId: lang.language_id,
-        activeLanguagePath: lang.path,
-      });
-    }
-  },
-
-  forkLanguage: async (parentId, newName, newId, newPath) => {
-    const { projectPath, conlangFilePath } = get();
-    await usePhonoStore.getState().flushSaves();
-    await invoke("fork_language", {
-      projectPath,
-      conlangFilePath,
-      parentId,
-      newName,
-      newId,
-      newPath,
-    });
-    await get().loadWorkspace(conlangFilePath);
-    get().setActiveLanguage(newId);
-  },
-
-  deleteLanguage: async (languageId: string) => {
-    const { projectPath, conlangFilePath, activeLanguageId, config } = get();
-    await usePhonoStore.getState().flushSaves();
-    await invoke("delete_language", {
-      projectPath,
-      conlangFilePath,
-      languageId,
-    });
-    if (activeLanguageId === languageId) {
-      const remaining = config.languages.filter(
-        (item) => item.language_id !== languageId,
+      const latest = await invoke<WorkspaceLoadResult>(
+        "load_workspace_with_revision",
+        { conlangFilePath },
       );
-      if (remaining.length > 0) {
-        set({
-          activeLanguageId: remaining[0].language_id,
-          activeLanguagePath: remaining[0].path,
-        });
+      diskConfig = latest.config;
+      diskRevision = latest.revision;
+    } catch (err) {
+      console.warn(`Failed to read latest workspace on conflict: ${err}`);
+    }
+
+    const projectPath = deriveProjectPath(conlangFilePath);
+    const diff = computeJsonDiffSummary(localConfig, diskConfig);
+    useConflictStore.getState().upsertConflict(
+      {
+        key: `workspace:${conlangFilePath}`,
+        kind: "workspace",
+        projectPath,
+        languagePath: null,
+        languageId: null,
+        corpusId: null,
+        origin,
+        diskRevision,
+        reason,
+        changedFields: diff.changedFields,
+        localPreview: diff.localPreview,
+        diskPreview: diff.diskPreview,
+      },
+      {
+        keepLocal: async () => {
+          const latest = await invoke<WorkspaceLoadResult>(
+            "load_workspace_with_revision",
+            { conlangFilePath },
+          );
+          const currentConfig =
+            get().conlangFilePath === conlangFilePath
+              ? get().config
+              : localConfig;
+          const opId = generateOperationId();
+          recordGuiOperationId(opId);
+          const writeRes = await invoke<WriteResult>("save_workspace", {
+            conlangFilePath,
+            config: currentConfig,
+            expectedRevision: latest.revision,
+            operationId: opId,
+          });
+          pendingSaves.delete(conlangFilePath);
+          if (get().conlangFilePath === conlangFilePath) {
+            set({
+              revision: writeRes.revision,
+              dirty: false,
+              paused: false,
+            });
+          }
+        },
+        useDisk: async () => {
+          pendingSaves.delete(conlangFilePath);
+          clearTimer(conlangFilePath);
+          if (get().conlangFilePath === conlangFilePath) {
+            set({ paused: false, dirty: false });
+            await get().loadWorkspace(conlangFilePath);
+          }
+        },
+      },
+    );
+  };
+
+  const flushKey = async (key: string): Promise<void> => {
+    clearTimer(key);
+    while (true) {
+      const active = inFlightSaves.get(key);
+      if (active) {
+        await active;
+        continue;
+      }
+      const next = pendingSaves.get(key);
+      if (!next) return;
+      if (get().paused && get().conlangFilePath === next.conlangFilePath) {
+        return;
+      }
+
+      pendingSaves.delete(key);
+      const run = (async () => {
+        recordGuiOperationId(next.operationId);
+        try {
+          const result = await invoke<WriteResult>("save_workspace", {
+            conlangFilePath: next.conlangFilePath,
+            config: next.config,
+            expectedRevision: next.expectedRevision,
+            operationId: next.operationId,
+          });
+          const queued = pendingSaves.get(key);
+          if (queued && queued.expectedRevision === next.expectedRevision) {
+            queued.expectedRevision = result.revision;
+          }
+          if (get().conlangFilePath === next.conlangFilePath) {
+            const latestVer = saveVersions.get(key) ?? 0;
+            set({
+              revision: result.revision,
+              dirty: queued !== undefined || latestVer > next.version,
+            });
+          }
+        } catch (err) {
+          if (isConflictError(err)) {
+            pendingSaves.set(key, next);
+            await raiseConflict(
+              next.conlangFilePath,
+              next.config,
+              next.expectedRevision,
+            );
+            return;
+          }
+          console.warn(`工作区配置保存失败：${err}`);
+          const latestVersion = saveVersions.get(key) ?? 0;
+          if (!pendingSaves.has(key) && latestVersion === next.version) {
+            pendingSaves.set(key, next);
+          }
+        } finally {
+          inFlightSaves.delete(key);
+        }
+      })();
+      inFlightSaves.set(key, run);
+      await run;
+
+      if (pendingSaves.get(key)?.version === next.version) {
+        return;
       }
     }
-    await get().loadWorkspace(conlangFilePath);
-  },
+  };
 
-  createRootLanguage: async (name: string) => {
-    const selected = await openPathSafely({
-      directory: true,
-      title: "Choose project directory",
-    });
-    if (!selected) return null;
+  return {
+    config: defaultConfig,
+    activeLanguageId: DEFAULT_LANGUAGE_ID,
+    activeLanguagePath: DEFAULT_LANGUAGE_PATH,
+    conlangFilePath: "",
+    projectPath: ".",
+    revision: "missing",
+    dirty: false,
+    paused: false,
 
-    try {
-      const result = await invoke<CreateProjectResult>("create_new_project", {
-        projectPath: selected,
-        langName: name,
-      });
-      const conlangFilePath = result.conlang_file_path;
-      const projectPath = deriveProjectPath(conlangFilePath);
+    setConlangFilePath: (path) =>
       set({
-        config: result.config,
-        conlangFilePath,
-        projectPath,
-        activeLanguageId: result.config.languages[0].language_id,
-        activeLanguagePath: result.config.languages[0].path,
+        conlangFilePath: path,
+        projectPath: deriveProjectPath(path),
+      }),
+
+    clearWorkspace: () => {
+      set({
+        projectPath: "",
+        conlangFilePath: "",
+        config: defaultConfig,
+        activeLanguageId: "",
+        activeLanguagePath: "",
+        revision: "missing",
+        dirty: false,
+        paused: false,
       });
-      return result;
-    } catch (err) {
-      console.warn(`创建根语言失败：${err}`);
-      return null;
-    }
-  },
+    },
 
-  renameLanguage: (languageId: string, newName: string) => {
-    const { config, conlangFilePath } = get();
-    const updatedConfig: WorkspaceConfig = {
-      ...config,
-      languages: config.languages.map((item) =>
-        item.language_id === languageId ? { ...item, name: newName } : item,
-      ),
-    };
-    set({ config: updatedConfig });
-    if (conlangFilePath) {
-      debouncedSave(conlangFilePath, updatedConfig);
-    }
-  },
+    loadWorkspace: async (conlangFilePath: string) => {
+      await get().flushSaves();
+      try {
+        const loaded = await invoke<WorkspaceLoadResult>(
+          "load_workspace_with_revision",
+          { conlangFilePath },
+        );
+        const languages =
+          loaded.config.languages.length > 0
+            ? loaded.config.languages
+            : defaultConfig.languages;
+        const resolvedConfig: WorkspaceConfig = {
+          ...loaded.config,
+          languages,
+        };
+        const projectPath = deriveProjectPath(conlangFilePath);
+        const prevState = get();
+        const sameWorkspace = prevState.conlangFilePath === conlangFilePath;
+        const existingLang = sameWorkspace
+          ? resolvedConfig.languages.find(
+              (l) => l.language_id === prevState.activeLanguageId,
+            )
+          : undefined;
+        const selectedLang = existingLang ?? resolvedConfig.languages[0];
 
-  getLanguageById: (languageId: string) => {
-    return get().config.languages.find((item) => item.language_id === languageId);
-  },
+        set({
+          config: resolvedConfig,
+          conlangFilePath,
+          projectPath,
+          activeLanguageId: selectedLang?.language_id || "",
+          activeLanguagePath: selectedLang?.path || "",
+          revision: loaded.revision,
+          dirty: false,
+          paused: false,
+        });
+      } catch (err) {
+        console.warn(`加载工作区配置失败：${err}`);
+      }
+    },
 
-  getChildLanguages: (parentId: string) => {
-    return get().config.languages.filter((item) => item.parent_id === parentId);
-  },
+    saveWorkspace: () => {
+      const { conlangFilePath, config, revision, paused } = get();
+      if (!conlangFilePath) return;
+      const nextVer = (saveVersions.get(conlangFilePath) ?? 0) + 1;
+      saveVersions.set(conlangFilePath, nextVer);
+      pendingSaves.set(conlangFilePath, {
+        conlangFilePath,
+        config,
+        expectedRevision: revision,
+        operationId: generateOperationId(),
+        version: nextVer,
+      });
+      set({ dirty: true });
+      if (paused) return;
+      clearTimer(conlangFilePath);
+      saveTimers.set(
+        conlangFilePath,
+        setTimeout(() => {
+          void flushKey(conlangFilePath);
+        }, 500),
+      );
+    },
 
-  copyProject: async (sourceConlangFilePath: string, destDir: string, newName: string) => {
-    await usePhonoStore.getState().flushSaves();
-    const newConlangPath = await invoke<string>("copy_project", {
-      sourceConlangFilePath,
-      destDir,
-      newName,
-    });
-    return newConlangPath;
-  },
-}));
+    flushSaves: async () => {
+      const keys = new Set<string>([
+        ...pendingSaves.keys(),
+        ...saveTimers.keys(),
+        ...inFlightSaves.keys(),
+      ]);
+      await Promise.all(Array.from(keys, (k) => flushKey(k)));
+    },
+
+    isDirty: (conlangFilePath) => {
+      const key = conlangFilePath ?? get().conlangFilePath;
+      if (!key) return false;
+      if (pendingSaves.has(key) || saveTimers.has(key) || inFlightSaves.has(key)) {
+        return true;
+      }
+      return get().conlangFilePath === key && get().dirty;
+    },
+
+    pauseAutoSave: (conlangFilePath) => {
+      const key = conlangFilePath ?? get().conlangFilePath;
+      if (!key) return;
+      clearTimer(key);
+      if (get().conlangFilePath === key) {
+        set({ paused: true });
+      }
+    },
+
+    triggerExternalConflict: async (
+      conlangFilePath,
+      origin = "external",
+    ) => {
+      const pending = pendingSaves.get(conlangFilePath);
+      const localCfg = pending?.config ?? get().config;
+      const localRev = pending?.expectedRevision ?? get().revision;
+      await raiseConflict(
+        conlangFilePath,
+        localCfg,
+        localRev,
+        origin,
+        "External file change detected while local workspace has unsaved edits",
+      );
+    },
+
+    setActiveLanguage: (languageId: string) => {
+      const { config } = get();
+      const lang = config.languages.find(
+        (item) => item.language_id === languageId,
+      );
+      if (lang) {
+        set({
+          activeLanguageId: lang.language_id,
+          activeLanguagePath: lang.path,
+        });
+      }
+    },
+
+    forkLanguage: async (parentId, newName, newId, newPath) => {
+      await flushAllDomainStores();
+      const { projectPath, conlangFilePath, revision, config } = get();
+      const operationId = generateOperationId();
+      recordGuiOperationId(operationId);
+      try {
+        await invoke<WriteResult>("fork_language", {
+          projectPath,
+          conlangFilePath,
+          parentId,
+          newName,
+          newId,
+          newPath,
+          expectedRevision: revision,
+          operationId,
+        });
+        await get().loadWorkspace(conlangFilePath);
+        get().setActiveLanguage(newId);
+      } catch (err) {
+        if (isConflictError(err)) {
+          await raiseConflict(conlangFilePath, config, revision);
+          return;
+        }
+        throw err;
+      }
+    },
+
+    deleteLanguage: async (languageId: string) => {
+      await flushAllDomainStores();
+      const { projectPath, conlangFilePath, activeLanguageId, config, revision } =
+        get();
+      const operationId = generateOperationId();
+      recordGuiOperationId(operationId);
+      try {
+        await invoke<WriteResult>("delete_language", {
+          projectPath,
+          conlangFilePath,
+          languageId,
+          expectedRevision: revision,
+          operationId,
+        });
+      } catch (err) {
+        if (isConflictError(err)) {
+          await raiseConflict(conlangFilePath, config, revision);
+          return;
+        }
+        throw err;
+      }
+      if (activeLanguageId === languageId) {
+        const remaining = config.languages.filter(
+          (item) => item.language_id !== languageId,
+        );
+        if (remaining.length > 0) {
+          set({
+            activeLanguageId: remaining[0].language_id,
+            activeLanguagePath: remaining[0].path,
+          });
+        }
+      }
+      await get().loadWorkspace(conlangFilePath);
+    },
+
+    createRootLanguage: async (name: string) => {
+      const selected = await openPathSafely({
+        directory: true,
+        title: "Choose project directory",
+      });
+      if (!selected) return null;
+
+      try {
+        const result = await invoke<CreateProjectResult>("create_new_project", {
+          projectPath: selected,
+          langName: name,
+        });
+        const conlangFilePath = result.conlang_file_path;
+        await get().loadWorkspace(conlangFilePath);
+        return result;
+      } catch (err) {
+        console.warn(`创建根语言失败：${err}`);
+        return null;
+      }
+    },
+
+    renameLanguage: (languageId: string, newName: string) => {
+      const { config, conlangFilePath } = get();
+      const updatedConfig: WorkspaceConfig = {
+        ...config,
+        languages: config.languages.map((item) =>
+          item.language_id === languageId ? { ...item, name: newName } : item,
+        ),
+      };
+      set({ config: updatedConfig, dirty: true });
+      if (conlangFilePath) {
+        get().saveWorkspace();
+      }
+    },
+
+    getLanguageById: (languageId: string) => {
+      return get().config.languages.find(
+        (item) => item.language_id === languageId,
+      );
+    },
+
+    getChildLanguages: (parentId: string) => {
+      return get().config.languages.filter((item) => item.parent_id === parentId);
+    },
+
+    copyProject: async (
+      sourceConlangFilePath: string,
+      destDir: string,
+      newName: string,
+    ) => {
+      await flushAllDomainStores();
+      const newConlangPath = await invoke<string>("copy_project", {
+        sourceConlangFilePath,
+        destDir,
+        newName,
+      });
+      return newConlangPath;
+    },
+  };
+});

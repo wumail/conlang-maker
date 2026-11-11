@@ -1,0 +1,120 @@
+{
+  "config": {
+    "affix_slots": [
+      {
+        "dimension_id": "dim_num",
+        "is_obligatory": false,
+        "label": "Number",
+        "position": 1,
+        "slot_id": "slot_num"
+      }
+    ],
+    "conjugation_classes": [],
+    "derivation_rules": [
+      {
+        "affix": "i",
+        "condition": null,
+        "name": "Verbalizer",
+        "rule_id": "deriv_root_n2v",
+        "sca_mutable": true,
+        "semantic_note": "to act with X",
+        "source_pos_id": "pos_noun",
+        "target_pos_id": "pos_verb",
+        "type": "suffix",
+        "x_unknown_deriv_sentinel": "keep_deriv"
+      }
+    ],
+    "grammar_manual": [
+      {
+        "chapter_id": "chap_root_1",
+        "content": "Plural nouns take the suffix `-ta`.",
+        "embedded_paradigms": [
+          {
+            "dimension_ids": [
+              "dim_num"
+            ],
+            "paradigm_id": "para_root_1",
+            "pos_id": "pos_noun",
+            "test_word": "pata"
+          }
+        ],
+        "order": 1,
+        "title": "Nominal Number",
+        "x_unknown_chapter_sentinel": "keep_chapter"
+      }
+    ],
+    "inflection_dimensions": [
+      {
+        "applies_to_pos": [
+          "pos_noun"
+        ],
+        "dim_id": "dim_num",
+        "name": "Number",
+        "values": [
+          {
+            "gloss": "SG",
+            "name": "Singular",
+            "val_id": "val_sg"
+          },
+          {
+            "gloss": "PL",
+            "name": "Plural",
+            "val_id": "val_pl"
+          }
+        ]
+      }
+    ],
+    "inflection_rules": [
+      {
+        "affix": "ta",
+        "condition": null,
+        "dimension_values": {
+          "dim_num": "val_pl"
+        },
+        "disabled": false,
+        "match_regex": ".*",
+        "pos_id": "pos_noun",
+        "rule_id": "infl_root_pl",
+        "sca_mutable": true,
+        "tag": "PL",
+        "type": "suffix",
+        "x_unknown_infl_sentinel": "keep_infl"
+      }
+    ],
+    "irregular_overrides": [],
+    "language_id": "lang_root",
+    "parts_of_speech": [
+      {
+        "gloss_abbr": "N",
+        "name": "Noun",
+        "pos_id": "pos_noun",
+        "requires_definition": true,
+        "requires_pronunciation": false,
+        "word_pattern": "",
+        "x_unknown_pos_sentinel": "keep_pos"
+      },
+      {
+        "gloss_abbr": "V",
+        "name": "Verb",
+        "pos_id": "pos_verb",
+        "requires_definition": true,
+        "requires_pronunciation": false,
+        "word_pattern": ""
+      }
+    ],
+    "syntax": {
+      "adposition_type": "postposition",
+      "modifier_position": "before_head",
+      "word_order": "SOV"
+    },
+    "typology": {
+      "auto_estimated": false,
+      "fusion_index": 1.1,
+      "head_marking": "dependent",
+      "morphological_type": "agglutinative",
+      "synthesis_index": 2.2
+    },
+    "x_unknown_grammar_sentinel": "keep_grammar"
+  },
+  "revision": "bd04443f81a9825e"
+}

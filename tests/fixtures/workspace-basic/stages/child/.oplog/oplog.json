@@ -1,0 +1,16 @@
+{
+  "max_snapshots": 10,
+  "entries": [
+    {
+      "log_id": "legacy_001",
+      "operation_type": "manual_snapshot",
+      "timestamp": "1768000000",
+      "source_language_id": "lang_root",
+      "target_language_id": "lang_child",
+      "description": "Legacy pre-manifest lexicon backup",
+      "snapshot_dir": "snap_legacy_001",
+      "x_unknown_oplog_entry_sentinel": "keep_oplog_entry"
+    }
+  ],
+  "x_unknown_oplog_sentinel": "keep_oplog"
+}

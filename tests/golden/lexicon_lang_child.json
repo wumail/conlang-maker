@@ -1,0 +1,314 @@
+{
+  "revision": "ac47445d13692ce4",
+  "skipped": [
+    {
+      "file": "lexicon_a.ndjson",
+      "line": 5,
+      "reason": "invalid_entry: missing non-empty sense gloss or placeholder 'new_word'"
+    },
+    {
+      "file": "lexicon_s.ndjson",
+      "line": 3,
+      "reason": "invalid_json: key must be a string at line 1 column 2"
+    }
+  ],
+  "words": [
+    {
+      "con_word_romanized": "1ta",
+      "entry_id": "entry_child_1ta",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "numeral"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/ta/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic first-mark"
+          ],
+          "examples": [],
+          "gloss": "first-mark",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_child_1ta"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "achama",
+      "entry_id": "entry_child_achama",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "home"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/atʃama/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic hearth"
+          ],
+          "examples": [],
+          "gloss": "hearth",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_child_achama"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "acika",
+      "entry_id": "entry_root_acika",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "evolved",
+        "parent_entry_id": "entry_root_acika",
+        "semantic_shift_note": "",
+        "source_language_id": "lang_root"
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": "bf8ae3e8",
+        "parent_snapshot_hash": "bf8ae3e8"
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/akika/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic river"
+          ],
+          "examples": [],
+          "gloss": "river",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_acika"
+        }
+      ],
+      "x_unknown_child_word": "keep_child_word"
+    },
+    {
+      "con_word_romanized": "apa",
+      "entry_id": "entry_root_apa",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "evolved",
+        "parent_entry_id": "entry_root_apa",
+        "semantic_shift_note": "",
+        "source_language_id": "lang_root"
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/apa/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic water"
+          ],
+          "examples": [],
+          "gloss": "water",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_apa"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "ashama",
+      "entry_id": "entry_root_asha",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "evolved",
+        "parent_entry_id": "entry_root_asha",
+        "semantic_shift_note": "",
+        "source_language_id": "lang_root"
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": "0000beef",
+        "parent_snapshot_hash": "0000dead"
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aʃama/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic blaze"
+          ],
+          "examples": [],
+          "gloss": "blaze",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_root_asha"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "sana",
+      "entry_id": "entry_root_sana",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "evolved",
+        "parent_entry_id": "entry_root_sana",
+        "semantic_shift_note": "",
+        "source_language_id": "lang_root"
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": "13c74dd4",
+        "parent_snapshot_hash": "13c74dd4"
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/sana/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic walk"
+          ],
+          "examples": [],
+          "gloss": "walk",
+          "pos_id": "pos_verb",
+          "sense_id": "sense_entry_root_sana"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "shula",
+      "entry_id": "entry_child_shula",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "sky"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/ʃula/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic star"
+          ],
+          "examples": [],
+          "gloss": "star",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_child_shula"
+        }
+      ]
+    },
+    {
+      "con_word_romanized": "āka",
+      "entry_id": "entry_child_aaka",
+      "etymology": {
+        "applied_sound_changes": [],
+        "origin_type": "a_priori",
+        "parent_entry_id": null,
+        "semantic_shift_note": "",
+        "source_language_id": null
+      },
+      "evolution": {
+        "deprecated_since_language_id": null,
+        "is_deprecated": false,
+        "last_synced_word_hash": null,
+        "parent_snapshot_hash": null
+      },
+      "language_id": "lang_child",
+      "metadata": {
+        "created_at": "2026-01-10T08:00:00Z",
+        "tags": [
+          "nature"
+        ],
+        "updated_at": "2026-01-15T12:00:00Z"
+      },
+      "phonetic_ipa": "/aːka/",
+      "phonetic_override": false,
+      "senses": [
+        {
+          "definitions": [
+            "Synthetic shore"
+          ],
+          "examples": [],
+          "gloss": "shore",
+          "pos_id": "pos_noun",
+          "sense_id": "sense_entry_child_aaka"
+        }
+      ]
+    }
+  ]
+}

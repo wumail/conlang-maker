@@ -1,0 +1,34 @@
+{
+  "workspace_version": "3.0",
+  "languages": [
+    {
+      "language_id": "lang_root",
+      "name": "Proto-Synth",
+      "path": "roots/root",
+      "parent_id": null,
+      "x_unknown_lang_meta": "sentinel_lang"
+    },
+    {
+      "language_id": "lang_child",
+      "name": "Middle-Synth",
+      "path": "stages/child",
+      "parent_id": "lang_root"
+    },
+    {
+      "language_id": "lang_leaf",
+      "name": "Modern-Synth",
+      "path": "branches/leaf",
+      "parent_id": "lang_child"
+    },
+    {
+      "language_id": "lang_other",
+      "name": "Isolate-Other",
+      "path": "roots/other",
+      "parent_id": null
+    }
+  ],
+  "x_unknown_workspace_sentinel": {
+    "version": 1,
+    "tag": "keep_me"
+  }
+}

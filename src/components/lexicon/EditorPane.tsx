@@ -9,7 +9,7 @@ import { useSCAStore } from "../../store/scaStore";
 import { Trash2, Plus, Lock, Unlock, Tag } from "lucide-react";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { TagsInput } from "../common/TagsInput";
-import { Sense, WordEntry, PhonologyConfig, OriginType, LanguageEntry } from "../../types";
+import { Sense, WordEntry, PhonologyConfig, PhonologyLoadResult, OriginType, LanguageEntry } from "../../types";
 import { generateIPA } from "../../utils/ipaGenerator";
 import {
   INPUT,
@@ -96,15 +96,15 @@ export const EditorPane: React.FC = () => {
     }
     (async () => {
       try {
-        const [words, phono] = await Promise.all([
+        const [words, phonoResult] = await Promise.all([
           invoke<WordEntry[]>("load_all_words", { projectPath, languagePath: parentLanguage.path }),
-          invoke<PhonologyConfig>("load_phonology", { projectPath, languagePath: parentLanguage.path }),
+          invoke<PhonologyLoadResult>("load_phonology", { projectPath, languagePath: parentLanguage.path }),
         ]);
         if (cancelled) return;
         const byId: Record<string, WordEntry> = {};
         words.forEach((w) => { byId[w.entry_id] = w; });
         setParentWordsById(byId);
-        setParentPhonoConfig(phono);
+        setParentPhonoConfig(phonoResult.config);
       } catch (err) {
         if (!cancelled) {
           setParentWordsById({});

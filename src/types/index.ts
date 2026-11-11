@@ -77,6 +77,24 @@ export interface PhonologyConfig {
   allophony_rules: AllophonyRule[];
 }
 
+export type GlyphAnnotationsSource =
+  | "local"
+  | "inherited"
+  | "legacy_migrated"
+  | "none";
+
+export interface PhonologyLoadResult {
+  config: PhonologyConfig;
+  revision: string;
+  local_config?: PhonologyConfig;
+  effective_config?: PhonologyConfig;
+  annotations_source?: GlyphAnnotationsSource;
+  annotations_owner_id?: string | null;
+  effective_revision?: string;
+  dependencies?: Record<string, string>;
+  legacy_fields_present?: boolean;
+}
+
 // ── 词典相关 ──────────────────────────────────────────────
 
 export interface Sense {
@@ -334,9 +352,11 @@ export interface LanguageFontStatus {
   language_id: string;
   has_own: boolean;
   own_file_name: string | null;
+  revision?: string;
   resolved_owner_id: string | null;
   resolved_owner_name: string | null;
   resolved_file_name: string | null;
+  resolved_revision?: string | null;
 }
 
 /** Parsed face for the active language, after walking parent_id. */
@@ -354,6 +374,17 @@ export interface FontInspection {
   /** Codepoints that draw the same glyph, one group per glyph. */
   glyphs?: number[][];
   warning: string | null;
+  revision?: string;
+  resolved_revision?: string | null;
+}
+
+export interface ResolvedFontBytes {
+  owner_language_id: string;
+  owner_name: string;
+  inherited: boolean;
+  file_name: string;
+  bytes_base64: string;
+  revision?: string;
 }
 
 export interface WorkspaceConfig {
@@ -375,9 +406,32 @@ export interface GlobalRegistry {
   active_family_index: number | null;
 }
 
-// ── Operation Log ────────────────────────────────────────
+// ── Operation Log & Snapshots ────────────────────────────
 
-export type OperationType = "pull_sync" | "borrowing";
+export type SnapshotScope =
+  | "lexicon"
+  | "phonology"
+  | "grammar"
+  | "sca"
+  | "corpus"
+  | "font"
+  | "project";
+
+export type SnapshotOrigin = "gui" | "mcp" | "system";
+export type SnapshotLevel = "language" | "project";
+
+export type OperationType =
+  | "pull_sync"
+  | "borrowing"
+  | "manual_snapshot"
+  | "auto_snapshot"
+  | "rollback_recovery"
+  | "fork_language"
+  | "delete_language"
+  | "restore_language"
+  | "update_language"
+  | "import_bundle"
+  | "batch_font";
 
 export interface OperationLogEntry {
   log_id: string;
@@ -387,6 +441,10 @@ export interface OperationLogEntry {
   target_language_id: string;
   description: string;
   snapshot_dir: string;
+  origin?: SnapshotOrigin;
+  scope?: SnapshotScope;
+  level?: SnapshotLevel;
+  restored_from?: string | null;
 }
 
 export interface OperationLog {
@@ -528,4 +586,218 @@ export interface CorpusIndexEntry {
   };
 }
 
-declare module "*.png";
+export interface ParsedInflection {
+  entry: WordEntry;
+  morphemeBreak: string;
+  glossLabels: string;
+  score: number;
+  confidence: number;
+  trace: string;
+}
+
+export interface AffixRuleInfo {
+  rule: InflectionRule;
+  affix: string;
+  label: string;
+}
+
+// ── Versioned Storage, Recovery, Watcher & MCP DTOs ──────
+
+export interface WriteResult {
+  operation_id: string;
+  revision: string;
+  revisions?: Record<string, string>;
+  snapshot_id?: string | null;
+  warnings?: string[];
+}
+
+export interface WorkspaceLoadResult {
+  config: WorkspaceConfig;
+  revision: string;
+}
+
+export interface GrammarLoadResult {
+  config: GrammarConfig;
+  revision: string;
+}
+
+export interface ScaLoadResult {
+  config: SCAConfig;
+  revision: string;
+}
+
+export interface LexiconSkippedLine {
+  file: string;
+  line: number;
+  reason: string;
+}
+
+export interface LexiconLoadResult {
+  words: WordEntry[];
+  revision: string;
+  skipped: LexiconSkippedLine[];
+}
+
+export interface CorpusIndexLoadResult {
+  entries: CorpusIndexEntry[];
+  revision: string;
+}
+
+export interface CorpusTextLoadResult {
+  corpus: CorpusText;
+  revision: string;
+  index_revision: string;
+}
+
+export interface LegacyReviewItem {
+  map_id: string;
+  rule_id: string;
+  input: string;
+  output_phoneme: string;
+  reason: string;
+}
+
+export interface LegacyWritingInspection {
+  present: boolean;
+  fields: string[];
+  needs_review: LegacyReviewItem[];
+}
+
+export interface TrashedLanguageEntry {
+  trash_id: string;
+  language_id: string;
+  name: string;
+  original_path: string;
+  parent_id: string | null;
+  deleted_at: string;
+  operation_id: string;
+  project_snapshot_id?: string | null;
+  original_entry?: LanguageEntry;
+}
+
+export interface RestoreLanguageResult {
+  dry_run: boolean;
+  restored?: LanguageEntry;
+  conflicts: string[];
+  revision: string;
+  operation_id: string;
+}
+
+export interface SnapshotSummary {
+  snapshot_id: string;
+  level: SnapshotLevel;
+  scope: SnapshotScope;
+  origin: SnapshotOrigin;
+  language_id: string | null;
+  operation_type: string;
+  description: string;
+  timestamp: string;
+  restored_from?: string | null;
+  archived_language?: boolean;
+}
+
+export interface SnapshotDiffSummary {
+  snapshot_id: string;
+  level: SnapshotLevel;
+  scope: SnapshotScope;
+  changed_files: string[];
+  added_files: string[];
+  removed_files: string[];
+  conflicts: string[];
+}
+
+export interface SnapshotRollbackResult {
+  dry_run: boolean;
+  operation_id: string;
+  recovery_snapshot_id?: string | null;
+  revision: string;
+  revisions?: Record<string, string>;
+  diff: SnapshotDiffSummary;
+}
+
+export type WorkspaceChangeKind =
+  | "workspace"
+  | "phonology"
+  | "lexicon"
+  | "grammar"
+  | "sca"
+  | "corpus"
+  | "font"
+  | "snapshots"
+  | "trash";
+
+export interface WorkspaceFileChangedEvent {
+  project_path: string;
+  operation_id: string | null;
+  origin: "gui" | "mcp" | "external";
+  language_path: string | null;
+  language_id: string | null;
+  kind: WorkspaceChangeKind;
+  revisions: Record<string, string>;
+  affected_language_ids: string[];
+}
+
+export interface McpAuditLogEntry {
+  timestamp: string;
+  operation_id: string;
+  tool: string;
+  origin: string;
+  /** HTTP mode: name of the access token (Agent) that performed the call. */
+  client?: string | null;
+  family_path?: string;
+  language_id?: string | null;
+  summary: string;
+  snapshot_id?: string | null;
+  status: "committed" | "rolled_back" | "dry_run" | "error";
+}
+
+export type McpPermissionMode = "read-only" | "write" | "write+destructive";
+
+export interface RegistryLoadResult {
+  registry: GlobalRegistry;
+  revision: string;
+}
+
+export interface MigrationStats {
+  dry_run: boolean;
+  languages_processed: number;
+  words_scanned: number;
+  parent_link_filled: number;
+  source_language_filled: number;
+  origin_fixed: number;
+  files_changed: number;
+}
+
+export interface LanguageWordStats {
+  word_count: number;
+  created_at: number | null;
+  updated_at: number | null;
+}
+
+export type ConflictResourceKind =
+  | "workspace"
+  | "phonology"
+  | "lexicon"
+  | "grammar"
+  | "sca"
+  | "corpus"
+  | "font"
+  | "registry";
+
+export interface ExternalConflictItem {
+  key: string;
+  kind: ConflictResourceKind;
+  projectPath: string;
+  languagePath: string | null;
+  languageId: string | null;
+  corpusId: string | null;
+  origin: "gui" | "mcp" | "external";
+  diskRevision: string;
+  reason: string;
+  changedFields: string[];
+  localPreview: string;
+  diskPreview: string;
+}
+
+
+

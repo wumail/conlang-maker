@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { GitFork, AlertTriangle, Plus } from "lucide-react";
+import { GitFork, Plus } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ReactFlow,
@@ -15,20 +15,21 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { LanguageEntry, LanguageFontStatus } from "../types";
+import type {
+  LanguageEntry,
+  LanguageFontStatus,
+  LanguageWordStats,
+} from "../types";
 import { useFontStore } from "../store/fontStore";
-import { BTN_PRIMARY, BTN_GHOST, BTN_OUTLINE_ERROR, INPUT } from "../lib/ui";
+import { BTN_PRIMARY, BTN_GHOST } from "../lib/ui";
 import { TreeNode } from "../components/tree/TreeNodeRF";
-import { PullSync } from "../components/tree/PullSync";
-import { BorrowingPanel } from "../components/tree/BorrowingPanel";
 import {
   FamilySelector,
   FamilyManager,
 } from "../components/tree/FamilyManager";
-import { SnapshotManager } from "../components/tree/SnapshotManager";
+import { FamilyTreeModals } from "../components/tree/FamilyTreeModals";
 import { useTreeLayout, type TreeFlowNode } from "../utils/useTreeLayout";
 import { useTheme } from "../lib/useTheme";
-import { ModalPortal } from "../components/common/ModalPortal";
 import { PageHeader } from "../components/common/PageHeader";
 import { useRegistryStore } from "../store/registryStore";
 
@@ -52,14 +53,7 @@ export function FamilyTree() {
     Record<string, LanguageFontStatus>
   >({});
   const [languageStats, setLanguageStats] = useState<
-    Record<
-      string,
-      {
-        word_count: number;
-        created_at: number | null;
-        updated_at: number | null;
-      }
-    >
+    Record<string, LanguageWordStats>
   >({});
   const [showForkModal, setShowForkModal] = useState(false);
   const [forkParentId, setForkParentId] = useState<string | null>(null);
@@ -72,26 +66,13 @@ export function FamilyTree() {
   const [newRootName, setNewRootName] = useState("");
   const { theme } = useTheme();
 
-  // Load word counts from backend for all languages
-  const loadWordCounts = useCallback(async () => {
+  const loadWordCounts = useCallback(async (): Promise<void> => {
+    const langs: [string, string][] = config.languages.map((l) => [l.language_id, l.path]);
     try {
-      const langs: [string, string][] = config.languages.map((l) => [
-        l.language_id,
-        l.path,
-      ]);
-      const stats = await invoke<
-        Record<
-          string,
-          {
-            word_count: number;
-            created_at: number | null;
-            updated_at: number | null;
-          }
-        >
-      >("count_words_all_languages", {
-        projectPath,
-        languages: langs,
-      });
+      const stats = await invoke<Record<string, LanguageWordStats>>(
+        "count_words_all_languages",
+        { projectPath, languages: langs },
+      );
       setLanguageStats(stats);
     } catch (err) {
       console.warn(`Failed to load word counts: ${err}`);
@@ -99,10 +80,10 @@ export function FamilyTree() {
   }, [config.languages, projectPath]);
 
   useEffect(() => {
-    loadWordCounts();
+    void loadWordCounts();
   }, [loadWordCounts]);
 
-  const loadFonts = useCallback(async () => {
+  const loadFonts = useCallback(async (): Promise<void> => {
     if (!projectPath || !conlangFilePath) return;
     try {
       const list = await invoke<LanguageFontStatus[]>("list_language_fonts", {
@@ -119,22 +100,17 @@ export function FamilyTree() {
 
   const languageKey = config.languages.map((lang) => lang.language_id).join("|");
   useEffect(() => {
-    loadFonts();
+    void loadFonts();
   }, [loadFonts, fontRevision, languageKey]);
 
-  // Callbacks for tree nodes — stabilise with useCallback
   const handleNodeFork = useCallback((parentId: string) => {
     setForkParentId(parentId);
     setShowForkModal(true);
   }, []);
-
   const handleNodeSwitch = useCallback(
-    (languageId: string) => {
-      setActiveLanguage(languageId);
-    },
+    (languageId: string) => setActiveLanguage(languageId),
     [setActiveLanguage],
   );
-
   const handleNodeDelete = useCallback((lang: LanguageEntry) => {
     setDeleteTarget(lang);
   }, []);
@@ -148,7 +124,6 @@ export function FamilyTree() {
     [handleNodeFork, handleNodeSwitch, handleNodeDelete],
   );
 
-  // dagre layout
   const { nodes: layoutNodes, edges: layoutEdges } = useTreeLayout(
     config.languages,
     languageStats,
@@ -160,13 +135,12 @@ export function FamilyTree() {
     useNodesState<TreeFlowNode>(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
-  // Re-sync when layout changes (languages / word counts change)
   useEffect(() => {
     setNodes(layoutNodes);
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
-  const handleFork = async () => {
+  const handleFork = async (): Promise<void> => {
     if (!forkParentId || !newLangName.trim()) return;
     const newId = `lang_${Date.now().toString(36)}`;
     const newPath = `lang_${newId}`;
@@ -179,7 +153,7 @@ export function FamilyTree() {
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = async (): Promise<void> => {
     if (!deleteTarget) return;
     try {
       await deleteLanguage(deleteTarget.language_id);
@@ -189,7 +163,7 @@ export function FamilyTree() {
     }
   };
 
-  const handleCreateRoot = async () => {
+  const handleCreateRoot = async (): Promise<void> => {
     if (!newRootName.trim()) return;
     try {
       const result = await createRootLanguage(newRootName.trim());
@@ -211,7 +185,6 @@ export function FamilyTree() {
     }
   };
 
-  // Derive ReactFlow colorMode from theme
   const colorMode: ColorMode = theme === "dark" ? "dark" : "light";
 
   return (
@@ -243,6 +216,7 @@ export function FamilyTree() {
           <button
             className={BTN_GHOST}
             onClick={() => setShowSnapshots(!showSnapshots)}
+            data-testid="open-snapshots-btn"
           >
             {t("tree.snapshots")}
           </button>
@@ -251,7 +225,6 @@ export function FamilyTree() {
         </div>
       </div>
 
-      {/* Tree visualization — ReactFlow */}
       <div className="flex-1 min-h-0 rounded-lg border border-base-300 shadow shadow-inner bg-base-200/30 min-h-[400px]">
         <ReactFlow
           nodes={nodes}
@@ -290,168 +263,29 @@ export function FamilyTree() {
         </ReactFlow>
       </div>
 
-      <ModalPortal
-        open={
-          showPullSync ||
-          showBorrowing ||
-          showSnapshots ||
-          showForkModal ||
-          !!deleteTarget ||
-          showCreateRoot
-        }
-      >
-        <>
-          {/* Panels as modals */}
-          {showPullSync && (
-            <div className="modal modal-open">
-              <div className="modal-box max-w-lg">
-                <PullSync />
-                <div className="modal-action">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setShowPullSync(false)}
-                  >
-                    {t("common.close")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-          {showBorrowing && (
-            <div className="modal modal-open">
-              <div className="modal-box max-w-2xl">
-                <BorrowingPanel />
-                <div className="modal-action">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setShowBorrowing(false)}
-                  >
-                    {t("common.close")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-          {showSnapshots && (
-            <div className="modal modal-open">
-              <div className="modal-box max-w-lg">
-                <SnapshotManager />
-                <div className="modal-action mt-2">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setShowSnapshots(false)}
-                  >
-                    {t("common.close")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Fork Modal */}
-          {showForkModal && (
-            <div className="modal modal-open">
-              <div className="modal-box">
-                <h3 className="font-bold text-lg">{t("tree.forkTitle")}</h3>
-                <p className="py-2 text-sm text-base-content/60">
-                  {t("tree.forkFrom")}:{" "}
-                  {
-                    config.languages.find((l) => l.language_id === forkParentId)
-                      ?.name
-                  }
-                </p>
-                <div className="form-control">
-                  <label className="label">
-                    <span className="label-text">{t("tree.newLangName")}</span>
-                  </label>
-                  <input
-                    className={`${INPUT} w-full`}
-                    value={newLangName}
-                    onChange={(e) => setNewLangName(e.target.value)}
-                    placeholder={t("tree.newLangNamePlaceholder")}
-                  />
-                </div>
-                <div className="modal-action">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setShowForkModal(false)}
-                  >
-                    {t("common.close")}
-                  </button>
-                  <button
-                    className={BTN_PRIMARY}
-                    onClick={handleFork}
-                    disabled={!newLangName.trim()}
-                  >
-                    <GitFork className="w-4 h-4" /> {t("tree.fork")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Delete Confirmation Modal */}
-          {deleteTarget && (
-            <div className="modal modal-open">
-              <div className="modal-box">
-                <h3 className="font-bold text-lg flex items-center gap-2 text-error">
-                  <AlertTriangle size={20} /> {t("tree.deleteConfirmTitle")}
-                </h3>
-                <p className="py-3 text-sm text-base-content/70">
-                  {t("tree.deleteConfirmMsg", { name: deleteTarget.name })}
-                </p>
-                <div className="modal-action">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setDeleteTarget(null)}
-                  >
-                    {t("common.close")}
-                  </button>
-                  <button className={BTN_OUTLINE_ERROR} onClick={handleDelete}>
-                    {t("tree.confirmDelete")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Create Root Language Modal */}
-          {showCreateRoot && (
-            <div className="modal modal-open">
-              <div className="modal-box">
-                <h3 className="font-bold text-lg">{t("tree.createRoot")}</h3>
-                <div className="form-control mt-3">
-                  <label className="label mb-3">
-                    <span className="label-text">{t("tree.newLangName")}</span>
-                  </label>
-                  <input
-                    className={`${INPUT} w-full`}
-                    value={newRootName}
-                    onChange={(e) => setNewRootName(e.target.value)}
-                    placeholder={t("tree.newLangNamePlaceholder")}
-                  />
-                </div>
-                <div className="modal-action">
-                  <button
-                    className={BTN_GHOST}
-                    onClick={() => setShowCreateRoot(false)}
-                  >
-                    {t("common.close")}
-                  </button>
-                  <button
-                    className={BTN_PRIMARY}
-                    onClick={handleCreateRoot}
-                    disabled={!newRootName.trim()}
-                  >
-                    <Plus className="w-4 h-4" /> {t("tree.createRoot")}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-        </>
-        ,
-      </ModalPortal>
+      <FamilyTreeModals
+        languages={config.languages}
+        showPullSync={showPullSync}
+        onClosePullSync={() => setShowPullSync(false)}
+        showBorrowing={showBorrowing}
+        onCloseBorrowing={() => setShowBorrowing(false)}
+        showSnapshots={showSnapshots}
+        onCloseSnapshots={() => setShowSnapshots(false)}
+        showForkModal={showForkModal}
+        forkParentId={forkParentId}
+        newLangName={newLangName}
+        onNewLangNameChange={setNewLangName}
+        onCloseFork={() => setShowForkModal(false)}
+        onConfirmFork={() => void handleFork()}
+        deleteTarget={deleteTarget}
+        onCloseDelete={() => setDeleteTarget(null)}
+        onConfirmDelete={() => void handleDelete()}
+        showCreateRoot={showCreateRoot}
+        newRootName={newRootName}
+        onNewRootNameChange={setNewRootName}
+        onCloseCreateRoot={() => setShowCreateRoot(false)}
+        onConfirmCreateRoot={() => void handleCreateRoot()}
+      />
     </div>
   );
 }

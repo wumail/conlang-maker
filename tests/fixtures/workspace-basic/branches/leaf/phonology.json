@@ -1,0 +1,93 @@
+{
+  "language_id": "lang_leaf",
+  "phoneme_inventory": {
+    "consonants": [
+      "k",
+      "g",
+      "h",
+      "tʃ",
+      "ʃ"
+    ],
+    "vowels": [
+      "a"
+    ]
+  },
+  "romanization_maps": [
+    {
+      "map_id": "map_leaf_default",
+      "name": "Modern Standard",
+      "is_default": true,
+      "rules": [
+        {
+          "rule_id": "rule_leaf_a",
+          "input": "a",
+          "output_phoneme": "a",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_leaf_c",
+          "input": "c",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_leaf_h",
+          "input": "h",
+          "output_phoneme": "h",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_leaf_ch",
+          "input": "ch",
+          "output_phoneme": "tʃ",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_leaf_sh",
+          "input": "sh",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_leaf_x",
+          "input": "x",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": ""
+        }
+      ]
+    }
+  ],
+  "phonotactics": {
+    "macros": {
+      "V": [
+        "a"
+      ],
+      "C": [
+        "k",
+        "g",
+        "h",
+        "tʃ",
+        "ʃ"
+      ]
+    },
+    "syllable_structure": "(C)V(C)",
+    "blacklist_patterns": [],
+    "vowel_harmony": {
+      "enabled": false,
+      "group_a": [],
+      "group_b": []
+    },
+    "tone_system": {
+      "enabled": false,
+      "tones": []
+    }
+  },
+  "allophony_rules": [],
+  "x_unknown_leaf_phono": "keep_leaf_phono"
+}

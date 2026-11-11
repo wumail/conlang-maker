@@ -26,7 +26,7 @@ export function AppNav() {
 
   const navRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
-  const [overflowIdx, setOverflowIdx] = useState(10);
+  const [overflowIdx, setOverflowIdx] = useState(11);
 
   const navItems = [
     {

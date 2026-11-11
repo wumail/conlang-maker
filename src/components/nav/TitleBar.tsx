@@ -6,6 +6,7 @@ import {
   Zap,
   Sun,
   Moon,
+  Cpu,
   Info,
 } from "lucide-react";
 import { QuickEntry } from "../common/QuickEntry";
@@ -110,6 +111,14 @@ export function TitleBar({ ready = true }: { ready?: boolean }) {
         )}
 
         <LanguageToggle />
+
+        <NavLink
+          to="/mcp"
+          className="btn btn-ghost btn-xs"
+          title={t("nav.mcp")}
+        >
+          <Cpu className="w-4 h-4" />
+        </NavLink>
 
         {!isWelcome && (
           <NavLink

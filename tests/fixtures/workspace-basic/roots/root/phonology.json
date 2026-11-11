@@ -1,0 +1,307 @@
+{
+  "language_id": "lang_root",
+  "phoneme_inventory": {
+    "consonants": [
+      "p",
+      "t",
+      "k",
+      "s",
+      "ʃ",
+      "m",
+      "n",
+      "l",
+      "ŋ"
+    ],
+    "vowels": [
+      "a",
+      "i",
+      "u",
+      "aː"
+    ]
+  },
+  "romanization_maps": [
+    {
+      "map_id": "map_root_default",
+      "name": "Standard",
+      "is_default": true,
+      "rules": [
+        {
+          "rule_id": "rule_root_p",
+          "input": "p",
+          "output_phoneme": "p",
+          "context_before": "",
+          "context_after": "",
+          "x_unknown_rule_sentinel": "keep_rule"
+        },
+        {
+          "rule_id": "rule_root_p_dup",
+          "input": "p",
+          "output_phoneme": "p",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_t",
+          "input": "t",
+          "output_phoneme": "t",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_k",
+          "input": "k",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_s",
+          "input": "s",
+          "output_phoneme": "s",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_m",
+          "input": "m",
+          "output_phoneme": "m",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_n",
+          "input": "n",
+          "output_phoneme": "n",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_l",
+          "input": "l",
+          "output_phoneme": "l",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_a",
+          "input": "a",
+          "output_phoneme": "a",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_i",
+          "input": "i",
+          "output_phoneme": "i",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_u",
+          "input": "u",
+          "output_phoneme": "u",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_sh",
+          "input": "sh",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_aa",
+          "input": "ā",
+          "output_phoneme": "aː",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_c_k",
+          "input": "c",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_c_s",
+          "input": "c",
+          "output_phoneme": "s",
+          "context_before": "",
+          "context_after": "i"
+        },
+        {
+          "rule_id": "rule_root_x",
+          "input": "x",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_root_q_macron",
+          "input": "q̄",
+          "output_phoneme": "kː",
+          "context_before": "",
+          "context_after": ""
+        }
+      ],
+      "x_unknown_map_sentinel": true
+    },
+    {
+      "map_id": "map_root_scholarly",
+      "name": "Scholarly",
+      "is_default": false,
+      "rules": [
+        {
+          "rule_id": "rule_sch_p",
+          "input": "p",
+          "output_phoneme": "p",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_t",
+          "input": "t",
+          "output_phoneme": "t",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_k",
+          "input": "k",
+          "output_phoneme": "k",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_s",
+          "input": "s",
+          "output_phoneme": "s",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_sh",
+          "input": "š",
+          "output_phoneme": "ʃ",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_m",
+          "input": "m",
+          "output_phoneme": "m",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_n",
+          "input": "n",
+          "output_phoneme": "n",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_l",
+          "input": "l",
+          "output_phoneme": "l",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_a",
+          "input": "a",
+          "output_phoneme": "a",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_i",
+          "input": "i",
+          "output_phoneme": "i",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_u",
+          "input": "u",
+          "output_phoneme": "u",
+          "context_before": "",
+          "context_after": ""
+        },
+        {
+          "rule_id": "rule_sch_aa",
+          "input": "aa",
+          "output_phoneme": "aː",
+          "context_before": "",
+          "context_after": ""
+        }
+      ]
+    }
+  ],
+  "glyph_annotations": [
+    {
+      "codepoint": 97,
+      "label": "ka-a",
+      "kind": "vowel",
+      "phonemes": [
+        "a"
+      ],
+      "x_unknown_annot_sentinel": "keep_annot"
+    }
+  ],
+  "phonotactics": {
+    "macros": {
+      "V": [
+        "a",
+        "i",
+        "u",
+        "aː"
+      ],
+      "C": [
+        "p",
+        "t",
+        "k",
+        "s",
+        "ʃ",
+        "m",
+        "n",
+        "l"
+      ]
+    },
+    "syllable_structure": "(C)V(C)",
+    "blacklist_patterns": [
+      "tl",
+      "dl"
+    ],
+    "vowel_harmony": {
+      "enabled": false,
+      "group_a": [],
+      "group_b": []
+    },
+    "tone_system": {
+      "enabled": true,
+      "tones": [
+        {
+          "tone_id": "tone_high",
+          "name": "High",
+          "marker": "ˊ"
+        }
+      ]
+    }
+  },
+  "allophony_rules": [
+    {
+      "rule_id": "allo_root_t_voicing",
+      "description": "t > d / V_V",
+      "target": "t",
+      "replacement": "d",
+      "context_before": "V",
+      "context_after": "V",
+      "priority": 1,
+      "x_unknown_allo_sentinel": "keep_allo"
+    }
+  ],
+  "x_unknown_phono_sentinel": 42
+}

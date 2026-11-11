@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "bun scripts/build-mcp.mjs && bun run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -28,6 +28,9 @@
   },
   "bundle": {
     "active": true,
+    "externalBin": [
+      "binaries/conlang-mcp"
+    ],
     "targets": "all",
     "createUpdaterArtifacts": true,
     "icon": [

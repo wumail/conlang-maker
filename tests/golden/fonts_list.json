@@ -1,0 +1,42 @@
+[
+  {
+    "has_own": true,
+    "language_id": "lang_root",
+    "own_file_name": "font.ttf",
+    "resolved_file_name": "font.ttf",
+    "resolved_owner_id": "lang_root",
+    "resolved_owner_name": "Proto-Synth",
+    "resolved_revision": "89cfc145201e358f",
+    "revision": "89cfc145201e358f"
+  },
+  {
+    "has_own": false,
+    "language_id": "lang_child",
+    "own_file_name": null,
+    "resolved_file_name": "font.ttf",
+    "resolved_owner_id": "lang_root",
+    "resolved_owner_name": "Proto-Synth",
+    "resolved_revision": "89cfc145201e358f",
+    "revision": "missing"
+  },
+  {
+    "has_own": true,
+    "language_id": "lang_leaf",
+    "own_file_name": "font.ttf",
+    "resolved_file_name": "font.ttf",
+    "resolved_owner_id": "lang_leaf",
+    "resolved_owner_name": "Modern-Synth",
+    "resolved_revision": "46c9a4c0932d937f",
+    "revision": "46c9a4c0932d937f"
+  },
+  {
+    "has_own": false,
+    "language_id": "lang_other",
+    "own_file_name": null,
+    "resolved_file_name": null,
+    "resolved_owner_id": null,
+    "resolved_owner_name": null,
+    "resolved_revision": null,
+    "revision": "missing"
+  }
+]

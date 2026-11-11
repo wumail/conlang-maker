@@ -1,141 +1,320 @@
-use crate::commands::lexicon::atomic_write;
-use crate::models::{CreateProjectResult, GrammarConfig, SCAConfig, WorkspaceConfig};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 use tauri::command;
 
+use crate::commands::lock::with_custom_lock_dir;
+use crate::commands::oplog::record_project_snapshot_in_tx;
+use crate::commands::transaction::{
+    execute_project_transaction, with_consistent_read, PlannedMutation, RevisionExpectation,
+    TransactionPlan,
+};
+use crate::models::{
+    CreateProjectResult, GrammarConfig, LanguageEntry, SCAConfig, WorkspaceConfig,
+    WorkspaceLoadResult, WriteResult,
+};
+use crate::utils::fs_util::atomic_write;
+use crate::utils::revision::{file_revision, normalize_rel_path};
+
+#[command]
+pub fn load_workspace_with_revision(
+    conlang_file_path: String,
+) -> Result<WorkspaceLoadResult, String> {
+    let path = Path::new(&conlang_file_path);
+    with_consistent_read(
+        path,
+        "load_workspace_with_revision",
+        true,
+        None,
+        |_proj, _| {
+            let rev = file_revision(path)?;
+            let config = if path.is_file() {
+                let content = fs::read_to_string(path).map_err(|e| format!("IO: {e}"))?;
+                serde_json::from_str(&content).map_err(|e| e.to_string())?
+            } else {
+                WorkspaceConfig::default()
+            };
+            Ok(WorkspaceLoadResult {
+                config,
+                revision: rev,
+            })
+        },
+    )
+}
+
 /// Load workspace config from a .conlang file (absolute path).
 #[command]
 pub fn load_workspace(conlang_file_path: String) -> Result<WorkspaceConfig, String> {
-    let path = Path::new(&conlang_file_path);
-    if !path.exists() {
-        return Ok(WorkspaceConfig::default());
-    }
-    let content = fs::read_to_string(path).map_err(|e| e.to_string())?;
-    serde_json::from_str(&content).map_err(|e| e.to_string())
+    load_workspace_with_revision(conlang_file_path).map(|res| res.config)
 }
 
-/// Save workspace config to a .conlang file (absolute path).
+fn validate_no_parent_cycles(config: &WorkspaceConfig) -> Result<(), String> {
+    let parent_map: HashMap<&str, Option<&str>> = config
+        .languages
+        .iter()
+        .map(|l| (l.language_id.as_str(), l.parent_id.as_deref()))
+        .collect();
+
+    for lang in &config.languages {
+        let mut seen = HashSet::new();
+        seen.insert(lang.language_id.as_str());
+        let mut cur = lang.parent_id.as_deref();
+        while let Some(pid) = cur {
+            if !seen.insert(pid) {
+                return Err(format!(
+                    "VALIDATION: Parent cycle detected involving language '{}'",
+                    lang.language_id
+                ));
+            }
+            cur = parent_map.get(pid).copied().flatten();
+        }
+    }
+    Ok(())
+}
+
+/// Save workspace config to a .conlang file inside a project transaction.
+/// Automatically creates a project snapshot when any language's `parent_id` changes (§3.6).
 #[command]
-pub fn save_workspace(conlang_file_path: String, config: WorkspaceConfig) -> Result<(), String> {
-    let path = Path::new(&conlang_file_path);
-    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    atomic_write(path, &content)
+pub fn save_workspace(
+    conlang_file_path: String,
+    config: WorkspaceConfig,
+    expected_revision: Option<String>,
+    operation_id: Option<String>,
+) -> Result<WriteResult, String> {
+    validate_no_parent_cycles(&config)?;
+    let ws_path = Path::new(&conlang_file_path);
+    let payload = serde_json::json!({
+        "conlang_file_path": &conlang_file_path,
+        "config": &config,
+        "expected_revision": &expected_revision,
+    });
+
+    execute_project_transaction(
+        ws_path,
+        "save_workspace",
+        "gui",
+        operation_id,
+        &payload,
+        None,
+        |proj, op_id, _ctx| {
+            let ws_target = if ws_path.is_absolute() {
+                ws_path.to_path_buf()
+            } else {
+                proj.join(ws_path)
+            };
+            let ws_rel = if let Ok(r) = ws_target.strip_prefix(proj) {
+                normalize_rel_path(&r.to_string_lossy().replace('\\', "/"))?
+            } else {
+                let fname = ws_target
+                    .file_name()
+                    .ok_or_else(|| "VALIDATION: Invalid conlang_file_path".to_string())?
+                    .to_string_lossy();
+                normalize_rel_path(&fname)?
+            };
+
+            let mut parent_changed = false;
+            if ws_target.is_file() {
+                if let Ok(existing_str) = fs::read_to_string(&ws_target) {
+                    if let Ok(existing_cfg) = serde_json::from_str::<WorkspaceConfig>(&existing_str) {
+                        let old_parents: HashMap<&str, Option<&str>> = existing_cfg
+                            .languages
+                            .iter()
+                            .map(|l| (l.language_id.as_str(), l.parent_id.as_deref()))
+                            .collect();
+                        for lang in &config.languages {
+                            if let Some(&old_parent) = old_parents.get(lang.language_id.as_str()) {
+                                if old_parent != lang.parent_id.as_deref() {
+                                    parent_changed = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            let mut mutations: Vec<PlannedMutation> = Vec::new();
+            let mut snap_id: Option<String> = None;
+
+            if parent_changed {
+                let (sid, _) = record_project_snapshot_in_tx(
+                    proj,
+                    Some(&conlang_file_path),
+                    "gui",
+                    "reparent_language",
+                    "Before modifying language parent topology",
+                    None,
+                    &HashSet::new(),
+                    &mut mutations,
+                )?;
+                snap_id = Some(sid);
+            }
+
+            let bytes = serde_json::to_vec_pretty(&config).map_err(|e| format!("IO: {e}"))?;
+            mutations.push(PlannedMutation::WriteFile {
+                rel_path: ws_rel,
+                bytes,
+            });
+
+            let op_id_owned = op_id.to_string();
+            let snap_id_clone = snap_id.clone();
+
+            Ok(TransactionPlan {
+                expectations: vec![RevisionExpectation::file(
+                    "workspace",
+                    ws_target,
+                    expected_revision,
+                )],
+                mutations,
+                audit_summary: "Saved workspace configuration".to_string(),
+                language_id: None,
+                snapshot_id: snap_id,
+                build_response: Box::new(move |revs, warnings| WriteResult {
+                    operation_id: op_id_owned,
+                    revision: revs.get("workspace").cloned().unwrap_or_default(),
+                    revisions: Some(revs.clone()),
+                    snapshot_id: snap_id_clone,
+                    warnings,
+                }),
+            })
+        },
+    )
 }
 
 #[command]
 pub fn create_language_dir(project_path: String, lang_path: String) -> Result<(), String> {
-    let dir = Path::new(&project_path).join(&lang_path);
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())
+    let project_dir = Path::new(&project_path);
+    let payload = serde_json::json!({ "lang_path": &lang_path });
+    execute_project_transaction(
+        project_dir,
+        "create_language_dir",
+        "gui",
+        None,
+        &payload,
+        None,
+        |_proj, _op_id, _ctx| {
+            let rel = normalize_rel_path(&lang_path)?;
+            Ok(TransactionPlan {
+                expectations: Vec::new(),
+                mutations: vec![PlannedMutation::CreateDir { rel_path: rel.clone() }],
+                audit_summary: format!("Created language directory '{rel}'"),
+                language_id: None,
+                snapshot_id: None,
+                build_response: Box::new(|_, _| ()),
+            })
+        },
+    )
 }
 
 /// Create a brand-new project:
-/// 1. Creates the project directory
-/// 2. Creates a `{lang_name}-{random8}.conlang` config file
-/// 3. Creates the root language subdirectory
-/// Returns the WorkspaceConfig and the absolute path to the .conlang file.
+/// 1. Acquires coordination lock on target parent directory
+/// 2. Creates `{lang_name}-{random8}` directory + `.conlang` config + root language scaffold
 #[command]
 pub fn create_new_project(
     project_path: String,
     lang_name: String,
 ) -> Result<CreateProjectResult, String> {
-    fs::create_dir_all(&project_path).map_err(|e| e.to_string())?;
+    let parent_dir = Path::new(&project_path);
+    fs::create_dir_all(parent_dir).map_err(|e| e.to_string())?;
+    let parent_lock_dir = parent_dir.join(".conlang-maker-create.lock");
 
-    let safe_name = sanitize_filename(&lang_name);
-    let random_id = generate_short_id();
-    let project_dir_name = format!("{}-{}", safe_name, random_id);
-    let project_root = Path::new(&project_path).join(&project_dir_name);
-    if project_root.exists() {
-        return Err(format!(
-            "Project directory already exists: {}",
-            project_root.display()
-        ));
-    }
-    fs::create_dir_all(&project_root).map_err(|e| e.to_string())?;
+    let res = with_custom_lock_dir(&parent_lock_dir, "create_new_project", None, |_| {
+        let safe_name = sanitize_filename(&lang_name);
+        let random_id = generate_short_id();
+        let project_dir_name = format!("{safe_name}-{random_id}");
+        let project_root = parent_dir.join(&project_dir_name);
+        if project_root.exists() {
+            return Err(format!(
+                "Project directory already exists: {}",
+                project_root.display()
+            ));
+        }
+        fs::create_dir_all(&project_root).map_err(|e| e.to_string())?;
 
-    let lang_id = format!("lang_{}", random_id);
-    let lang_dir_name = "proto_language".to_string();
+        let lang_id = format!("lang_{random_id}");
+        let lang_dir_name = "proto_language".to_string();
 
-    let config = WorkspaceConfig {
-        workspace_version: "3.0".to_string(),
-        languages: vec![crate::models::LanguageEntry {
-            language_id: lang_id.clone(),
-            name: lang_name.clone(),
-            path: lang_dir_name.clone(),
-            parent_id: None,
-        }],
-    };
+        let config = WorkspaceConfig {
+            workspace_version: "3.0".to_string(),
+            languages: vec![LanguageEntry {
+                language_id: lang_id.clone(),
+                name: lang_name.clone(),
+                path: lang_dir_name.clone(),
+                parent_id: None,
+                extra: BTreeMap::new(),
+            }],
+            extra: BTreeMap::new(),
+        };
 
-    // Create language data directory scaffold
-    let lang_dir = project_root.join(&lang_dir_name);
-    fs::create_dir_all(&lang_dir).map_err(|e| e.to_string())?;
-    fs::create_dir_all(lang_dir.join("lexicon")).map_err(|e| e.to_string())?;
-    fs::create_dir_all(lang_dir.join("corpus")).map_err(|e| e.to_string())?;
+        let lang_dir = project_root.join(&lang_dir_name);
+        fs::create_dir_all(&lang_dir).map_err(|e| e.to_string())?;
+        fs::create_dir_all(lang_dir.join("lexicon")).map_err(|e| e.to_string())?;
+        fs::create_dir_all(lang_dir.join("corpus")).map_err(|e| e.to_string())?;
 
-    let phonology_json = serde_json::json!({
-        "language_id": lang_id,
-        "phoneme_inventory": {
-            "consonants": [],
-            "vowels": []
-        },
-        "romanization_maps": [],
-        "phonotactics": {
-            "macros": {},
-            "syllable_structure": "(C)V(C)",
-            "blacklist_patterns": [],
-            "vowel_harmony": {
-                "enabled": false,
-                "group_a": [],
-                "group_b": []
+        let phonology_json = serde_json::json!({
+            "language_id": lang_id,
+            "phoneme_inventory": {
+                "consonants": [],
+                "vowels": []
             },
-            "tone_system": {
-                "enabled": false,
-                "tones": []
-            }
-        },
-        "allophony_rules": []
+            "romanization_maps": [],
+            "phonotactics": {
+                "macros": {},
+                "syllable_structure": "(C)V(C)",
+                "blacklist_patterns": [],
+                "vowel_harmony": {
+                    "enabled": false,
+                    "group_a": [],
+                    "group_b": []
+                },
+                "tone_system": {
+                    "enabled": false,
+                    "tones": []
+                }
+            },
+            "allophony_rules": []
+        });
+        atomic_write(
+            &lang_dir.join("phonology.json"),
+            &serde_json::to_string_pretty(&phonology_json).map_err(|e| e.to_string())?,
+        )?;
+
+        let mut grammar = GrammarConfig::default();
+        grammar.language_id = format!("lang_{random_id}");
+        atomic_write(
+            &lang_dir.join("grammar.json"),
+            &serde_json::to_string_pretty(&grammar).map_err(|e| e.to_string())?,
+        )?;
+
+        let mut sca = SCAConfig::default();
+        sca.language_id = format!("lang_{random_id}");
+        atomic_write(
+            &lang_dir.join("sca_rules.json"),
+            &serde_json::to_string_pretty(&sca).map_err(|e| e.to_string())?,
+        )?;
+
+        let conlang_filename = format!("{safe_name}-{random_id}.conlang");
+        let conlang_path = project_root.join(&conlang_filename);
+
+        let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
+        atomic_write(&conlang_path, &content)?;
+
+        let conlang_file_path = conlang_path
+            .to_str()
+            .ok_or_else(|| "Invalid path encoding".to_string())?
+            .to_string();
+
+        Ok(CreateProjectResult {
+            config,
+            conlang_file_path,
+        })
     });
-    atomic_write(
-        &lang_dir.join("phonology.json"),
-        &serde_json::to_string_pretty(&phonology_json).map_err(|e| e.to_string())?,
-    )?;
 
-    let mut grammar = GrammarConfig::default();
-    grammar.language_id = format!("lang_{}", random_id);
-    atomic_write(
-        &lang_dir.join("grammar.json"),
-        &serde_json::to_string_pretty(&grammar).map_err(|e| e.to_string())?,
-    )?;
-
-    let mut sca = SCAConfig::default();
-    sca.language_id = format!("lang_{}", random_id);
-    atomic_write(
-        &lang_dir.join("sca_rules.json"),
-        &serde_json::to_string_pretty(&sca).map_err(|e| e.to_string())?,
-    )?;
-
-    // Generate .conlang filename: sanitized_name-random8.conlang
-    let conlang_filename = format!("{}-{}.conlang", safe_name, random_id);
-    let conlang_path = project_root.join(&conlang_filename);
-
-    let content = serde_json::to_string_pretty(&config).map_err(|e| e.to_string())?;
-    atomic_write(&conlang_path, &content)?;
-
-    let conlang_file_path = conlang_path
-        .to_str()
-        .ok_or_else(|| "Invalid path encoding".to_string())?
-        .to_string();
-
-    Ok(CreateProjectResult {
-        config,
-        conlang_file_path,
-    })
+    let _ = fs::remove_dir(&parent_lock_dir);
+    res
 }
 
-/// Copy an entire project to a new location (Save As).
-/// Creates a new directory at `dest_dir`, copies all source files,
-/// and generates a new .conlang file with the new name.
-/// Returns the absolute path to the new .conlang file.
+/// Copy an entire project to a new location (Save As), acquiring a consistent read lock on source.
 #[command]
 pub fn copy_project(
     source_conlang_file_path: String,
@@ -149,10 +328,7 @@ pub fn copy_project(
 
     let dest = Path::new(&dest_dir);
     if dest.exists() {
-        return Err(format!(
-            "Destination directory already exists: {}",
-            dest_dir
-        ));
+        return Err(format!("Destination directory already exists: {dest_dir}"));
     }
 
     let source_abs = source_project_dir
@@ -161,6 +337,7 @@ pub fn copy_project(
     let dest_parent = dest
         .parent()
         .ok_or_else(|| "Invalid destination directory".to_string())?;
+    fs::create_dir_all(dest_parent).map_err(|e| e.to_string())?;
     let dest_parent_abs = dest_parent.canonicalize().map_err(|e| e.to_string())?;
     let dest_abs = dest_parent_abs.join(
         dest.file_name()
@@ -171,19 +348,18 @@ pub fn copy_project(
         return Err("Destination cannot be inside the source project directory".to_string());
     }
 
-    // Deep copy entire project directory
-    copy_dir_recursive(source_project_dir, dest)?;
+    with_consistent_read(source_project_dir, "copy_project", true, None, |_, _| {
+        copy_dir_recursive_clean(source_project_dir, dest)
+    })?;
 
-    // Find and rename the .conlang file in the destination
     let old_conlang_name = source_conlang
         .file_name()
         .ok_or_else(|| "Cannot determine source .conlang filename".to_string())?;
     let old_dest_conlang = dest.join(old_conlang_name);
 
-    // Generate new .conlang filename
     let safe_name = sanitize_filename(&new_name);
     let random_id = generate_short_id();
-    let new_conlang_filename = format!("{}-{}.conlang", safe_name, random_id);
+    let new_conlang_filename = format!("{safe_name}-{random_id}.conlang");
     let new_dest_conlang = dest.join(&new_conlang_filename);
 
     if old_dest_conlang.exists() {
@@ -196,7 +372,6 @@ pub fn copy_project(
         .ok_or_else(|| "Invalid path encoding".to_string())
 }
 
-/// Generate an 8-character lowercase alphanumeric ID.
 fn generate_short_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let mut value = SystemTime::now()
@@ -214,12 +389,12 @@ fn generate_short_id() -> String {
     String::from_utf8(out.to_vec()).unwrap_or_else(|_| "00000000".to_string())
 }
 
-/// Sanitize a name for use in filenames.
 fn sanitize_filename(name: &str) -> String {
     let sanitized: String = name
         .chars()
         .map(|c| {
-            if c.is_alphanumeric() || c == '-' || c == '_' || (c >= '\u{4e00}' && c <= '\u{9fff}') {
+            if c.is_alphanumeric() || c == '-' || c == '_' || ('\u{4e00}'..='\u{9fff}').contains(&c)
+            {
                 c
             } else {
                 '_'
@@ -233,14 +408,28 @@ fn sanitize_filename(name: &str) -> String {
     }
 }
 
-fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<(), String> {
+fn copy_dir_recursive_clean(src: &Path, dst: &Path) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| e.to_string())?;
     for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
+        let fname = entry.file_name();
+        let fname_str = fname.to_string_lossy();
+        if fname_str == ".conlang.lock" || fname_str.ends_with(".tmp") {
+            continue;
+        }
         let src_path = entry.path();
-        let dst_path = dst.join(entry.file_name());
+        let dst_path = dst.join(&fname);
         if src_path.is_dir() {
-            copy_dir_recursive(&src_path, &dst_path)?;
+            // Skip ephemeral `.conlang-maker/lock` and `.conlang-maker/transactions`
+            if fname_str == "lock" || fname_str == "transactions" {
+                if src
+                    .file_name()
+                    .is_some_and(|p| p == ".conlang-maker")
+                {
+                    continue;
+                }
+            }
+            copy_dir_recursive_clean(&src_path, &dst_path)?;
         } else {
             fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
         }

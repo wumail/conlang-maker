@@ -1,0 +1,76 @@
+{
+  "language_id": "lang_child",
+  "syntax": {
+    "word_order": "SOV",
+    "modifier_position": "before_head",
+    "adposition_type": "postposition"
+  },
+  "parts_of_speech": [
+    {
+      "pos_id": "pos_noun",
+      "name": "Noun",
+      "gloss_abbr": "N",
+      "word_pattern": "",
+      "requires_definition": true,
+      "requires_pronunciation": false
+    },
+    {
+      "pos_id": "pos_verb",
+      "name": "Verb",
+      "gloss_abbr": "V",
+      "word_pattern": "",
+      "requires_definition": true,
+      "requires_pronunciation": false
+    }
+  ],
+  "inflection_dimensions": [
+    {
+      "dim_id": "dim_num",
+      "name": "Number",
+      "applies_to_pos": [
+        "pos_noun"
+      ],
+      "values": [
+        {
+          "val_id": "val_sg",
+          "name": "Singular",
+          "gloss": "SG"
+        },
+        {
+          "val_id": "val_pl",
+          "name": "Plural",
+          "gloss": "PL"
+        }
+      ]
+    }
+  ],
+  "inflection_rules": [
+    {
+      "rule_id": "infl_child_pl",
+      "pos_id": "pos_noun",
+      "dimension_values": {
+        "dim_num": "val_pl"
+      },
+      "type": "suffix",
+      "affix": "ta",
+      "tag": "PL",
+      "match_regex": ".*",
+      "disabled": false,
+      "condition": null,
+      "sca_mutable": true
+    }
+  ],
+  "derivation_rules": [],
+  "grammar_manual": [],
+  "typology": {
+    "morphological_type": "agglutinative",
+    "synthesis_index": 2.0,
+    "fusion_index": 1.2,
+    "head_marking": "dependent",
+    "auto_estimated": true
+  },
+  "affix_slots": [],
+  "conjugation_classes": [],
+  "irregular_overrides": [],
+  "x_unknown_child_grammar": "keep_child_grammar"
+}

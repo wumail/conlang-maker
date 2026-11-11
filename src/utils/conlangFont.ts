@@ -2,17 +2,9 @@ import { useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useFontStore } from "../store/fontStore";
-import type { FontInspection } from "../types";
+import type { FontInspection, ResolvedFontBytes } from "../types";
 
 const FONT_FAMILY = "ConlangScript";
-
-interface ResolvedFontBytes {
-  owner_language_id: string;
-  owner_name: string;
-  inherited: boolean;
-  file_name: string;
-  bytes_base64: string;
-}
 
 let activeFace: FontFace | null = null;
 let loadToken = 0;
@@ -34,7 +26,12 @@ export function fetchFontInspection(
   languageId: string,
   revision: number,
 ): Promise<FontInspection> {
-  const key = makeFontInspectionKey(projectPath, conlangFilePath, languageId, revision);
+  const key = makeFontInspectionKey(
+    projectPath,
+    conlangFilePath,
+    languageId,
+    revision,
+  );
   const store = useFontStore.getState();
   if (store.inspectionKey === key && store.inspection) {
     return Promise.resolve(store.inspection);
@@ -57,6 +54,14 @@ export function fetchFontInspection(
   return promise;
 }
 
+/** Invalidate cached FontInspection & FontFace and trigger re-load for active language. */
+export function invalidateFontCache(): void {
+  inflightInspectionKey = "";
+  inflightInspectionPromise = null;
+  clearLoadedFont();
+  useFontStore.getState().bump();
+}
+
 export function decodeBase64(value: string): Uint8Array {
   const binary = atob(value);
   const bytes = new Uint8Array(binary.length);
@@ -66,7 +71,8 @@ export function decodeBase64(value: string): Uint8Array {
   return bytes;
 }
 
-function clearLoadedFont() {
+function clearLoadedFont(): void {
+  if (typeof document === "undefined") return;
   if (activeFace) {
     document.fonts.delete(activeFace);
     activeFace = null;
@@ -75,13 +81,18 @@ function clearLoadedFont() {
   document.documentElement.removeAttribute("data-conlang-font");
 }
 
-export async function applyResolvedFont(bytesOrBase64: Uint8Array | string | null): Promise<boolean> {
+export async function applyResolvedFont(
+  bytesOrBase64: Uint8Array | string | null,
+): Promise<boolean> {
   const token = ++loadToken;
   clearLoadedFont();
-  if (!bytesOrBase64) return false;
+  if (!bytesOrBase64 || typeof document === "undefined") return false;
 
   try {
-    const bytes = typeof bytesOrBase64 === "string" ? decodeBase64(bytesOrBase64) : bytesOrBase64;
+    const bytes =
+      typeof bytesOrBase64 === "string"
+        ? decodeBase64(bytesOrBase64)
+        : bytesOrBase64;
     const face = new FontFace(FONT_FAMILY, bytes, {
       weight: "400",
       style: "normal",
@@ -91,7 +102,10 @@ export async function applyResolvedFont(bytesOrBase64: Uint8Array | string | nul
     if (token !== loadToken) return false;
     document.fonts.add(face);
     activeFace = face;
-    document.documentElement.style.setProperty("--conlang-font", `"${FONT_FAMILY}"`);
+    document.documentElement.style.setProperty(
+      "--conlang-font",
+      `"${FONT_FAMILY}"`,
+    );
     document.documentElement.setAttribute("data-conlang-font", "on");
     return true;
   } catch (err) {
@@ -102,7 +116,7 @@ export async function applyResolvedFont(bytesOrBase64: Uint8Array | string | nul
 }
 
 /** Load the active language's resolved font whenever the language or its file changes. */
-export function useConlangFont() {
+export function useConlangFont(): void {
   const projectPath = useWorkspaceStore((state) => state.projectPath);
   const conlangFilePath = useWorkspaceStore((state) => state.conlangFilePath);
   const activeLanguageId = useWorkspaceStore((state) => state.activeLanguageId);
@@ -116,11 +130,13 @@ export function useConlangFont() {
       codepoints: null,
       inspection: null,
       inspectionKey: "",
+      ownFileRevision: "missing",
+      resolvedFileRevision: null,
       loaded: false,
       loading: true,
       error: null,
     });
-    const run = async () => {
+    const run = async (): Promise<void> => {
       if (!conlangFilePath || !activeLanguageId) {
         await applyResolvedFont(null);
         if (!cancelled) {
@@ -128,13 +144,20 @@ export function useConlangFont() {
             codepoints: null,
             inspection: null,
             inspectionKey: "",
+            ownFileRevision: "missing",
+            resolvedFileRevision: null,
             loaded: false,
             loading: false,
           });
         }
         return;
       }
-      const key = makeFontInspectionKey(projectPath, conlangFilePath, activeLanguageId, revision);
+      const key = makeFontInspectionKey(
+        projectPath,
+        conlangFilePath,
+        activeLanguageId,
+        revision,
+      );
       try {
         const [font, inspection] = await Promise.all([
           invoke<ResolvedFontBytes | null>("read_resolved_font", {
@@ -142,13 +165,20 @@ export function useConlangFont() {
             conlangFilePath,
             languageId: activeLanguageId,
           }),
-          fetchFontInspection(projectPath, conlangFilePath, activeLanguageId, revision).catch((err) => {
+          fetchFontInspection(
+            projectPath,
+            conlangFilePath,
+            activeLanguageId,
+            revision,
+          ).catch((err) => {
             console.warn(`读取字体字符表失败：${err}`);
             return null;
           }),
         ]);
         if (cancelled) return;
-        const decodedBytes = font?.bytes_base64 ? decodeBase64(font.bytes_base64) : null;
+        const decodedBytes = font?.bytes_base64
+          ? decodeBase64(font.bytes_base64)
+          : null;
         const loaded = await applyResolvedFont(decodedBytes);
         if (cancelled) return;
         const codes =
@@ -159,6 +189,8 @@ export function useConlangFont() {
           codepoints: loaded ? codes : null,
           inspection,
           inspectionKey: inspection ? key : "",
+          ownFileRevision: inspection?.revision ?? "missing",
+          resolvedFileRevision: inspection?.resolved_revision ?? null,
           loaded,
           loading: false,
           error: null,
@@ -171,6 +203,8 @@ export function useConlangFont() {
             codepoints: null,
             inspection: null,
             inspectionKey: "",
+            ownFileRevision: "missing",
+            resolvedFileRevision: null,
             loaded: false,
             loading: false,
             error: String(err),

@@ -1,0 +1,333 @@
+{
+  "annotations_owner_id": "lang_child",
+  "annotations_source": "inherited",
+  "config": {
+    "allophony_rules": [],
+    "glyph_annotations": [
+      {
+        "codepoint": 97,
+        "kind": "vowel",
+        "label": "child-a",
+        "phonemes": [
+          "a"
+        ]
+      },
+      {
+        "codepoint": 99,
+        "kind": "base",
+        "label": "child-ca",
+        "phonemes": [
+          "k",
+          "a"
+        ]
+      }
+    ],
+    "language_id": "lang_leaf",
+    "phoneme_inventory": {
+      "consonants": [
+        "k",
+        "g",
+        "h",
+        "tʃ",
+        "ʃ"
+      ],
+      "vowels": [
+        "a"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "k",
+          "g",
+          "h",
+          "tʃ",
+          "ʃ"
+        ],
+        "V": [
+          "a"
+        ]
+      },
+      "syllable_structure": "(C)V(C)",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_leaf_default",
+        "name": "Modern Standard",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_leaf_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "c",
+            "output_phoneme": "k",
+            "rule_id": "rule_leaf_c"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "h",
+            "output_phoneme": "h",
+            "rule_id": "rule_leaf_h"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "ch",
+            "output_phoneme": "tʃ",
+            "rule_id": "rule_leaf_ch"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "sh",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_sh"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "x",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_x"
+          }
+        ]
+      }
+    ],
+    "x_unknown_leaf_phono": "keep_leaf_phono"
+  },
+  "dependencies": {
+    "ancestor_font:lang_child": "missing",
+    "ancestor_font:lang_root": "89cfc145201e358f",
+    "ancestor_phonology:lang_child": "5f4265edfc8fc64a",
+    "ancestor_phonology:lang_root": "04e2a4fc65112458",
+    "local_phonology": "36bf243b6881594f",
+    "own_font": "46c9a4c0932d937f",
+    "workspace": "3b3f41d6a8cb2e9a"
+  },
+  "effective_config": {
+    "allophony_rules": [],
+    "glyph_annotations": [
+      {
+        "codepoint": 97,
+        "kind": "vowel",
+        "label": "child-a",
+        "phonemes": [
+          "a"
+        ]
+      },
+      {
+        "codepoint": 99,
+        "kind": "base",
+        "label": "child-ca",
+        "phonemes": [
+          "k",
+          "a"
+        ]
+      }
+    ],
+    "language_id": "lang_leaf",
+    "phoneme_inventory": {
+      "consonants": [
+        "k",
+        "g",
+        "h",
+        "tʃ",
+        "ʃ"
+      ],
+      "vowels": [
+        "a"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "k",
+          "g",
+          "h",
+          "tʃ",
+          "ʃ"
+        ],
+        "V": [
+          "a"
+        ]
+      },
+      "syllable_structure": "(C)V(C)",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_leaf_default",
+        "name": "Modern Standard",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_leaf_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "c",
+            "output_phoneme": "k",
+            "rule_id": "rule_leaf_c"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "h",
+            "output_phoneme": "h",
+            "rule_id": "rule_leaf_h"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "ch",
+            "output_phoneme": "tʃ",
+            "rule_id": "rule_leaf_ch"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "sh",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_sh"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "x",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_x"
+          }
+        ]
+      }
+    ],
+    "x_unknown_leaf_phono": "keep_leaf_phono"
+  },
+  "effective_revision": "74e9f4559989b771",
+  "legacy_fields_present": false,
+  "local_config": {
+    "allophony_rules": [],
+    "language_id": "lang_leaf",
+    "phoneme_inventory": {
+      "consonants": [
+        "k",
+        "g",
+        "h",
+        "tʃ",
+        "ʃ"
+      ],
+      "vowels": [
+        "a"
+      ]
+    },
+    "phonotactics": {
+      "blacklist_patterns": [],
+      "macros": {
+        "C": [
+          "k",
+          "g",
+          "h",
+          "tʃ",
+          "ʃ"
+        ],
+        "V": [
+          "a"
+        ]
+      },
+      "syllable_structure": "(C)V(C)",
+      "tone_system": {
+        "enabled": false,
+        "tones": []
+      },
+      "vowel_harmony": {
+        "enabled": false,
+        "group_a": [],
+        "group_b": []
+      }
+    },
+    "romanization_maps": [
+      {
+        "is_default": true,
+        "map_id": "map_leaf_default",
+        "name": "Modern Standard",
+        "rules": [
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "a",
+            "output_phoneme": "a",
+            "rule_id": "rule_leaf_a"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "c",
+            "output_phoneme": "k",
+            "rule_id": "rule_leaf_c"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "h",
+            "output_phoneme": "h",
+            "rule_id": "rule_leaf_h"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "ch",
+            "output_phoneme": "tʃ",
+            "rule_id": "rule_leaf_ch"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "sh",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_sh"
+          },
+          {
+            "context_after": "",
+            "context_before": "",
+            "input": "x",
+            "output_phoneme": "ʃ",
+            "rule_id": "rule_leaf_x"
+          }
+        ]
+      }
+    ],
+    "x_unknown_leaf_phono": "keep_leaf_phono"
+  },
+  "revision": "36bf243b6881594f"
+}

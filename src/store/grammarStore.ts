@@ -1,30 +1,51 @@
 import { create } from "zustand";
+import { invoke } from "@tauri-apps/api/core";
 import {
-  GrammarConfig,
-  InflectionRule,
-  InflectionDimension,
-  DerivationRule,
-  GrammarChapter,
-  PartOfSpeech,
-  SyntaxConfig,
-  MorphologyType,
-  TypologyConfig,
   AffixSlot,
   ConjugationClass,
+  DerivationRule,
+  GrammarChapter,
+  GrammarConfig,
+  GrammarLoadResult,
+  InflectionDimension,
+  InflectionRule,
   IrregularOverride,
+  MorphologyType,
+  PartOfSpeech,
+  SyntaxConfig,
+  TypologyConfig,
+  WriteResult,
 } from "../types";
-import { invoke } from "@tauri-apps/api/core";
 import { DEFAULT_LANGUAGE_ID } from "../constants";
+import {
+  computeJsonDiffSummary,
+  generateOperationId,
+  isConflictError,
+  mergeById,
+  recordGuiOperationId,
+  useConflictStore,
+} from "./conflictStore";
 
 interface GrammarStore {
   config: GrammarConfig;
   projectPath: string;
   languagePath: string;
+  revision: string;
+  dirty: boolean;
+  paused: boolean;
 
   setProjectPath: (path: string) => void;
   setLanguagePath: (path: string) => void;
   loadConfig: (projectPath: string, languagePath: string) => Promise<void>;
   saveConfig: () => void;
+  flushSaves: () => Promise<void>;
+  isDirty: (projectPath?: string, languagePath?: string) => boolean;
+  pauseAutoSave: (projectPath?: string, languagePath?: string) => void;
+  triggerExternalConflict: (
+    projectPath: string,
+    languagePath: string,
+    origin?: "gui" | "mcp" | "external",
+  ) => Promise<void>;
 
   // Syntax
   updateSyntax: (syntax: SyntaxConfig) => void;
@@ -162,65 +183,15 @@ const defaultConfig: GrammarConfig = {
   irregular_overrides: [],
 };
 
-/** 单一配置实体，共享 timer 无风险 */
-let saveTimeout: ReturnType<typeof setTimeout>;
-
-const debouncedSave = (
-  projectPath: string,
-  languagePath: string,
-  config: GrammarConfig,
-) => {
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(async () => {
-    try {
-      await invoke("save_grammar", { projectPath, languagePath, config });
-    } catch (err) {
-      console.warn(`语法配置保存失败：${err}`);
-    }
-  }, 500);
-};
-
-/** Phase 1 → Phase 2 → Typology 数据迁移：补充缺失的新字段 */
-interface RawGrammarConfig {
-  language_id?: string;
-  syntax?: SyntaxConfig;
-  parts_of_speech?: PartOfSpeech[];
-  inflection_dimensions?: InflectionDimension[];
-  inflection_rules?: RawInflectionRule[];
-  inflections?: RawInflectionRule[];
-  derivation_rules?: DerivationRule[];
-  grammar_manual?: GrammarChapter[];
-  typology?: TypologyConfig;
-  affix_slots?: AffixSlot[];
-  conjugation_classes?: ConjugationClass[];
-  irregular_overrides?: IrregularOverride[];
+interface LegacyGrammarShape extends Partial<GrammarConfig> {
+  inflections?: Partial<InflectionRule>[];
 }
 
-/** Phase 1 遗留格式：缺少 dimension_values / condition 等字段 */
-interface RawInflectionRule {
-  rule_id: string;
-  pos_id: string;
-  dimension_values?: Record<string, string>;
-  type: MorphologyType | string;
-  affix: string;
-  tag: string;
-  match_regex?: string;
-  disabled?: boolean;
-  condition?: InflectionRule["condition"];
-  infix_config?: InflectionRule["infix_config"];
-  circumfix_config?: InflectionRule["circumfix_config"];
-  reduplication_config?: InflectionRule["reduplication_config"];
-  ablaut_config?: InflectionRule["ablaut_config"];
-  slot_id?: string;
-  conjugation_class_id?: string;
-  fused_dimensions?: Record<string, string>[];
-  sca_mutable?: boolean;
-}
-
-function migrateInflectionRule(raw: RawInflectionRule): InflectionRule {
+function migrateInflectionRule(raw: Partial<InflectionRule>): InflectionRule {
   return {
-    rule_id: raw.rule_id,
-    pos_id: raw.pos_id,
+    ...raw,
+    rule_id: raw.rule_id ?? "",
+    pos_id: raw.pos_id ?? "",
     dimension_values: raw.dimension_values ?? {},
     type: (raw.type as MorphologyType) || "suffix",
     affix: raw.affix ?? "",
@@ -239,281 +210,573 @@ function migrateInflectionRule(raw: RawInflectionRule): InflectionRule {
   };
 }
 
+function normalizeLoadedGrammar(raw: GrammarConfig): GrammarConfig {
+  const legacy = raw as LegacyGrammarShape;
+  const rawRules = legacy.inflection_rules ?? legacy.inflections ?? [];
+  return {
+    ...raw,
+    language_id: legacy.language_id || DEFAULT_LANGUAGE_ID,
+    syntax: legacy.syntax
+      ? { ...defaultConfig.syntax, ...legacy.syntax }
+      : defaultConfig.syntax,
+    parts_of_speech: legacy.parts_of_speech?.length
+      ? legacy.parts_of_speech
+      : defaultConfig.parts_of_speech,
+    inflection_dimensions: legacy.inflection_dimensions ?? [],
+    inflection_rules: rawRules.map(migrateInflectionRule),
+    derivation_rules: legacy.derivation_rules ?? [],
+    grammar_manual: legacy.grammar_manual ?? [],
+    typology: legacy.typology
+      ? { ...DEFAULT_TYPOLOGY, ...legacy.typology }
+      : DEFAULT_TYPOLOGY,
+    affix_slots: legacy.affix_slots ?? [],
+    conjugation_classes: legacy.conjugation_classes ?? [],
+    irregular_overrides: legacy.irregular_overrides ?? [],
+  };
+}
+
+function mergeIrregularOverrides(
+  existing: IrregularOverride[] | undefined,
+  incoming: IrregularOverride[],
+): IrregularOverride[] {
+  if (!existing || existing.length === 0) return incoming;
+  const byKey = new Map<string, IrregularOverride>();
+  for (const item of existing) {
+    byKey.set(
+      JSON.stringify([item.entry_id, item.dimension_values]),
+      item,
+    );
+  }
+  return incoming.map((item) => {
+    const prev = byKey.get(
+      JSON.stringify([item.entry_id, item.dimension_values]),
+    );
+    return prev ? { ...prev, ...item } : item;
+  });
+}
+
+interface PendingGrammarSave {
+  projectPath: string;
+  languagePath: string;
+  config: GrammarConfig;
+  expectedRevision: string;
+  operationId: string;
+  version: number;
+}
+
+const pendingSaves = new Map<string, PendingGrammarSave>();
+const saveTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const inFlightSaves = new Map<string, Promise<void>>();
+const saveVersions = new Map<string, number>();
+
+function makeKey(projectPath: string, languagePath: string): string {
+  return JSON.stringify([projectPath, languagePath]);
+}
+
 let loadGeneration = 0;
 
-export const useGrammarStore = create<GrammarStore>((set, get) => ({
-  config: defaultConfig,
-  projectPath: ".",
-  languagePath: "proto_language",
+export const useGrammarStore = create<GrammarStore>((set, get) => {
+  const clearTimer = (key: string): void => {
+    const t = saveTimers.get(key);
+    if (t) {
+      clearTimeout(t);
+      saveTimers.delete(key);
+    }
+  };
 
-  setProjectPath: (path) => set({ projectPath: path }),
-  setLanguagePath: (path) => set({ languagePath: path }),
+  const raiseConflict = async (
+    projectPath: string,
+    languagePath: string,
+    localConfig: GrammarConfig,
+    localRevision: string,
+    origin: "gui" | "mcp" | "external" = "external",
+    reason = "CONFLICT",
+  ): Promise<void> => {
+    const key = makeKey(projectPath, languagePath);
+    clearTimer(key);
+    if (get().projectPath === projectPath && get().languagePath === languagePath) {
+      set({ paused: true, dirty: true });
+    }
 
-  loadConfig: async (projectPath: string, languagePath: string) => {
-    const generation = ++loadGeneration;
+    let diskConfig = localConfig;
+    let diskRevision = localRevision;
     try {
-      const raw = await invoke<RawGrammarConfig>("load_grammar", {
+      const latest = await invoke<GrammarLoadResult>(
+        "load_grammar_with_revision",
+        { projectPath, languagePath },
+      );
+      diskConfig = normalizeLoadedGrammar(latest.config);
+      diskRevision = latest.revision;
+    } catch (err) {
+      console.warn(`Failed to read latest grammar on conflict: ${err}`);
+    }
+
+    const diff = computeJsonDiffSummary(localConfig, diskConfig);
+    useConflictStore.getState().upsertConflict(
+      {
+        key: `grammar:${key}`,
+        kind: "grammar",
         projectPath,
         languagePath,
-      });
-      if (generation !== loadGeneration) return;
-      const rawRules = raw.inflection_rules || raw.inflections || [];
-      const config: GrammarConfig = {
-        language_id: raw.language_id || DEFAULT_LANGUAGE_ID,
-        syntax: raw.syntax || defaultConfig.syntax,
-        parts_of_speech: raw.parts_of_speech?.length
-          ? raw.parts_of_speech
-          : defaultConfig.parts_of_speech,
-        inflection_dimensions: raw.inflection_dimensions || [],
-        inflection_rules: rawRules.map(migrateInflectionRule),
-        derivation_rules: raw.derivation_rules || [],
-        grammar_manual: raw.grammar_manual || [],
-        typology: raw.typology
-          ? { ...DEFAULT_TYPOLOGY, ...raw.typology }
-          : DEFAULT_TYPOLOGY,
-        affix_slots: raw.affix_slots || [],
-        conjugation_classes: raw.conjugation_classes || [],
-        irregular_overrides: raw.irregular_overrides || [],
-      };
-      set({ config, projectPath, languagePath });
-    } catch (err) {
-      if (generation !== loadGeneration) return;
-      console.warn(`加载语法配置失败：${err}`);
-      throw err;
+        languageId: localConfig.language_id || null,
+        corpusId: null,
+        origin,
+        diskRevision,
+        reason,
+        changedFields: diff.changedFields,
+        localPreview: diff.localPreview,
+        diskPreview: diff.diskPreview,
+      },
+      {
+        keepLocal: async () => {
+          const latest = await invoke<GrammarLoadResult>(
+            "load_grammar_with_revision",
+            { projectPath, languagePath },
+          );
+          const currentConfig =
+            get().projectPath === projectPath &&
+            get().languagePath === languagePath
+              ? get().config
+              : localConfig;
+          const opId = generateOperationId();
+          recordGuiOperationId(opId);
+          const writeRes = await invoke<WriteResult>("save_grammar", {
+            projectPath,
+            languagePath,
+            config: currentConfig,
+            expectedRevision: latest.revision,
+            operationId: opId,
+          });
+          pendingSaves.delete(key);
+          if (
+            get().projectPath === projectPath &&
+            get().languagePath === languagePath
+          ) {
+            set({
+              revision: writeRes.revision,
+              dirty: false,
+              paused: false,
+            });
+          }
+        },
+        useDisk: async () => {
+          pendingSaves.delete(key);
+          clearTimer(key);
+          if (
+            get().projectPath === projectPath &&
+            get().languagePath === languagePath
+          ) {
+            set({ paused: false, dirty: false });
+            await get().loadConfig(projectPath, languagePath);
+          }
+        },
+      },
+    );
+  };
+
+  const flushKey = async (key: string): Promise<void> => {
+    clearTimer(key);
+    while (true) {
+      const active = inFlightSaves.get(key);
+      if (active) {
+        await active;
+        continue;
+      }
+      const next = pendingSaves.get(key);
+      if (!next) return;
+      if (
+        get().paused &&
+        get().projectPath === next.projectPath &&
+        get().languagePath === next.languagePath
+      ) {
+        return;
+      }
+
+      pendingSaves.delete(key);
+      const run = (async () => {
+        recordGuiOperationId(next.operationId);
+        try {
+          const result = await invoke<WriteResult>("save_grammar", {
+            projectPath: next.projectPath,
+            languagePath: next.languagePath,
+            config: next.config,
+            expectedRevision: next.expectedRevision,
+            operationId: next.operationId,
+          });
+          const queued = pendingSaves.get(key);
+          if (queued && queued.expectedRevision === next.expectedRevision) {
+            queued.expectedRevision = result.revision;
+          }
+          if (
+            get().projectPath === next.projectPath &&
+            get().languagePath === next.languagePath
+          ) {
+            const latestVer = saveVersions.get(key) ?? 0;
+            set({
+              revision: result.revision,
+              dirty: queued !== undefined || latestVer > next.version,
+            });
+          }
+        } catch (err) {
+          if (isConflictError(err)) {
+            pendingSaves.set(key, next);
+            await raiseConflict(
+              next.projectPath,
+              next.languagePath,
+              next.config,
+              next.expectedRevision,
+            );
+            return;
+          }
+          console.warn(`语法配置保存失败：${err}`);
+          const latestVersion = saveVersions.get(key) ?? 0;
+          if (!pendingSaves.has(key) && latestVersion === next.version) {
+            pendingSaves.set(key, next);
+          }
+        } finally {
+          inFlightSaves.delete(key);
+        }
+      })();
+      inFlightSaves.set(key, run);
+      await run;
+
+      if (pendingSaves.get(key)?.version === next.version) {
+        return;
+      }
     }
-  },
+  };
 
-  saveConfig: () => {
-    const { projectPath, languagePath, config } = get();
-    debouncedSave(projectPath, languagePath, config);
-  },
-
-  updateSyntax: (syntax) => {
-    set((state) => ({ config: { ...state.config, syntax } }));
-    get().saveConfig();
-  },
-
-  updateTypology: (typology) => {
-    set((state) => ({ config: { ...state.config, typology } }));
-    get().saveConfig();
-  },
-
-  setAffixSlots: (slots) => {
-    set((state) => ({ config: { ...state.config, affix_slots: slots } }));
-    get().saveConfig();
-  },
-
-  setConjugationClasses: (classes) => {
+  const applyEdit = (updater: (prev: GrammarConfig) => GrammarConfig): void => {
     set((state) => ({
-      config: { ...state.config, conjugation_classes: classes },
+      config: updater(state.config),
+      dirty: true,
     }));
     get().saveConfig();
-  },
+  };
 
-  setIrregularOverrides: (overrides) => {
-    set((state) => ({
-      config: { ...state.config, irregular_overrides: overrides },
-    }));
-    get().saveConfig();
-  },
+  return {
+    config: defaultConfig,
+    projectPath: ".",
+    languagePath: "proto_language",
+    revision: "missing",
+    dirty: false,
+    paused: false,
 
-  // ── Parts of Speech ────────────────────────────────────
+    setProjectPath: (path) => set({ projectPath: path }),
+    setLanguagePath: (path) => set({ languagePath: path }),
 
-  addPartOfSpeech: (pos) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        parts_of_speech: [...state.config.parts_of_speech, pos],
-      },
-    }));
-    get().saveConfig();
-  },
+    loadConfig: async (projectPath: string, languagePath: string) => {
+      await get().flushSaves();
+      const generation = ++loadGeneration;
+      try {
+        const loaded = await invoke<GrammarLoadResult>(
+          "load_grammar_with_revision",
+          {
+            projectPath,
+            languagePath,
+          },
+        );
+        if (generation !== loadGeneration) return;
+        const config = normalizeLoadedGrammar(loaded.config);
+        set({
+          config,
+          projectPath,
+          languagePath,
+          revision: loaded.revision,
+          dirty: false,
+          paused: false,
+        });
+      } catch (err) {
+        if (generation !== loadGeneration) return;
+        console.warn(`加载语法配置失败：${err}`);
+        throw err;
+      }
+    },
 
-  updatePartOfSpeech: (posId, pos) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        parts_of_speech: state.config.parts_of_speech.map((p) =>
-          p.pos_id === posId ? pos : p,
+    saveConfig: () => {
+      const { projectPath, languagePath, config, revision, paused } = get();
+      const key = makeKey(projectPath, languagePath);
+      const nextVer = (saveVersions.get(key) ?? 0) + 1;
+      saveVersions.set(key, nextVer);
+      pendingSaves.set(key, {
+        projectPath,
+        languagePath,
+        config,
+        expectedRevision: revision,
+        operationId: generateOperationId(),
+        version: nextVer,
+      });
+      set({ dirty: true });
+      if (paused) return;
+      clearTimer(key);
+      saveTimers.set(
+        key,
+        setTimeout(() => {
+          void flushKey(key);
+        }, 500),
+      );
+    },
+
+    flushSaves: async () => {
+      const keys = new Set<string>([
+        ...pendingSaves.keys(),
+        ...saveTimers.keys(),
+        ...inFlightSaves.keys(),
+      ]);
+      await Promise.all(Array.from(keys, (k) => flushKey(k)));
+    },
+
+    isDirty: (projectPath, languagePath) => {
+      const p = projectPath ?? get().projectPath;
+      const l = languagePath ?? get().languagePath;
+      const key = makeKey(p, l);
+      if (pendingSaves.has(key) || saveTimers.has(key) || inFlightSaves.has(key)) {
+        return true;
+      }
+      return get().projectPath === p && get().languagePath === l && get().dirty;
+    },
+
+    pauseAutoSave: (projectPath, languagePath) => {
+      const p = projectPath ?? get().projectPath;
+      const l = languagePath ?? get().languagePath;
+      clearTimer(makeKey(p, l));
+      if (get().projectPath === p && get().languagePath === l) {
+        set({ paused: true });
+      }
+    },
+
+    triggerExternalConflict: async (
+      projectPath,
+      languagePath,
+      origin = "external",
+    ) => {
+      const key = makeKey(projectPath, languagePath);
+      const pending = pendingSaves.get(key);
+      const localCfg = pending?.config ?? get().config;
+      const localRev = pending?.expectedRevision ?? get().revision;
+      await raiseConflict(
+        projectPath,
+        languagePath,
+        localCfg,
+        localRev,
+        origin,
+        "External file change detected while local grammar has unsaved edits",
+      );
+    },
+
+    updateSyntax: (syntax) => {
+      applyEdit((prev) => ({
+        ...prev,
+        syntax: { ...prev.syntax, ...syntax },
+      }));
+    },
+
+    updateTypology: (typology) => {
+      applyEdit((prev) => ({
+        ...prev,
+        typology: { ...(prev.typology ?? DEFAULT_TYPOLOGY), ...typology },
+      }));
+    },
+
+    setAffixSlots: (slots) => {
+      applyEdit((prev) => ({
+        ...prev,
+        affix_slots: mergeById(prev.affix_slots, slots, "slot_id"),
+      }));
+    },
+
+    setConjugationClasses: (classes) => {
+      applyEdit((prev) => ({
+        ...prev,
+        conjugation_classes: mergeById(
+          prev.conjugation_classes,
+          classes,
+          "class_id",
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  deletePartOfSpeech: (posId) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        parts_of_speech: state.config.parts_of_speech.filter(
-          (p) => p.pos_id !== posId,
+    setIrregularOverrides: (overrides) => {
+      applyEdit((prev) => ({
+        ...prev,
+        irregular_overrides: mergeIrregularOverrides(
+          prev.irregular_overrides,
+          overrides,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  setPartsOfSpeech: (parts) => {
-    set((state) => ({ config: { ...state.config, parts_of_speech: parts } }));
-    get().saveConfig();
-  },
+    // ── Parts of Speech ────────────────────────────────────
 
-  // ── Inflection rules ──────────────────────────────────
+    addPartOfSpeech: (pos) => {
+      applyEdit((prev) => ({
+        ...prev,
+        parts_of_speech: [...prev.parts_of_speech, pos],
+      }));
+    },
 
-  addInflection: (rule) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_rules: [...state.config.inflection_rules, rule],
-      },
-    }));
-    get().saveConfig();
-  },
-
-  updateInflection: (ruleId, rule) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_rules: state.config.inflection_rules.map((r) =>
-          r.rule_id === ruleId ? rule : r,
+    updatePartOfSpeech: (posId, pos) => {
+      applyEdit((prev) => ({
+        ...prev,
+        parts_of_speech: prev.parts_of_speech.map((p) =>
+          p.pos_id === posId ? { ...p, ...pos } : p,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  deleteInflection: (ruleId) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_rules: state.config.inflection_rules.filter(
+    deletePartOfSpeech: (posId) => {
+      applyEdit((prev) => ({
+        ...prev,
+        parts_of_speech: prev.parts_of_speech.filter((p) => p.pos_id !== posId),
+      }));
+    },
+
+    setPartsOfSpeech: (parts) => {
+      applyEdit((prev) => ({
+        ...prev,
+        parts_of_speech: mergeById(prev.parts_of_speech, parts, "pos_id"),
+      }));
+    },
+
+    // ── Inflection rules ──────────────────────────────────
+
+    addInflection: (rule) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_rules: [...prev.inflection_rules, rule],
+      }));
+    },
+
+    updateInflection: (ruleId, rule) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_rules: prev.inflection_rules.map((r) =>
+          r.rule_id === ruleId ? { ...r, ...rule } : r,
+        ),
+      }));
+    },
+
+    deleteInflection: (ruleId) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_rules: prev.inflection_rules.filter(
           (r) => r.rule_id !== ruleId,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  setInflections: (rules) => {
-    set((state) => ({ config: { ...state.config, inflection_rules: rules } }));
-    get().saveConfig();
-  },
+    setInflections: (rules) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_rules: mergeById(prev.inflection_rules, rules, "rule_id"),
+      }));
+    },
 
-  // ── Inflection dimensions (Phase 2) ───────────────────
+    // ── Inflection dimensions (Phase 2) ───────────────────
 
-  addDimension: (dim) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_dimensions: [...state.config.inflection_dimensions, dim],
-      },
-    }));
-    get().saveConfig();
-  },
+    addDimension: (dim) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_dimensions: [...prev.inflection_dimensions, dim],
+      }));
+    },
 
-  updateDimension: (dimId, dim) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_dimensions: state.config.inflection_dimensions.map((d) =>
-          d.dim_id === dimId ? dim : d,
+    updateDimension: (dimId, dim) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_dimensions: prev.inflection_dimensions.map((d) =>
+          d.dim_id === dimId
+            ? { ...d, ...dim, values: mergeById(d.values, dim.values, "val_id") }
+            : d,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  deleteDimension: (dimId) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        inflection_dimensions: state.config.inflection_dimensions.filter(
+    deleteDimension: (dimId) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_dimensions: prev.inflection_dimensions.filter(
           (d) => d.dim_id !== dimId,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  // ── Derivation rules (Phase 2) ────────────────────────
+    // ── Derivation rules (Phase 2) ────────────────────────
 
-  addDerivation: (rule) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        derivation_rules: [...state.config.derivation_rules, rule],
-      },
-    }));
-    get().saveConfig();
-  },
+    addDerivation: (rule) => {
+      applyEdit((prev) => ({
+        ...prev,
+        derivation_rules: [...prev.derivation_rules, rule],
+      }));
+    },
 
-  updateDerivation: (ruleId, rule) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        derivation_rules: state.config.derivation_rules.map((r) =>
-          r.rule_id === ruleId ? rule : r,
+    updateDerivation: (ruleId, rule) => {
+      applyEdit((prev) => ({
+        ...prev,
+        derivation_rules: prev.derivation_rules.map((r) =>
+          r.rule_id === ruleId ? { ...r, ...rule } : r,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  deleteDerivation: (ruleId) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        derivation_rules: state.config.derivation_rules.filter(
+    deleteDerivation: (ruleId) => {
+      applyEdit((prev) => ({
+        ...prev,
+        derivation_rules: prev.derivation_rules.filter(
           (r) => r.rule_id !== ruleId,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  setDerivations: (rules) => {
-    set((state) => ({ config: { ...state.config, derivation_rules: rules } }));
-    get().saveConfig();
-  },
+    setDerivations: (rules) => {
+      applyEdit((prev) => ({
+        ...prev,
+        derivation_rules: mergeById(prev.derivation_rules, rules, "rule_id"),
+      }));
+    },
 
-  // ── Grammar manual (Phase 2) ──────────────────────────
+    // ── Grammar manual (Phase 2) ──────────────────────────
 
-  addChapter: (chapter) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        grammar_manual: [...state.config.grammar_manual, chapter],
-      },
-    }));
-    get().saveConfig();
-  },
+    addChapter: (chapter) => {
+      applyEdit((prev) => ({
+        ...prev,
+        grammar_manual: [...prev.grammar_manual, chapter],
+      }));
+    },
 
-  updateChapter: (chapterId, chapter) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        grammar_manual: state.config.grammar_manual.map((c) =>
-          c.chapter_id === chapterId ? chapter : c,
+    updateChapter: (chapterId, chapter) => {
+      applyEdit((prev) => ({
+        ...prev,
+        grammar_manual: prev.grammar_manual.map((c) =>
+          c.chapter_id === chapterId
+            ? {
+                ...c,
+                ...chapter,
+                embedded_paradigms: mergeById(
+                  c.embedded_paradigms,
+                  chapter.embedded_paradigms,
+                  "paradigm_id",
+                ),
+              }
+            : c,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  deleteChapter: (chapterId) => {
-    set((state) => ({
-      config: {
-        ...state.config,
-        grammar_manual: state.config.grammar_manual.filter(
+    deleteChapter: (chapterId) => {
+      applyEdit((prev) => ({
+        ...prev,
+        grammar_manual: prev.grammar_manual.filter(
           (c) => c.chapter_id !== chapterId,
         ),
-      },
-    }));
-    get().saveConfig();
-  },
+      }));
+    },
 
-  reorderChapters: (chapters) => {
-    set((state) => ({ config: { ...state.config, grammar_manual: chapters } }));
-    get().saveConfig();
-  },
-}));
+    reorderChapters: (chapters) => {
+      applyEdit((prev) => ({
+        ...prev,
+        grammar_manual: mergeById(prev.grammar_manual, chapters, "chapter_id"),
+      }));
+    },
+  };
+});
