@@ -6,95 +6,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { parseConfig } from "../config";
 import { createServer } from "../server";
+import { EXPECTED_76_TOOLS } from "./expected-tools";
 
-export const EXPECTED_76_TOOLS: readonly string[] = [
-  // §5.1 System & Family (14)
-  "server_info",
-  "family_list",
-  "family_get_tree",
-  "language_fork",
-  "language_update",
-  "language_delete",
-  "language_trash_list",
-  "language_restore",
-  "family_register",
-  "family_unregister",
-  "family_set_active",
-  "project_create",
-  "project_copy",
-  "lexicon_migrate_inherited_links",
-  // §5.2 Phonology & Romanization (11)
-  "phono_get",
-  "romanization_get",
-  "romanization_analyze",
-  "phono_to_ipa",
-  "phono_tokenize",
-  "phono_update",
-  "romanization_upsert_rules",
-  "romanization_delete_rules",
-  "romanization_map_upsert",
-  "phono_presets_list",
-  "phono_apply_preset",
-  // §5.3 Writing & Fonts (11)
-  "font_list",
-  "font_inspect",
-  "font_shape",
-  "font_audit_coverage",
-  "font_audit_family",
-  "font_import",
-  "font_import_batch",
-  "font_clear",
-  "glyph_annotations_upsert",
-  "glyph_annotations_delete",
-  "glyph_annotations_sync_parent",
-  // §5.4 Lexicon (11)
-  "lex_search",
-  "lex_get",
-  "lex_stats",
-  "lex_quality_check",
-  "lex_upsert",
-  "lex_delete",
-  "lex_regenerate_ipa",
-  "lex_parent_diff",
-  "lex_pull_sync",
-  "lex_borrow",
-  "lex_import_csv",
-  // §5.5 Wordgen (2)
-  "wordgen_generate",
-  "wordgen_swadesh_gaps",
-  // §5.6 Grammar & Sandbox (7)
-  "gram_get",
-  "gram_inflect",
-  "gram_paradigm",
-  "gram_derive",
-  "gram_analyze_typology",
-  "sandbox_translate",
-  "gram_update",
-  // §5.7 SCA (6)
-  "sca_get",
-  "sca_simulate",
-  "sca_parse_rules_text",
-  "sca_feature_query",
-  "sca_update",
-  "sca_export_rules_text",
-  // §5.8 Corpus (5)
-  "corpus_list",
-  "corpus_get",
-  "corpus_save",
-  "corpus_delete",
-  "corpus_auto_gloss",
-  // §5.9 Export & Import (5)
-  "export_llm_brief",
-  "export_workspace_bundle",
-  "export_csv",
-  "export_dic",
-  "import_workspace_bundle",
-  // §5.10 Snapshots (4)
-  "snapshot_list",
-  "snapshot_create",
-  "snapshot_rollback",
-  "snapshot_diff",
-] as const;
+export { EXPECTED_76_TOOLS };
 
 export const EXPECTED_RESOURCE_TEMPLATES: readonly string[] = [
   "conlang://{family_id}/tree",

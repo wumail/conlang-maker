@@ -151,7 +151,7 @@ function parseNormalizedRule(
     (afterBoundary ? 1 : 0);
 
   const conditionKey = `${beforeBoundary ? "#" : ""}${beforeFolded}|${foldedInput}|${afterFolded}${afterBoundary ? "#" : ""}`;
-  const normalizedOutput = (rule.output_phoneme ?? "").normalize("NFC");
+  const normalizedOutput = rule.output_type === "separator" ? "" : (rule.output_phoneme ?? "").normalize("NFC");
 
   return {
     rule,
@@ -229,6 +229,7 @@ export function findUnreachablePhonemes(
   for (const map of maps) {
     for (const rule of map.rules) {
       if (!(rule.input ?? "").normalize("NFC")) continue;
+      if (rule.output_type === "separator") continue;
       const out = (rule.output_phoneme ?? "").trim().normalize("NFC");
       if (!out) continue;
       produced.add(out);
@@ -277,6 +278,7 @@ export function findUnknownOutputPhonemes(
   for (const map of maps) {
     for (const rule of map.rules) {
       if (!(rule.input ?? "").normalize("NFC")) continue;
+      if (rule.output_type === "separator") continue;
       const out = (rule.output_phoneme ?? "").trim().normalize("NFC");
       if (!out) continue;
       if (knownSet.has(out)) continue;

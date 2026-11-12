@@ -5,6 +5,7 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { generateIPA } from "../../utils/ipaGenerator";
 import { applyInflection } from "../../utils/morphologyEngine";
 import { INPUT_MONO, SELECT, BTN_PRIMARY_MD } from "../../lib/ui";
+import { ScriptLine } from "../writing/ScriptText";
 
 interface TestResult {
   tag: string;
@@ -33,12 +34,12 @@ export const InflectionTest: React.FC = () => {
       (r) => r.pos_id === testPosId && !r.disabled,
     );
     const results = applicableRules.map((rule) => {
-      const { result, applied, log } = applyInflection(
+      const { result, applied, log, stem_start } = applyInflection(
         testWord,
         rule,
         phonoConfig,
       );
-      const { phonemic } = generateIPA(result, phonoConfig);
+      const { phonemic } = generateIPA(result, phonoConfig, { stem_start });
 
       return {
         tag: rule.tag,
@@ -104,7 +105,10 @@ export const InflectionTest: React.FC = () => {
                 >
                   <td className="font-mono">{r.tag}</td>
                   <td className="text-xs">{r.type}</td>
-                  <td className="font-mono font-bold">{r.output}</td>
+                  <td className="font-mono font-bold">
+                    {r.output}
+                    <ScriptLine text={r.output} ipa={r.ipa} className="block text-lg" />
+                  </td>
                   <td className="font-mono text-primary">{r.ipa}</td>
                   <td className="text-xs max-w-xs">{r.reason}</td>
                 </tr>

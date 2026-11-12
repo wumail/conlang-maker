@@ -107,7 +107,7 @@
 
 | 项 | 选型 |
 | --- | --- |
-| 协议 SDK | `@modelcontextprotocol/sdk`（TS），stdio 传输；可选 Streamable HTTP（P2，仅本机） |
+| 协议 SDK | `@modelcontextprotocol/sdk`（TS）。**主传输：Streamable HTTP**（仅监听 `127.0.0.1`，由 GUI 托管的 `conlang-mcp serve` 提供）；**后备：stdio**（`conlang-mcp` 不带 `serve` 子命令，行为与早期版本一致） |
 | 运行时 | Bun（项目已在用）；发布时用 `bun build --compile` 生成单个可执行文件 |
 | 参数校验 | zod，自动生成 JSON Schema |
 | 字体 | `harfbuzzjs`（wasm）：collectUnicodes、glyph 名、GSUB / GPOS 特性列表、shape |
@@ -169,6 +169,12 @@
 | `IO` | 文件系统错误 |
 
 ### 4.6 数据保真
+
+`phonology.json` 可选保存 `font_input` 与 `font_features`。`font_input` 负责音素到字体输入串的转换，保留独立辅音和元音核边界，也可依据直接父词保留历史拼写。原生字形组合交由字体的 OpenType 规则完成。`font_features` 保存语言本地的特性选择，GUI 与 MCP 共用同一组基础特性和覆盖值。
+
+`RomanizationRule.output_type="separator"` 表示转写边界，生成 IPA 时输出空串。`phonotactics.stress={position:"initial",domain:"word"}` 启用自动首音节重音。形态结果和完整范式覆盖可带 `stem_start`，以原始表层转写的码点偏移确定词干起点。
+
+`font_shape` 默认使用 `input_mode="literal"`。显式选择 `language` 时按语言配置生成字体输入，并同时返回 `original_input` 与 `font_input`。排版的 cluster 和字符区间均对应 `font_input`。`sca_simulate` 的 `input_format="raw"` 直接运行原始转写管线，可复现 GUI 测试及父词同步。
 
 - Rust、TS 与 GUI 的常规读写都**保留真正未知的字段**，覆盖顶层、嵌套对象和有稳定 ID 的数组元素。Rust 持久化模型增加扩展字段承载，GUI 更新时保留未编辑对象的扩展字段。显式删除对象或字段按工具语义执行。
 - 一致性夹具先保存含未知字段的原始输入，再验证读写往返。golden 生成以 Rust 保真改造通过为前提，且逐项断言合成未知字段仍存在。
@@ -477,7 +483,7 @@
 | UI-3 | 冲突提示 | P0（M2） | dirty、排队或在途保存遇到版本冲突时暂停该上下文的自动保存，提供保留本地 / 采用磁盘 / 查看差异。保留本地以刚确认的磁盘版本再次 CAS |
 | UI-4 | 带版本校验的保存 | P0（M2） | GUI 读取保存本地及依赖版本，所有实际保存提供 expected revision 和 operation_id。校验失败进入 UI-3 |
 | UI-5 | 快照与恢复面板 | P1（M3） | 显示来源、范围、项目恢复点与回收站。支持非词典数据、拓扑和语言恢复 |
-| UI-6 | MCP 设置页 | P1（M4） | 显示可执行文件路径；一键复制 DSH / Claude Desktop / Cursor 的配置片段；选择默认权限模式；查看最近的 MCP 审计日志 |
+| UI-6 | MCP 设置页 | P1（M4） | 服务状态卡片（启动/停止/重启、端口、URL、会话数、错误与日志路径）；访问令牌管理（权限模式、工具集、默认语系、启用开关、最近使用、复制/重新生成/删除）；按选中令牌生成 Cursor / Claude Code / 通用 HTTP 片段与 stdio 后备片段；最近 MCP 审计日志（含客户端列） |
 | UI-7 | 审计入口 | P2 | 字体页「覆盖检查」升级为与 `font_audit_coverage` 同一套逻辑（映射 + 词典 + 语料） |
 
 ---
@@ -515,7 +521,58 @@ P2：资源订阅（基于文件监听推送 `resources/updated`）。
 
 ## 10. 配置与分发
 
-### 10.1 启动参数 / 环境变量
+### 10.1 传输与进程模型
+
+| 项 | 约定 |
+| --- | --- |
+| 主传输 | Streamable HTTP，`POST/GET/DELETE /mcp`，仅绑定 `127.0.0.1`，默认端口 `43117`（设置页可改） |
+| 健康检查 | `GET /healthz` → `{ok, name, version, pid, port, started_at, sessions}`，无需鉴权 |
+| 鉴权 | `Authorization: Bearer <令牌>`；令牌缺失/错误/停用 → 401 + `WWW-Authenticate: Bearer realm="conlang-maker"` |
+| 本机校验 | `Host` 必须是 `127.0.0.1:<端口>` / `localhost:<端口>` / `[::1]:<端口>`；带 `Origin` 时同样只接受这三种回环来源，否则 403 |
+| 会话 | 一个令牌一个会话；令牌的 mode/toolsets/family/name 变更后旧会话返回 404，客户端重新 initialize 即可拿到新权限 |
+| 上限 | 请求体 4 MiB（超出 413）；会话空闲 60 分钟自动关闭 |
+| 生命周期 | 服务由 GUI 启动，GUI 退出时停止；GUI 被强杀时由服务端 `--parent-pid` 看门狗退出 |
+| 后备 | stdio：`conlang-mcp`（或 `conlang-mcp --stdio`），行为与早期版本一致 |
+
+### 10.2 访问令牌与设置文件
+
+`<app data>/mcp-server.json`（macOS：`~/Library/Application Support/com.conlang-maker/`，权限 0600）由 GUI 拥有并写入，服务端只读、按 mtime 重新加载：
+
+```json
+{
+  "version": 1,
+  "port": 43117,
+  "tokens": [
+    {
+      "id": "tok_1a2b3c4d5e6f",
+      "name": "Cursor",
+      "token": "cmk_<32 字节随机数的 base64url>",
+      "mode": "read-only",
+      "toolsets": "default",
+      "family": null,
+      "enabled": true,
+      "created_at": "2026-11-11T14:00:00Z"
+    }
+  ]
+}
+```
+
+- `mode`：`read-only` / `write` / `write+destructive`。
+- `toolsets`：`default`（按 mode 推导：只读 → `core,audit,compute`；读写 → 再加 `write,evolution`；完全权限 → `all`）、`all`，或逗号分隔列表。
+- `family`：该 Agent 的默认语系 `.conlang` 路径，`null` 表示动态发现。
+- 运行期文件：`mcp-server.state.json`（服务写入，正常退出时删除）、`mcp-token-usage.json`（每个令牌最近使用时间，最多每 15 秒落盘一次）、`logs/mcp-server.log`。
+
+### 10.3 命令行
+
+```
+conlang-mcp                                  # stdio（支持 --mode/--toolsets/--family/--registry/--allow-root）
+conlang-mcp --stdio [同上参数]                # 同上，显式写法
+conlang-mcp serve [--port N] [--settings PATH] [--parent-pid PID] [--registry PATH] [--allow-root DIR]
+```
+
+`serve` 退出码：`0` 正常退出；`3` 本端口已有 conlang-mcp 在运行；`4` 端口被其他程序占用；`1` 其他错误。
+
+stdio 模式的启动参数：
 
 | 参数 | 默认 | 说明 |
 | --- | --- | --- |
@@ -525,19 +582,29 @@ P2：资源订阅（基于文件监听推送 `resources/updated`）。
 | `--registry` | 平台默认路径 | 注册表路径（测试用） |
 | `--allow-root` | 注册表中全部项目目录 | 允许访问的目录白名单；`font_import` 的来源路径另外校验可读 |
 
+HTTP 模式下 `--registry` / `--allow-root` 仍作为所有会话的基线配置，`mode` / `toolsets` / `family` 由每个令牌覆盖。
+
 项目级可选配置 `<project>/.conlang-maker/mcp.json`：按语言设置 `residual_glyph_pattern`、外部字体工程关联、自动快照阈值。
 
-### 10.2 分发
+### 10.4 分发
 
 - 用 `bun build --compile` 生成 `conlang-mcp`（macOS arm64 / x64，Windows，Linux），作为 Tauri `externalBin` 随 App 安装。
-- 开发态：`bun run mcp`（直接运行源码）。
-- DSH 配置示例：
+- 开发态：`bun run mcp`（stdio）、`bun run mcp -- serve`（HTTP）。
+- Cursor（`.cursor/mcp.json`）：
 
 ```json
-{ "mcpServers": { "conlang": {
-    "command": "/Applications/conlang-maker.app/Contents/MacOS/conlang-mcp",
-    "args": ["--mode", "write", "--toolsets", "core,audit,compute,write"] } } }
+{ "mcpServers": { "conlang-maker": {
+    "url": "http://127.0.0.1:43117/mcp",
+    "headers": { "Authorization": "Bearer <令牌>" } } } }
 ```
+
+- Claude Code：
+
+```
+claude mcp add --transport http conlang-maker http://127.0.0.1:43117/mcp --header "Authorization: Bearer <令牌>"
+```
+
+- 只支持 stdio 的客户端（如 Claude Desktop）继续使用 `command` + `args` 形式，片段可在设置页「stdio 后备配置」中复制。
 
 ---
 
@@ -620,7 +687,7 @@ P2：资源订阅（基于文件监听推送 `resources/updated`）。
 | Q4 | `residual_glyph_pattern` 等审计配置存在项目目录（`.conlang-maker/mcp.json`，跟随项目和 iCloud 同步），还是只作为调用参数？ | **已定**：存项目目录 |
 | Q5 | 外部字体工程关联（§6.6）是否纳入本期？ | **已定**：P2，放到 M3 之后 |
 | Q6 | 旧版拼字引擎遗留字段怎么处理？ | **已定**：先存档再清理（§4.6），GUI 与 MCP 一致；真正的未知字段继续保留 |
-| Q7 | 本期是否需要 Streamable HTTP 传输（给不支持 stdio 的客户端用）？ | **已定**：不需要，P2 |
+| Q7 | 本期是否需要 Streamable HTTP 传输（给不支持 stdio 的客户端用）？ | **已定（2026-11-11 修订）**：HTTP 为主、stdio 为后备。GUI 托管 `conlang-mcp serve`（默认端口 43117，仅监听 127.0.0.1），按访问令牌授权；stdio 保留给只支持 stdio 的客户端 |
 
 
 Q1–Q7 沿用执行日志中已有的负责人确认记录。本版补充以下执行约束，并由相应任务验证。

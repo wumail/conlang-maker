@@ -11,6 +11,8 @@ export interface RomanizationRule {
   output_phoneme: string;
   context_before: string;
   context_after: string;
+  /** A transcription separator contributes no phoneme of its own. */
+  output_type?: "phoneme" | "separator";
 }
 
 export interface RomanizationMap {
@@ -56,6 +58,7 @@ export interface Phonotactics {
   blacklist_patterns: string[];
   vowel_harmony: VowelHarmony;
   tone_system: ToneSystem;
+  stress?: { position: "initial"; domain: "word" | "entry" } | null;
 }
 
 export interface AllophonyRule {
@@ -73,8 +76,21 @@ export interface PhonologyConfig {
   phoneme_inventory: PhonemeInventory;
   romanization_maps: RomanizationMap[];
   glyph_annotations?: GlyphAnnotation[];
+  /** Language-local OpenType feature overrides, for example ss01=1. */
+  font_features?: string[];
+  /** Convert phonemes to explicit font input. OpenType still composes the glyphs. */
+  font_input?: FontInputConfig;
   phonotactics: Phonotactics;
   allophony_rules: AllophonyRule[];
+}
+
+export interface FontInputConfig {
+  phonemes: Record<string, string>;
+  vowels: string[];
+  multigraphs: string[];
+  separator: string;
+  use_parent_phonemes?: boolean;
+  source_substitutions?: Record<string, string>;
 }
 
 export type GlyphAnnotationsSource =
@@ -320,6 +336,8 @@ export interface IrregularOverride {
   entry_id: string; // 关联词条 ID
   dimension_values: Record<string, string>;
   surface_form: string; // 手动指定的词形
+  /** Codepoint offset of the stem in surface_form, after any grammatical prefixes. */
+  stem_start?: number;
 }
 
 // ── GrammarConfig ────────────────────────────────────────
@@ -361,6 +379,8 @@ export interface LanguageFontStatus {
 
 /** Parsed face for the active language, after walking parent_id. */
 export interface FontInspection {
+  substitution_features?: string[];
+  positioning_features?: string[];
   present: boolean;
   has_own: boolean;
   inherited: boolean;
@@ -752,6 +772,57 @@ export interface McpAuditLogEntry {
 }
 
 export type McpPermissionMode = "read-only" | "write" | "write+destructive";
+
+/** One access token stored in `<app data>/mcp-server.json` (HTTP transport). */
+export interface McpTokenSettings {
+  id: string;
+  name: string;
+  /** Plaintext secret (`cmk_…`); the settings file is mode 0600. */
+  token: string;
+  mode: McpPermissionMode;
+  /** "default" (derived from mode), "all", or a comma separated toolset list. */
+  toolsets: string;
+  /** Default family `.conlang` path for this Agent, or null for dynamic discovery. */
+  family: string | null;
+  enabled: boolean;
+  created_at: string;
+}
+
+export interface McpServerSettings {
+  version: number;
+  port: number;
+  tokens: McpTokenSettings[];
+}
+
+export interface McpServerSettingsPayload {
+  settings: McpServerSettings;
+  url: string;
+  /** Token id → ISO timestamp of the last authenticated request. */
+  token_last_used: Record<string, string>;
+  log_path: string;
+  settings_path: string;
+  state_path: string;
+}
+
+export type McpServerRunState =
+  | "running"
+  | "stopped"
+  | "starting"
+  | "port_in_use"
+  | "error";
+
+export interface McpServerStatus {
+  state: McpServerRunState;
+  /** True when this GUI instance started the process. */
+  owned: boolean;
+  pid: number | null;
+  port: number | null;
+  url: string | null;
+  version: string | null;
+  sessions: number | null;
+  last_error: string | null;
+  log_path: string;
+}
 
 export interface RegistryLoadResult {
   registry: GlobalRegistry;

@@ -4,6 +4,9 @@ import { invoke } from "@tauri-apps/api/core";
 import type { FontInspection, WriteResult } from "../../types";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useFontStore } from "../../store/fontStore";
+import { usePhonoStore } from "../../store/phonoStore";
+import { parseFontFeature, resolveFontFeatures } from "../../core/engines/fontLayout";
+import { textToFontInput } from "../../core/engines/fontInput";
 import { useLexiconStore } from "../../store/lexiconStore";
 import {
   computeJsonDiffSummary,
@@ -34,6 +37,20 @@ export function FontPanel() {
   const fontLoaded = useFontStore((state) => state.loaded);
   const fontLoading = useFontStore((state) => state.loading);
   const fontError = useFontStore((state) => state.error);
+  const inputIndex = useFontStore((state) => state.inputIndex);
+  const phonoConfig = usePhonoStore((state) => state.config);
+  const fontFeatures = phonoConfig.font_features ?? [];
+  const setFontFeatures = usePhonoStore((state) => state.setFontFeatures);
+  const modernMode = useMemo(() => {
+    try {
+      return resolveFontFeatures(fontFeatures).some((feature) => {
+        const parsed = parseFontFeature(feature);
+        return parsed.tag === "ss01" && parsed.value > 0;
+      });
+    } catch {
+      return false;
+    }
+  }, [fontFeatures]);
   const [sample, setSample] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -60,7 +77,7 @@ export function FontPanel() {
     const covered = new Set(inspection.codepoints);
     const missing = new Map<string, MissingCharacterItem>();
     for (const word of sampleWords) {
-      for (const character of charactersOf(word)) {
+      for (const character of charactersOf(textToFontInput(word, phonoConfig, inputIndex))) {
         if (/^\s+$/u.test(character)) continue;
         const codepoint = character.codePointAt(0);
         if (
@@ -74,7 +91,7 @@ export function FontPanel() {
       }
     }
     return [...missing.values()];
-  }, [inspection, sampleWords, fontLoading]);
+  }, [inspection, sampleWords, fontLoading, phonoConfig, inputIndex]);
 
   const enqueueFontConflict = async (
     languagePath: string,
@@ -266,6 +283,24 @@ export function FontPanel() {
         onRemoveRequest={() => setConfirmRemove(true)}
         onShowFolder={() => void showFolder()}
       />
+
+      {inspection.substitution_features?.includes("ss01") && (
+        <label className="form-control max-w-sm gap-2">
+          <span className="label-text">{t("writing.displayMode")}</span>
+          <select
+            className="select select-bordered"
+            data-testid="font-writing-mode"
+            value={modernMode ? "modern" : "default"}
+            onChange={(event) => {
+              const remaining = fontFeatures.filter((feature) => !/^[+-]?ss01(?:=\d+)?$/.test(feature));
+              setFontFeatures([...remaining, event.target.value === "modern" ? "ss01=1" : "ss01=0"]);
+            }}
+          >
+            <option value="default">{t("writing.traditionalMode")}</option>
+            <option value="modern">{t("writing.modernMode")}</option>
+          </select>
+        </label>
+      )}
 
       <FontSampleAndCoverage
         inspection={inspection}

@@ -1,8 +1,13 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useFontStore } from "../store/fontStore";
-import type { FontInspection, ResolvedFontBytes } from "../types";
+import { usePhonoStore } from "../store/phonoStore";
+import { useLexiconStore } from "../store/lexiconStore";
+import { useGrammarStore } from "../store/grammarStore";
+import { buildFontInputIndex, EMPTY_FONT_INPUT_INDEX, type FontInputSource } from "../core/engines/fontInput";
+import { fontFeaturesToCss } from "../core/engines/fontLayout";
+import type { FontInspection, ResolvedFontBytes, WordEntry, PhonologyLoadResult, GrammarLoadResult } from "../types";
 
 const FONT_FAMILY = "ConlangScript";
 
@@ -121,6 +126,63 @@ export function useConlangFont(): void {
   const conlangFilePath = useWorkspaceStore((state) => state.conlangFilePath);
   const activeLanguageId = useWorkspaceStore((state) => state.activeLanguageId);
   const revision = useFontStore((state) => state.revision);
+  const featureKey = usePhonoStore((state) => JSON.stringify(state.config.font_features ?? []));
+  const phonoConfig = usePhonoStore((state) => state.config);
+  const grammar = useGrammarStore((state) => state.config);
+  const words = useLexiconStore((state) => state.wordsList);
+  const languages = useWorkspaceStore((state) => state.config.languages);
+  const workspaceRevision = useWorkspaceStore((state) => state.revision);
+  const useParentPhonemes = Boolean(phonoConfig.font_input?.use_parent_phonemes);
+  const [fontSource, setFontSource] = useState<FontInputSource>();
+
+  useEffect(() => {
+    let cancelled = false;
+    setFontSource(undefined);
+    if (!useParentPhonemes) return;
+    const run = async () => {
+      const current = languages.find((language) => language.language_id === activeLanguageId);
+      const parent = languages.find((language) => language.language_id === current?.parent_id);
+      if (parent) {
+        const [parentWords, parentPhono, parentGrammar] = await Promise.all([
+          invoke<WordEntry[]>("load_all_words", { projectPath, languagePath: parent.path }),
+          invoke<PhonologyLoadResult>("load_phonology", { projectPath, languagePath: parent.path }),
+          invoke<GrammarLoadResult>("load_grammar_with_revision", { projectPath, languagePath: parent.path }),
+        ]);
+        if (!cancelled) setFontSource({ languageId: parent.language_id, words: parentWords, phonology: parentPhono.config, grammar: parentGrammar.config });
+      }
+    };
+    void run().catch((error) => {
+      if (!cancelled) useFontStore.setState({ error: String(error) });
+    });
+    return () => { cancelled = true; };
+  }, [activeLanguageId, projectPath, useParentPhonemes, languages, workspaceRevision, revision]);
+
+  useEffect(() => {
+    if (!phonoConfig.font_input || phonoConfig.language_id !== activeLanguageId || (useParentPhonemes && !fontSource)) {
+      useFontStore.setState({ inputIndex: EMPTY_FONT_INPUT_INDEX });
+      return;
+    }
+    try {
+      useFontStore.setState({ inputIndex: buildFontInputIndex(words, grammar, phonoConfig, fontSource) });
+    } catch (error) {
+      console.error("Failed to build font input index", error);
+      useFontStore.setState({ inputIndex: EMPTY_FONT_INPUT_INDEX });
+    }
+  }, [activeLanguageId, phonoConfig, grammar, words, fontSource, useParentPhonemes]);
+
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+    const features = JSON.parse(featureKey) as string[];
+    try {
+      document.documentElement.style.setProperty("--conlang-font-features", fontFeaturesToCss(features));
+    } catch (error) {
+      console.warn("Invalid language font features", error);
+      document.documentElement.style.removeProperty("--conlang-font-features");
+    }
+    return () => {
+      document.documentElement.style.removeProperty("--conlang-font-features");
+    };
+  }, [featureKey]);
 
   useEffect(() => {
     let cancelled = false;

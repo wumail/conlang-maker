@@ -4,6 +4,7 @@ import {
   getWordComparableDigest,
   getWordEvolution,
   getWordSyncDigest,
+  getInheritedParentEntryId,
 } from "../engines/wordLifecycle";
 import { isValidWordEntry } from "../lexicon/utils";
 
@@ -46,10 +47,14 @@ export function computePullSync(
     "childLanguageId" in input ? input.childLanguageId : input.activeLanguageId;
   const { parentWords, childWords, scaRuleSets, macros } = input;
 
-  const childByParentId = new Map<string, WordEntry>();
+  const childByParentId = new Map<string, WordEntry[]>();
+  const childById = new Map(childWords.map((word) => [word.entry_id, word]));
   childWords.forEach((word) => {
-    const parentEntryId = word.etymology.parent_entry_id ?? word.entry_id;
-    childByParentId.set(parentEntryId, word);
+    const parentEntryId = getInheritedParentEntryId(word, parentLanguageId);
+    if (!parentEntryId) return;
+    const inherited = childByParentId.get(parentEntryId) ?? [];
+    inherited.push(word);
+    childByParentId.set(parentEntryId, inherited);
   });
 
   const pending: { word: WordEntry; mode: "add" | "update" }[] = [];
@@ -97,58 +102,65 @@ export function computePullSync(
       last_synced_word_hash: syncedWordSyncHash,
     };
 
-    const existingChild = childByParentId.get(parentWord.entry_id);
+    const inheritedChildren = childByParentId.get(parentWord.entry_id) ?? [];
 
-    if (!existingChild) {
+    if (inheritedChildren.length === 0) {
+      const occupied = childById.get(parentWord.entry_id);
+      if (occupied) {
+        conflicts.push({ parentEntryId: parentWord.entry_id, childEntryId: occupied.entry_id });
+        return;
+      }
       pending.push({ word: syncedCandidate, mode: "add" });
       return;
     }
 
-    const existingEvolution = getWordEvolution(existingChild);
-    const currentChildHash = getWordComparableDigest(existingChild);
-    const currentChildSyncHash = getWordSyncDigest(existingChild);
+    inheritedChildren.forEach((existingChild) => {
+      const existingEvolution = getWordEvolution(existingChild);
+      const currentChildHash = getWordComparableDigest(existingChild);
+      const currentChildSyncHash = getWordSyncDigest(existingChild);
 
-    // Never synced (freshly forked) — compare content directly
-    if (!existingEvolution.parent_snapshot_hash) {
-      if (syncedWordSyncHash !== currentChildSyncHash) {
-        pending.push({
-          word: { ...syncedCandidate, entry_id: existingChild.entry_id },
-          mode: "update",
-        });
+      // Never synced (freshly forked) — compare content directly
+      if (!existingEvolution.parent_snapshot_hash) {
+        if (syncedWordSyncHash !== currentChildSyncHash) {
+          pending.push({
+            word: { ...syncedCandidate, entry_id: existingChild.entry_id },
+            mode: "update",
+          });
+        }
+        return;
       }
-      return;
-    }
 
-    // Has been synced before — use hash-based comparison
-    const parentSnapshotHash = existingEvolution.parent_snapshot_hash;
-    const parentChanged =
-      parentSnapshotHash !== parentSyncHash &&
-      parentSnapshotHash !== parentComparableHash;
+      // Has been synced before — use hash-based comparison
+      const parentSnapshotHash = existingEvolution.parent_snapshot_hash;
+      const parentChanged =
+        parentSnapshotHash !== parentSyncHash &&
+        parentSnapshotHash !== parentComparableHash;
 
-    const lastSyncedHash = existingEvolution.last_synced_word_hash;
-    const childChangedSinceLastSync = lastSyncedHash
-      ? lastSyncedHash !== currentChildSyncHash &&
-        lastSyncedHash !== currentChildHash
-      : false;
+      const lastSyncedHash = existingEvolution.last_synced_word_hash;
+      const childChangedSinceLastSync = lastSyncedHash
+        ? lastSyncedHash !== currentChildSyncHash &&
+          lastSyncedHash !== currentChildHash
+        : false;
 
-    if (parentChanged && childChangedSinceLastSync) {
-      conflicts.push({
-        parentEntryId: parentWord.entry_id,
-        childEntryId: existingChild.entry_id,
+      if (parentChanged && childChangedSinceLastSync) {
+        conflicts.push({
+          parentEntryId: parentWord.entry_id,
+          childEntryId: existingChild.entry_id,
+        });
+        return;
+      }
+
+      if (!parentChanged && !childChangedSinceLastSync) {
+        return;
+      }
+
+      pending.push({
+        word: {
+          ...syncedCandidate,
+          entry_id: existingChild.entry_id,
+        },
+        mode: "update",
       });
-      return;
-    }
-
-    if (!parentChanged && !childChangedSinceLastSync) {
-      return;
-    }
-
-    pending.push({
-      word: {
-        ...syncedCandidate,
-        entry_id: existingChild.entry_id,
-      },
-      mode: "update",
     });
   });
 

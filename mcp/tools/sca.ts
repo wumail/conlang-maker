@@ -441,10 +441,10 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
         .optional()
         .describe("Explicit list of up to 500 IPA or romanized words to simulate"),
       input_format: z
-        .enum(["ipa", "romanized", "auto"])
+        .enum(["ipa", "romanized", "auto", "raw"])
         .optional()
         .describe(
-          "How to interpret explicit words: 'ipa' (direct), 'romanized' (convert via phonology first), or 'auto' (default 'ipa' unless romanized conversion requested)",
+          "Input mode: 'raw' passes original spelling directly to SCA for explicit and lexicon sources, matching GUI previews and Pull Sync. 'romanized' converts explicit spelling through phonology first. 'ipa' and 'auto' retain the existing IPA input behavior.",
         ),
       source: z
         .enum(["explicit", "parent_lexicon", "current_lexicon"])
@@ -626,6 +626,10 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
               const fmt = args.input_format ?? "ipa";
               const basisPhono = parentPhono ?? phonoLocal;
               for (const rawWord of args.words) {
+                if (fmt === "raw") {
+                  items.push({ romanized: rawWord, input: rawWord });
+                  continue;
+                }
                 const trimmed = rawWord.trim().replace(/^[/[]+|[\/\]]+$/g, "");
                 if (fmt === "romanized") {
                   const gen = generateIPA(trimmed, basisPhono);
@@ -658,7 +662,9 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
                   entry_id: w.entry_id,
                   romanized: w.con_word_romanized,
                   gloss: w.senses[0]?.gloss ?? "",
-                  input: resolveWordIpaForSca(w, parentPhono),
+                  input: args.input_format === "raw"
+                    ? w.con_word_romanized
+                    : resolveWordIpaForSca(w, parentPhono),
                 });
               }
             } else {
@@ -672,7 +678,9 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
                   entry_id: w.entry_id,
                   romanized: w.con_word_romanized,
                   gloss: w.senses[0]?.gloss ?? "",
-                  input: resolveWordIpaForSca(w, phonoLocal),
+                  input: args.input_format === "raw"
+                    ? w.con_word_romanized
+                    : resolveWordIpaForSca(w, phonoLocal),
                 });
               }
             }
@@ -717,7 +725,9 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
         Object.assign(dependencies, collected.deps);
       } else {
         simItems = (args.words ?? []).map((w) => ({
-          input: w.trim().replace(/^[/[]+|[\/\]]+$/g, ""),
+          input: args.input_format === "raw"
+            ? w
+            : w.trim().replace(/^[/[]+|[\/\]]+$/g, ""),
         }));
       }
 
@@ -767,6 +777,7 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
         family_id: familyId,
         language_id: languageId,
         source: sourceUsed,
+        input_format: args.input_format ?? "ipa",
         using_inline_rules: inlineRuleSets !== null,
         rule_set_count: orderedSets.length,
         total_simulated: simItems.length,

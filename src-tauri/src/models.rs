@@ -1254,6 +1254,9 @@ pub struct McpAuditLogEntry {
     #[serde(default)]
     pub snapshot_id: Option<String>,
     pub status: String,
+    /// HTTP transport: display name of the access token that performed the call.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub client: Option<String>,
 }
 
 #[cfg(test)]

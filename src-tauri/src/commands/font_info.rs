@@ -5,6 +5,8 @@ pub struct FontFaceInfo {
     pub codepoints: Vec<u32>,
     /// Codepoints that draw the same glyph, one group per glyph.
     pub glyphs: Vec<Vec<u32>>,
+    pub substitution_features: Vec<String>,
+    pub positioning_features: Vec<String>,
 }
 
 pub fn inspect_font_bytes(data: &[u8]) -> Result<FontFaceInfo, String> {
@@ -23,6 +25,8 @@ pub fn inspect_font_bytes(data: &[u8]) -> Result<FontFaceInfo, String> {
         version,
         codepoints: mapped.codepoints,
         glyphs: mapped.glyphs,
+        substitution_features: read_layout_features(data, &tables, *b"GSUB")?,
+        positioning_features: read_layout_features(data, &tables, *b"GPOS")?,
     })
 }
 
@@ -54,6 +58,38 @@ struct TaggedTable {
     tag: [u8; 4],
     offset: usize,
     length: usize,
+}
+
+fn read_layout_features(
+    data: &[u8],
+    tables: &[TaggedTable],
+    tag: [u8; 4],
+) -> Result<Vec<String>, String> {
+    let Some(table) = tables.iter().find(|table| table.tag == tag) else {
+        return Ok(Vec::new());
+    };
+    if table.length < 10 {
+        return Err("OpenType layout header is truncated".to_string());
+    }
+    let feature_offset = read_u16(data, table.offset + 6)? as usize;
+    if feature_offset == 0 {
+        return Ok(Vec::new());
+    }
+    let start = table.offset + feature_offset;
+    let end = table.offset + table.length;
+    if start.saturating_add(2) > end {
+        return Err("OpenType feature list is outside its table".to_string());
+    }
+    let count = read_u16(data, start)? as usize;
+    if start.saturating_add(2 + count * 6) > end {
+        return Err("OpenType feature records are truncated".to_string());
+    }
+    let mut features = std::collections::BTreeSet::new();
+    for index in 0..count {
+        let position = start + 2 + index * 6;
+        features.insert(String::from_utf8_lossy(&data[position..position + 4]).into_owned());
+    }
+    Ok(features.into_iter().collect())
 }
 
 fn font_tables(data: &[u8]) -> Result<Vec<TaggedTable>, String> {
@@ -447,5 +483,14 @@ mod tests {
         assert_eq!(info.version.as_deref(), Some("Version 1.0"));
         assert_eq!(info.codepoints, vec![0x20, 0x61]);
         assert_eq!(info.glyphs, vec![vec![0x20], vec![0x61]]);
+    }
+
+    #[test]
+    fn reads_stylistic_set_features_and_checks_table_bounds() {
+        let data = b"\x00\x01\x00\x00\x00\x00\x00\x0a\x00\x00\x00\x02ccmp\x00\x0ess01\x00\x0e\x00\x00\x00\x00";
+        let table = TaggedTable { tag: *b"GSUB", offset: 0, length: data.len() };
+        assert_eq!(read_layout_features(data, &[table], *b"GSUB").unwrap(), vec!["ccmp", "ss01"]);
+        let truncated = TaggedTable { tag: *b"GSUB", offset: 0, length: 15 };
+        assert!(read_layout_features(data, &[truncated], *b"GSUB").is_err());
     }
 }

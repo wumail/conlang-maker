@@ -8,6 +8,7 @@ import React, { useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useGrammarStore } from "../../store/grammarStore";
 import { useLexiconStore } from "../../store/lexiconStore";
+import { usePhonoStore } from "../../store/phonoStore";
 import { IrregularOverride } from "../../types";
 import { Plus, Trash2, Info } from "lucide-react";
 import {
@@ -25,6 +26,7 @@ export const IrregularOverrideEditor: React.FC = () => {
   const { t } = useTranslation();
   const { config, setIrregularOverrides } = useGrammarStore();
   const { wordsList } = useLexiconStore();
+  const hasStress = usePhonoStore((state) => Boolean(state.config.phonotactics.stress));
   const overrides = config.irregular_overrides;
   const dimensions = config.inflection_dimensions;
 
@@ -58,7 +60,14 @@ export const IrregularOverrideEditor: React.FC = () => {
     value: IrregularOverride[keyof IrregularOverride],
   ) => {
     setIrregularOverrides(
-      overrides.map((o, i) => (i === index ? { ...o, [field]: value } : o)),
+      overrides.map((override, position) => {
+        if (position !== index) return override;
+        const next = { ...override, [field]: value };
+        if (field === "surface_form" && (next.stem_start ?? 0) > Array.from(next.surface_form).length) {
+          delete next.stem_start;
+        }
+        return next;
+      }),
     );
   };
 
@@ -170,6 +179,25 @@ export const IrregularOverrideEditor: React.FC = () => {
                   className={`w-40 ${INPUT_MONO}`}
                   placeholder={t("typology.surfaceFormPlaceholder")}
                 />
+                {hasStress && (
+                  <label className="flex items-center gap-2 text-xs">
+                    {t("typology.stemStart")}
+                    <input
+                      type="number"
+                      min={0}
+                      max={Array.from(ov.surface_form).length}
+                      step={1}
+                      value={ov.stem_start ?? 0}
+                      className={`w-20 ${INPUT_MONO}`}
+                      onChange={(event) => {
+                        const offset = Number(event.target.value);
+                        if (Number.isInteger(offset) && offset >= 0 && offset <= Array.from(ov.surface_form).length) {
+                          updateOverride(index, "stem_start", offset);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
 
                 <div className="flex-1" />
 

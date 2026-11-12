@@ -43,6 +43,8 @@ pub struct FontInspection {
     pub version: Option<String>,
     pub codepoints: Vec<u32>,
     pub glyphs: Vec<Vec<u32>>,
+    pub substitution_features: Vec<String>,
+    pub positioning_features: Vec<String>,
     pub warning: Option<String>,
 }
 
@@ -479,6 +481,8 @@ fn empty_inspection(own_rev: String) -> FontInspection {
         version: None,
         codepoints: Vec::new(),
         glyphs: Vec::new(),
+        substitution_features: Vec::new(),
+        positioning_features: Vec::new(),
         warning: None,
     }
 }
@@ -528,6 +532,8 @@ pub fn inspect_language_font(
             version: None,
             codepoints: Vec::new(),
             glyphs: Vec::new(),
+            substitution_features: Vec::new(),
+            positioning_features: Vec::new(),
             warning: None,
         };
         let bytes = fs::read(&owned.path).map_err(|e| e.to_string())?;
@@ -541,6 +547,8 @@ pub fn inspect_language_font(
                 inspection.version = info.version;
                 inspection.codepoints = info.codepoints;
                 inspection.glyphs = info.glyphs;
+                inspection.substitution_features = info.substitution_features;
+                inspection.positioning_features = info.positioning_features;
             }
             Err(err) => inspection.warning = Some(err),
         }

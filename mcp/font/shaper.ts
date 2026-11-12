@@ -99,7 +99,7 @@ export async function shapeText(
     script_source: options?.script ? "override" : "unicode_runs",
     language_tag: languageTag,
     features: featureStrings,
-    features_source: hasFeatureOverride ? "override" : "GUI_DEFAULT_LAYOUT",
+    features_source: hasFeatureOverride ? (options?.features_source ?? "override") : "GUI_DEFAULT_LAYOUT",
   };
 
   if (codepointCount === 0) {

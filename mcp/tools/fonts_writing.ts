@@ -27,6 +27,8 @@ import {
   MAX_FONT_BYTES,
 } from "../font/loader";
 import { shapeStrings, shapeText } from "../font/shaper";
+import { resolveFontFeatures } from "../../src/core/engines/fontLayout";
+import { buildFontInputIndex, textToFontInput, EMPTY_FONT_INPUT_INDEX, type FontInputSource } from "../../src/core/engines/fontInput";
 import type { LayoutOptions, LoadedFontHandle } from "../font/types";
 import {
   assertPathAllowed,
@@ -38,6 +40,7 @@ import {
   readCorpusIndexUnlocked,
   readCorpusTextUnlocked,
   readLexiconUnlocked,
+  readGrammarUnlocked,
   readPhonologyUnlocked,
   readWorkspaceUnlocked,
   resolveFontFileUnlocked,
@@ -543,6 +546,8 @@ export function registerFontsWritingTools(
         .max(200)
         .optional()
         .describe("Alias for texts: batch of up to 200 strings to shape"),
+      input_mode: z.enum(["literal", "language"]).optional().default("literal")
+        .describe("language uses phoneme-to-font input and inherited spelling settings. Cluster spans refer to the resulting font_input"),
       features: z
         .array(z.string())
         .optional()
@@ -580,6 +585,9 @@ export function registerFontsWritingTools(
 
       let handle: LoadedFontHandle;
       let resolvedRevision: string;
+      let languageFeatures: string[] | undefined;
+      let inputConfig: PhonologyConfig | undefined;
+      let inputIndex = EMPTY_FONT_INPUT_INDEX;
       let fontMeta: {
         owner_language_id: string | null;
         owner_name: string | null;
@@ -588,6 +596,9 @@ export function registerFontsWritingTools(
       };
 
       if (args.font_path?.trim()) {
+        if (args.input_mode === "language") {
+          throw new McpError("VALIDATION", "Language input mode requires a language-resolved font.");
+        }
         const allowedPath = assertPathAllowed(args.font_path.trim(), config);
         handle = await loadFontFromFile(allowedPath);
         resolvedRevision = computeFileRevision(allowedPath);
@@ -625,7 +636,24 @@ export function registerFontsWritingTools(
                 },
               );
             }
-            return found;
+            const phono = readPhonologyUnlocked(family.project_dir, family.conlang_file_path, resolvedLang.language);
+            if (args.input_mode === "language") {
+              inputConfig = phono.config;
+              const lexicon = readLexiconUnlocked(family.project_dir, resolvedLang.language);
+              const grammar = readGrammarUnlocked(family.project_dir, resolvedLang.language);
+              const parent = ws.config.languages.find((language) => language.language_id === resolvedLang.language.parent_id);
+              let source: FontInputSource | undefined;
+              if (phono.config.font_input?.use_parent_phonemes && parent) {
+                source = {
+                  languageId: parent.language_id,
+                  words: readLexiconUnlocked(family.project_dir, parent).words,
+                  phonology: readPhonologyUnlocked(family.project_dir, family.conlang_file_path, parent).config,
+                  grammar: readGrammarUnlocked(family.project_dir, parent).config,
+                };
+              }
+              inputIndex = buildFontInputIndex(lexicon.words, grammar.config, phono.config, source);
+            }
+            return { ...found, font_features: phono.config.font_features };
           },
         );
         handle = await loadFontFromBytes(
@@ -633,6 +661,7 @@ export function registerFontsWritingTools(
           resolvedFont.file_name,
         );
         resolvedRevision = resolvedFont.revision;
+        languageFeatures = resolvedFont.font_features;
         fontMeta = {
           owner_language_id: resolvedFont.owner_language_id,
           owner_name: resolvedFont.owner_name,
@@ -645,12 +674,14 @@ export function registerFontsWritingTools(
         direction: args.direction,
         script: args.script,
         language: args.language_tag,
-        features: args.features,
+        features: args.features ?? (languageFeatures === undefined ? undefined : resolveFontFeatures(languageFeatures)),
+        features_source: args.features === undefined && languageFeatures !== undefined ? "language_config" : "override",
         normalization: args.normalization,
       };
 
-      const shapedResults = await shapeStrings(handle, inputs, layoutOptions);
-      const results = shapedResults.map((res) => {
+      const fontInputs = inputConfig ? inputs.map((input) => textToFontInput(input, inputConfig!, inputIndex)) : inputs;
+      const shapedResults = await shapeStrings(handle, fontInputs, layoutOptions);
+      const results = shapedResults.map((res, index) => {
         const ligatureFormed =
           res.glyphs.some(
             (g) => !g.is_notdef && g.codepoint_span[1] - g.codepoint_span[0] > 1,
@@ -660,6 +691,8 @@ export function registerFontsWritingTools(
             !res.has_notdef);
 
         return {
+          original_input: inputs[index],
+          font_input: fontInputs[index],
           input: res.input,
           shaped_input: res.shaped_input,
           codepoint_count: res.codepoint_count,
@@ -693,6 +726,7 @@ export function registerFontsWritingTools(
           resolved_revision: resolvedRevision,
         },
         layout: shapedResults[0]?.layout ?? null,
+        input_mode: args.input_mode,
         results,
       };
     },

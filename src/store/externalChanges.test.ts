@@ -14,7 +14,6 @@ import {
 import { useWorkspaceStore } from "./workspaceStore";
 import { useGrammarStore } from "./grammarStore";
 import { handleWorkspaceFileChanged } from "../utils/externalChanges";
-import { buildMcpCliArgs } from "../components/mcp/McpConfigSnippets";
 
 type InvokeHandler = (
   cmd: string,
@@ -289,28 +288,5 @@ describe("externalChanges watcher & unknown-field fidelity", () => {
     expect(savedExpectedRev).toBe("gram_rev_11");
     expect(useConflictStore.getState().conflicts).toHaveLength(0);
     expect(useGrammarStore.getState().revision).toBe("gram_rev_12");
-  });
-
-  test("buildMcpCliArgs generates mode, toolsets, and optional --family flags", () => {
-    expect(buildMcpCliArgs("read-only", null)).toEqual([
-      "--mode",
-      "read-only",
-      "--toolsets",
-      "core,audit,compute",
-    ]);
-    expect(buildMcpCliArgs("write", "/tmp/elvish.conlang")).toEqual([
-      "--mode",
-      "write",
-      "--toolsets",
-      "core,audit,compute,write,evolution",
-      "--family",
-      "/tmp/elvish.conlang",
-    ]);
-    expect(buildMcpCliArgs("write+destructive", "")).toEqual([
-      "--mode",
-      "write+destructive",
-      "--toolsets",
-      "all",
-    ]);
   });
 });

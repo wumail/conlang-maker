@@ -1,4 +1,4 @@
-# Conlang Maker MCP — 执行日志（T0.1–T5.3）
+# Conlang Maker MCP — 执行日志（T0.1–T5.3 + M5 HTTP 传输改造）
 
 ---
 
@@ -207,3 +207,132 @@
 - V-ALL：bun test ✓（59 + 16 项）｜cargo test ✓（39 项）｜build ✓｜core:check ✓｜mcp ✓｜docs:build ✓
 - 偏差与决定：无（`T5.4` 版本发布按要求未执行，版本号保持 `1.0.7`）。
 - 遗留事项：进入 `T5.4` 正式发版前按发布流程执行 `bun run version:update` 即可。
+
+---
+
+## M5 HTTP 传输改造（2026-11-11）
+
+> 依据 `design/mcp/HTTP_TRANSPORT_PLAN.md`（决策 D1–D5）：HTTP 为主、stdio 为后备；服务由 GUI 托管，GUI 退出即停止。
+
+### T-H1 `mcp/http/serve.ts` 按实际端口计算白名单
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `allowedHosts` / `allowedOrigins` / 状态文件的 `port` / `url` 全部改为在 `Bun.serve()` 成功之后用 `bunServer.port` 计算，`port: 0` 可由系统分配随机端口（测试依赖此项）。
+  - [x] 实测 Bun 1.3.9 端口占用时抛出的错误 `code === "EADDRINUSE"`、`message === "Failed to start server. Is port N in use?"`，判断条件按此实现；`probeExistingServer()` 区分「已有 conlang-mcp」与「端口被其他程序占用」。
+  - [x] 保持 `idleTimeout: 255`（SDK 的 SSE 保活帧为 15 秒，Bun 默认 10 秒会切断）。
+  - [x] 日志只输出令牌**名称**（`session … opened by "<name>"`），不输出明文；新增 `usageFlushMs` 注入点供测试。
+- 偏差与决定：`handleMcp` 增加 `Content-Length` 预检，超过 4 MiB 直接返回 413（SDK 的 `maxRequestBodySize` 仍作为流式请求的兜底）。
+- 遗留事项：无。
+
+### T-H2 `mcp/http/cli.ts` 与 `mcp/main.ts` serve 子命令
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `runServeCommand(argv)` 解析 `--port` / `--settings` / `--parent-pid`（同时支持 `--flag value` 与 `--flag=value`），`--settings` 默认 `getDefaultSettingsPath()` 并接受 `CONLANG_MCP_SETTINGS`；其余参数交给 `parseConfig`（复用 `--registry` / `--allow-root`）。
+  - [x] `loadOrCreateSettings()` 新建时在 stderr 提示设置文件路径，**不打印令牌**。
+  - [x] `PortInUseError` 映射：已有 conlang-mcp → 打印版本与 pid 并返回 **3**；端口被其他程序占用 → 返回 **4**；其余错误返回 **1**。实测三者均符合。
+  - [x] 启动成功打印 `[conlang-mcp] v1.0.7 serving http://127.0.0.1:<端口>/mcp`；`SIGINT` / `SIGTERM`（Windows 追加 `SIGBREAK`）→ `stop()` 后退出码 0。
+  - [x] 父进程看门狗：每 2 秒 `process.kill(pid, 0)`，`ESRCH` 视为父进程消失并退出，`EPERM` 视为仍存活。
+  - [x] `mcp/main.ts` 在 `argv[0] === "serve"` 时进入 HTTP，其余（含 `--stdio`）保持原 stdio 逻辑；两条路径的日志都只写 stderr。
+- 偏差与决定：无。
+- 遗留事项：无。
+
+### T-H3 构建检查
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `bun run mcp:build` 产出 `src-tauri/binaries/conlang-mcp-aarch64-apple-darwin`（Mach-O arm64，约 60 MB）。
+  - [x] 编译产物 `serve --port 0` 正常启动，`/healthz` 返回 `version: "1.0.7"`，与 `package.json` 一致（`import packageJson from "../package.json"` 在编译产物中生效）。
+  - [x] 编译产物下 HarfBuzz wasm 正常：经 SDK 客户端调用 `font_inspect`（`liga-test.ttf`，`codepoint_count: 5`，`substitution_features: ["liga"]`）与 `font_shape` 均成功。
+- 偏差与决定：无需修改 `scripts/build-mcp.mjs`。
+- 遗留事项：无。
+
+### T-H4 `mcp/tests/http.test.ts`
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成（18 个用例全通过）
+- 验收逐条（对应方案 §T-H4 用例表）：
+  - [x] 1 `/healthz` 200 + `name` + `version`；2 无令牌 401 且带 `WWW-Authenticate`；3 错误/停用令牌 401；4 异源 `Host` 403（`node:net` 原始请求）、`localhost:<端口>` 200；5 异源 `Origin` 403、回环 `Origin` 与无 `Origin` 放行。
+  - [x] 6 只读令牌有 `lex_search`、无 `lex_upsert` / `project_create`；7 完全权限令牌 76 工具齐全（复用 `mcp/tests/expected-tools.ts`，`coverage-matrix.test.ts` 改为从该文件导入以避免重复注册测试）；8 令牌 `family` 体现在 `server_info.default_family`。
+  - [x] 9 会话中途删除令牌 → 下一次请求 401；10 只读改读写 → 旧会话 404、重连后出现写工具；11 两个读写令牌并发 `lex_upsert` 不同语言 → 均成功，审计日志两条记录 `client` 分别为两个令牌名。
+  - [x] 12 端口已被 conlang-mcp 占用 → `PortInUseError` 且 `existing.version` 有值；13 端口被普通 `Bun.serve` 占用 → `existing === null`；14 状态文件创建/删除与 pid；15 使用时间文件落盘；16 >4 MiB 请求体 413；17 stdio 后备（`bun mcp/main.ts --mode read-only`）正常。
+  - [x] 另加进程级看门狗用例：`serve --port 0 --parent-pid <pid>`，结束父进程后服务在 5 秒内以退出码 0 退出并删除状态文件。
+- 偏差与决定：**Bun 1.3.9 在同一进程运行多个 `Bun.serve` 时，所有请求都由第一个存活实例的 `fetch` 处理器处理**（实测确认）。因此测试改为「同一时刻只保留一个存活服务」，用 `withServer()` 包裹并在结束时 `stop()`；生产环境只有一个服务，不受影响。
+- 遗留事项：无。
+- P1 验收：`bun run mcp:check` ✓；`bun test mcp/tests` ✓（34 项 = 原 16 + 新 18）；T-H3 两项手工检查 ✓。
+
+### T-R1 Rust `commands/mcp_server.rs`：设置文件与命令集
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] serde 模型与 §2.1 一致，顶层与令牌级都用 `#[serde(flatten)] extra` 保留未知字段。
+  - [x] 路径：`app_data_dir()/mcp-server.json`、`mcp-server.state.json`、`mcp-token-usage.json`、`logs/mcp-server.log`。
+  - [x] 写入走 `utils::fs_util::atomic_write`，unix 上补 `0600`；文件缺失时创建含一个只读 "Default" 令牌的默认设置（在启动服务进程之前完成）。
+  - [x] 令牌：`OsRng` 32 字节 + `base64` URL_SAFE_NO_PAD + 前缀 `cmk_`；id 为 `tok_` + 6 字节 hex。
+  - [x] 命令 `mcp_server_get_settings` / `mcp_server_set_port` / `mcp_token_create` / `mcp_token_update` / `mcp_token_regenerate` / `mcp_token_delete` / `mcp_server_status` / `mcp_server_start` / `mcp_server_stop` / `mcp_server_restart` 全部注册到 `generate_handler!`；mode 与 toolsets 严格校验。
+  - [x] 健康检查不引入 HTTP 依赖：`std::net::TcpStream` + 1 秒读写超时 + `GET /healthz`。
+- 偏差与决定：`mcp_token_update` 的 `family` 采用「省略 = 不修改；空串 = 改回动态发现；路径 = 绑定」语义（Tauri 对缺失键直接 `visit_none`，无法区分「未提供」与「显式 null」，故不用 `Option<Option<String>>`）。
+- 遗留事项：无。
+
+### T-R2 Rust 进程托管与生命周期
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `McpServerProcess { child, owned, starting, last_error }` 在 `setup` 中 `app.manage(...)`。
+  - [x] 启动流程：确保设置文件 → 探测 `/healthz`（版本相同视为运行中且 `owned = false`；版本不同且状态文件 pid 与 healthz 一致时 SIGTERM 后重启；端口被其他程序占用 → `port_in_use`；连不上 → 启动）→ `Command::new(bin).args(["serve","--settings",…,"--parent-pid",…])`，stdin/stdout 置空、stderr 追加日志 → 每 100 ms 探测一次，最多 5 秒，子进程提前退出时按退出码 3/4/其他写入状态与日志尾部。
+  - [x] 停止只针对 `owned` 子进程：SIGTERM → 等 2 秒 → `kill()` → `wait()`。
+  - [x] `lib.rs` 改为 `.build(...).run(|app, event| …)`，`RunEvent::Exit` 调用 `stop_owned_server`；启动在独立线程执行，不阻塞窗口。
+- 偏差与决定：`get_mcp_binary_path` 的查找逻辑抽成 `resolve_mcp_binary() -> Option<PathBuf>`，命令保留原有「返回期望路径」的回退行为。
+- 遗留事项：无。
+
+### T-R3 Rust 其他改动与单测
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `models.rs` 的 `McpAuditLogEntry` 增加 `client: Option<String>`（`skip_serializing_if`），`transaction.rs` 构造处补 `client: None`。
+  - [x] 单测覆盖：默认设置创建、往返读写与未知字段保真、`0600` 权限、令牌格式（`cmk_` + 43 字符 base64url；`tok_` + 12 hex）与唯一性、`TcpListener` 假服务的 healthz 解析与「非 conlang-mcp → Occupied」「空闲端口 → Free」分类、mode/toolsets 校验。
+  - [x] `cargo check` / `cargo test` 通过且无新增警告（45 项库测试 + 集成测试全绿）。
+- 偏差与决定：无。
+- 遗留事项：无。
+
+### T-G1 前端类型
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `src/types/index.ts` 新增 `McpTokenSettings`、`McpServerSettings`、`McpServerSettingsPayload`、`McpServerRunState`、`McpServerStatus`，字段与 Rust 返回结构一一对应。
+- 偏差与决定：无。
+- 遗留事项：无。
+
+### T-G2 设置页改版
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] 服务状态卡片 `McpServerStatusCard.tsx`：状态徽标、URL + 复制、版本/会话数/PID、启动/停止/重启、端口输入与保存、错误摘要 + 日志路径，页面可见时每 3 秒轮询。
+  - [x] 令牌管理 `McpTokenTable.tsx` + `McpTokenDialog.tsx`：名称、权限模式、工具集、默认语系、启用开关、最近使用、复制/重新生成/编辑/删除；默认打码可切换明文；完全权限沿用破坏性警告；删除与重新生成走二次确认弹窗。
+  - [x] 客户端接入配置 `McpHttpSnippets.tsx`：按选中令牌生成 Cursor / Claude Code / 通用 HTTP 片段，并为 stdio 后备提供可折叠片段；DSH 片段已删除。
+  - [x] 片段生成抽成纯函数 `src/components/mcp/httpSnippets.ts`（`buildHttpSnippets`、`buildStdioConfig`），配 `httpSnippets.test.ts`（7 个用例）。
+  - [x] `McpAuditLogCard.tsx` 增加「客户端」列：优先显示 `client`，为空时按 `origin` 显示 `GUI` / `stdio`。
+- 偏差与决定：删除已被取代的 `McpConfigSnippets.tsx`；`externalChanges.test.ts` 中针对它的 `buildMcpCliArgs` 用例迁移到 `httpSnippets.test.ts`。
+- 遗留事项：无。
+
+### T-G3 多语言文案
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `src/i18n/zh.ts` 与 `src/i18n/en.ts` 的 `mcp` 节点补齐服务状态、令牌管理、对话框、片段、审计客户端列等全部新文案；删除不再使用的 `dshTitle`、`claudeTitle`、`binaryPathLabel`、`binaryNotFound`、`bindFamilyLabel`、`bindFamilyHint`、`noActiveFamily`。
+  - [x] `node scripts/i18n-check.mjs` 零错误通过。
+- 偏差与决定：无。
+- 遗留事项：无。
+- P2 验收：`bunx tsc --noEmit` ✓｜`bun run i18n:check` ✓｜`bun test src` ✓（65 项）｜`cargo test` ✓（45 项）。手工检查 1–8 需在 `bun run mcp:build && bun tauri dev` 下人工执行。
+
+### D 文档
+- 执行者：WorkBuddy　日期：2026-11-11　提交：working-tree
+- 结果：完成
+- 验收逐条：
+  - [x] `design/mcp/PRD.md`：Q7 改为「HTTP 为主、stdio 后备」；§3.4 协议 SDK 行更新；§8 UI-6 改写为新的设置页能力；§10 重写为传输与进程模型、令牌与设置文件、命令行、分发四小节。
+  - [x] `docs/zh/modules/mcp.md` 与 `docs/en/modules/mcp.md` 第 2 节按新的设置页重写（服务托管、访问令牌、客户端配置、stdio 后备、启动参数、安全说明），并同步第 1 节与第 3 节的 HTTP/令牌表述；英文版顺带把 `.conlang-maker/mcp.json` 示例改成实际 schema。
+  - [x] `design/mcp/DSH_SETUP.md` 改为 HTTP 优先，并注明 DSH 的 HTTP 配置语法尚未核实、不再给出 `dsh mcp add` 命令。
+  - [x] 方案提到的中文文档末尾多余 `EOF` 行在当前文件中已不存在，无需删除。
+- 偏差与决定：无。
+- 遗留事项：`bun run build` 在本机执行时被沙箱的 safe-delete 保护拦在「清空 `dist/ipa_audio`」一步（非代码问题）；改用 `bunx vite build --outDir /tmp/conlang-dist-check` 验证生产构建通过。
+

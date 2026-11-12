@@ -35,6 +35,7 @@ import {
   loadFontFromFile,
 } from "../font/loader";
 import { shapeText } from "../font/shaper";
+import { resolveFontFeatures } from "../../src/core/engines/fontLayout";
 import {
   GUI_DEFAULT_LAYOUT,
   type AppliedLayoutMetadata,
@@ -473,6 +474,7 @@ function buildLayoutCacheKey(layout: LayoutOptions): string {
     s: layout.script ?? null,
     l: layout.language ?? "en",
     f: layout.features ?? null,
+    fs: layout.features_source ?? null,
     n: layout.normalization ?? "as_used",
   });
 }
@@ -662,6 +664,10 @@ async function runSingleLanguageFontAudit(params: {
   });
 
   const layoutOpts = buildLayoutOptions(options);
+  if (options.features === undefined && effectivePhono.font_features !== undefined) {
+    layoutOpts.features = resolveFontFeatures(effectivePhono.font_features);
+    layoutOpts.features_source = "language_config";
+  }
   const layoutKey = buildLayoutCacheKey(layoutOpts);
   const shapeCache = params.sharedShapeCache ?? new Map<string, ShapeResult>();
 

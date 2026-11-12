@@ -17,8 +17,9 @@ import { buildMacrosFromInventory, applySoundChanges } from "../../src/core/engi
 import { computeStatistics } from "../../src/core/engines/statistics";
 import {
   getWordEvolution,
+  getInheritedParentEntryId,
+  getWordChangeDetails,
   getWordSyncDigest,
-  hasWordChangedFromParent,
 } from "../../src/core/engines/wordLifecycle";
 import { newEntryId, newPrefixedId, nowIso } from "../../src/core/lexicon/ids";
 import { computeWordIpa } from "../../src/core/lexicon/utils";
@@ -414,7 +415,7 @@ export function registerLexiconTools(
           const resolved = resolveLanguageUnlocked(family, args);
           const lex = readLexiconUnlocked(family.project_dir, resolved.language);
           const needPhono =
-            Boolean(args.ipa_query?.trim()) || args.mode === "ipa_fuzzy";
+            Boolean(args.ipa_query?.trim()) || args.mode === "ipa_fuzzy" || args.changed_from_parent !== undefined;
           const phono = needPhono
             ? readPhonologyUnlocked(
                 family.project_dir,
@@ -423,6 +424,7 @@ export function registerLexiconTools(
               )
             : null;
           let parentWordsMap: Map<string, WordEntry> | null = null;
+          let parentConfig: PhonologyConfig | null = null;
           if (args.changed_from_parent !== undefined && resolved.language.parent_id) {
             const parentLang = resolved.workspace.languages.find(
               (l) => l.language_id === resolved.language.parent_id,
@@ -430,9 +432,10 @@ export function registerLexiconTools(
             if (parentLang) {
               const parentLex = readLexiconUnlocked(family.project_dir, parentLang);
               parentWordsMap = new Map(parentLex.words.map((w) => [w.entry_id, w]));
+              parentConfig = readPhonologyUnlocked(family.project_dir, family.conlang_file_path, parentLang).config;
             }
           }
-          return { resolved, lex, phono, parentWordsMap };
+          return { resolved, lex, phono, parentWordsMap, parentConfig };
         },
       );
 
@@ -464,12 +467,12 @@ export function registerLexiconTools(
         const pMap = snapshot.parentWordsMap;
         filtered = filtered.filter((w) => {
           if (!pMap) return false;
-          const parentId = w.etymology.parent_entry_id ?? w.entry_id;
-          const parentEntry = pMap.get(parentId);
-          if (!parentEntry) return args.changed_from_parent === true;
-          return (
-            hasWordChangedFromParent(w, parentEntry) === args.changed_from_parent
-          );
+          const parentId = getInheritedParentEntryId(w, snapshot.resolved.language.parent_id!);
+          const parentEntry = parentId ? pMap.get(parentId) : null;
+          const changes = parentEntry
+            ? getWordChangeDetails(w, parentEntry, snapshot.phono?.config, snapshot.parentConfig)
+            : null;
+          return (!!changes && Object.values(changes).some(Boolean)) === args.changed_from_parent;
         });
       }
 
@@ -687,6 +690,7 @@ export function registerLexiconTools(
                   {
                     parent_entry: WordEntry | null;
                     changed_from_parent: boolean;
+                    changes?: ReturnType<typeof getWordChangeDetails>;
                   }
                 >;
               }
@@ -698,21 +702,23 @@ export function registerLexiconTools(
             );
             if (parentLang) {
               const parentLex = readLexiconUnlocked(family.project_dir, parentLang);
+              const currentPhono = readPhonologyUnlocked(family.project_dir, family.conlang_file_path, resolved.language);
+              const parentPhono = readPhonologyUnlocked(family.project_dir, family.conlang_file_path, parentLang);
               const parentById = new Map(
                 parentLex.words.map((w) => [w.entry_id, w]),
               );
               const entries: Record<
                 string,
-                { parent_entry: WordEntry | null; changed_from_parent: boolean }
+                { parent_entry: WordEntry | null; changed_from_parent: boolean; changes?: ReturnType<typeof getWordChangeDetails> }
               > = {};
               for (const w of items) {
-                const pId = w.etymology.parent_entry_id ?? w.entry_id;
-                const pWord = parentById.get(pId) ?? null;
+                const pId = getInheritedParentEntryId(w, parentLang.language_id);
+                const pWord = pId ? parentById.get(pId) ?? null : null;
+                const changes = pWord ? getWordChangeDetails(w, pWord, currentPhono.config, parentPhono.config) : undefined;
                 entries[w.entry_id] = {
                   parent_entry: pWord,
-                  changed_from_parent: pWord
-                    ? hasWordChangedFromParent(w, pWord)
-                    : true,
+                  changed_from_parent: changes ? Object.values(changes).some(Boolean) : false,
+                  ...(changes ? { changes } : {}),
                 };
               }
               parentComparison = {
@@ -1661,6 +1667,11 @@ export function registerLexiconTools(
                 const parentWord = parentById.get(conflict.parentEntryId);
                 const existingChild = existingIndex.get(conflict.childEntryId)?.word;
                 if (!parentWord || !existingChild) {
+                  skippedConflicts.push(conflict);
+                  continue;
+                }
+                if (getInheritedParentEntryId(existingChild, parent.language_id) !== parentWord.entry_id) {
+                  txWarnings.push(`Skipped occupied entry ID "${existingChild.entry_id}" because it has a different etymological relationship.`);
                   skippedConflicts.push(conflict);
                   continue;
                 }

@@ -219,4 +219,40 @@ describe("computePullSync workflow (T1.5)", () => {
     expect(second.pending).toEqual([]);
     expect(second.conflicts).toEqual([]);
   });
+
+  test("derived and borrowed records cannot replace the inherited target", () => {
+    const parent = makeWord("source", "lang_parent", "aka", "water");
+    const inherited = makeWord("inherited", "lang_child", "aka", "water", {
+      etymology: { ...parent.etymology, origin_type: "evolved", parent_entry_id: "source", source_language_id: "lang_parent" },
+    });
+    const derived = makeWord("compound", "lang_child", "akam", "water jar", {
+      etymology: { ...parent.etymology, origin_type: "derived", parent_entry_id: "source" },
+    });
+    const borrowed = makeWord("loan", "lang_child", "aka", "water", {
+      etymology: { ...parent.etymology, origin_type: "borrowed", parent_entry_id: "source", source_language_id: "lang_parent" },
+    });
+    const plan = computePullSync({ parentLanguageId: "lang_parent", childLanguageId: "lang_child", parentWords: [parent], childWords: [inherited, derived, borrowed], scaRuleSets: intervocalicVoicing, macros });
+    expect(plan.pending.map((item) => item.word.entry_id)).toEqual(["inherited"]);
+    expect(derived.con_word_romanized).toBe("akam");
+    expect(borrowed.etymology.origin_type).toBe("borrowed");
+  });
+
+  test("all inherited descendants are considered regardless of array order", () => {
+    const parent = makeWord("source", "lang_parent", "aka", "water");
+    const children = ["first", "second"].map((id) => makeWord(id, "lang_child", "aka", "water", {
+      etymology: { ...parent.etymology, origin_type: "evolved", parent_entry_id: "source", source_language_id: "lang_parent" },
+    }));
+    const plan = computePullSync({ parentLanguageId: "lang_parent", childLanguageId: "lang_child", parentWords: [parent], childWords: children, scaRuleSets: intervocalicVoicing, macros });
+    expect(plan.pending.map((item) => item.word.entry_id)).toEqual(["first", "second"]);
+  });
+
+  test("a non-inherited record occupying the stable ID produces a conflict", () => {
+    const parent = makeWord("source", "lang_parent", "aka", "water");
+    const child = makeWord("source", "lang_child", "akam", "water jar", {
+      etymology: { ...parent.etymology, origin_type: "derived", parent_entry_id: "source" },
+    });
+    const plan = computePullSync({ parentLanguageId: "lang_parent", childLanguageId: "lang_child", parentWords: [parent], childWords: [child], scaRuleSets: intervocalicVoicing, macros });
+    expect(plan.pending).toEqual([]);
+    expect(plan.conflicts).toEqual([{ parentEntryId: "source", childEntryId: "source" }]);
+  });
 });

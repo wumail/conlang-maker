@@ -5,6 +5,8 @@ import {
   getWordEvolution,
   getWordSyncDigest,
   hasWordChangedFromParent,
+  getWordChangeDetails,
+  getInheritedParentEntryId,
 } from "./wordLifecycle";
 
 function makeSampleWord(overrides?: Partial<WordEntry>): WordEntry {
@@ -86,5 +88,23 @@ describe("wordLifecycle pure synchronous digests (T1.2)", () => {
       getWordComparableDigest(base),
     );
     expect(getWordSyncDigest(changedGloss)).toBe(getWordSyncDigest(base));
+  });
+
+  test("ignores pure transcription differences and separates segments, prosody and technical state", () => {
+    const parent = makeSampleWord({ con_word_romanized: "lozha", phonetic_ipa: "loʒa", phonetic_override: true });
+    const spelling = makeSampleWord({ con_word_romanized: "loja", phonetic_ipa: "loʒa", phonetic_override: true });
+    expect(getWordChangeDetails(spelling, parent)).toEqual({ segments: false, prosody: false, meaning: false, technical: false });
+    const stress = { ...parent, phonetic_ipa: "ˈloʒa" };
+    expect(getWordChangeDetails(stress, parent).prosody).toBe(true);
+    expect(getWordChangeDetails(stress, parent).segments).toBe(false);
+    expect(getWordChangeDetails({ ...stress, phonetic_ipa: "ˈloza" }, parent).segments).toBe(true);
+    expect(getWordChangeDetails({ ...parent, phonetic_override: false }, parent).technical).toBe(true);
+  });
+
+  test("inheritance lookup respects origin and source with legacy stable IDs", () => {
+    const word = makeSampleWord();
+    expect(getInheritedParentEntryId(word, "parent")).toBe(word.entry_id);
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "derived", parent_entry_id: "root" } }, "parent")).toBeNull();
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "evolved", parent_entry_id: "root", source_language_id: "other" } }, "parent")).toBeNull();
   });
 });

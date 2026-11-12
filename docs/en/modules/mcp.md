@@ -2,13 +2,13 @@
 
 Connect AI assistants directly to your Conlang Maker language families over the Model Context Protocol (MCP) for phonology analysis, lexicon management, diachronic evolution, and OpenType font coverage auditing.
 
-**Navigate**: click `MCP Settings` (or `Settings -> MCP`) in the sidebar to copy client snippets, inspect the bundled binary path, and view recent MCP audit logs.
+**Navigate**: click `MCP Settings` (or `Settings -> MCP`) in the sidebar to check the server status and endpoint, manage access tokens, copy client snippets (including the stdio fallback), and view recent MCP audit logs.
 
 ---
 
 ## 1. Overview — What MCP Enables
 
-`conlang-mcp` is Conlang Maker's built-in local **Model Context Protocol (MCP)** server. Communicating with AI clients (**DSH**, **Claude Desktop**, **Cursor**, and other stdio-compatible MCP hosts) over standard input/output (`stdio`), it exposes both your **workspace data** and Conlang Maker's **linguistic computation engines** as structured semantic tools, resources, and guided prompts.
+`conlang-mcp` is Conlang Maker's built-in local **Model Context Protocol (MCP)** server. The desktop app hosts it over **Streamable HTTP** (loopback `127.0.0.1` only), where clients such as **Cursor** and **Claude Code** connect with an access token; stdio-only clients (such as **Claude Desktop**) can keep using the stdio fallback. It exposes both your **workspace data** and Conlang Maker's **linguistic computation engines** as structured semantic tools, resources, and guided prompts.
 
 ### Key Capabilities
 
@@ -26,104 +26,107 @@ Connect AI assistants directly to your Conlang Maker language families over the 
 
 ## 2. Setup & Client Configuration
 
-### Locating the `conlang-mcp` Executable
+### 2.1 The GUI Hosts the Server
 
-Conlang Maker bundles `conlang-mcp` as a standalone native sidecar binary alongside the desktop application executable. To get the exact path on your machine, open Conlang Maker and go to **MCP Settings** — the page displays the resolved executable path and provides one-click copy buttons for **DSH**, **Claude Desktop**, and **Cursor**.
+When Conlang Maker starts, `conlang-mcp` comes up automatically in **Streamable HTTP** mode and only listens on the loopback interface:
 
-Typical platform locations:
+```
+http://127.0.0.1:43117/mcp
+```
+
+The **Server Status** card at the top of the **MCP Settings** page shows the current state (running / stopped / starting / port in use / error), endpoint, version, session count and PID, and lets you:
+
+| Action | Description |
+| --- | --- |
+| Start / Stop / Restart | Manually control the server process |
+| Port | Defaults to `43117`; saving a new value restarts the server |
+| Log file | On failure, the card shows the error summary and the `logs/mcp-server.log` path |
+
+The server starts with the app and stops when the app quits; there is no login auto-start. If the GUI is killed, the server's `--parent-pid` watchdog shuts it down within a few seconds.
+
+:::tip
+`curl http://127.0.0.1:43117/healthz` returns `{ok, name, version, pid, port, started_at, sessions}` — handy for checking that the server is healthy.
+:::
+
+### 2.2 Access Tokens
+
+HTTP mode authorizes per **token**: each agent uses its own token carrying a permission mode, toolset selection, and default family.
+
+In the **Access Tokens** card you can:
+
+- **Create a token** with a name, permission mode (see [section 3](#3-permission-modes--safety-boundaries)), toolsets (derived from mode / all / custom multi-select) and default family (dynamic discovery / the currently open family / any registered family).
+- **Copy the token**: secrets are masked by default; reveal with the eye icon, then copy to the clipboard.
+- **Regenerate**: invalidates the previous secret immediately.
+- **Enable / disable**: a disabled token gets 401 on its next request.
+- **Delete**: removes it from `mcp-server.json`.
+
+"Last used" comes from `mcp-token-usage.json` (the server flushes it at most every 15 seconds).
+
+:::warning
+After changing a token's mode or toolsets, its existing session answers 404 on the next request; the client re-initializes per the MCP spec and picks up the new grants. Reconnect manually if a client does not do that automatically.
+:::
+
+### 2.3 Client Configuration
+
+Select a token in the table and the **Client Configuration** section generates snippets you can copy directly.
+
+**Cursor** (`.cursor/mcp.json` or `~/.cursor/mcp.json`):
+
+```json
+{
+  "mcpServers": {
+    "conlang-maker": {
+      "url": "http://127.0.0.1:43117/mcp",
+      "headers": { "Authorization": "Bearer <token>" }
+    }
+  }
+}
+```
+
+**Claude Code**:
+
+```bash
+claude mcp add --transport http conlang-maker http://127.0.0.1:43117/mcp \
+  --header "Authorization: Bearer <token>"
+```
+
+**Any other HTTP client**: send requests to `http://127.0.0.1:43117/mcp` with
+
+```
+Authorization: Bearer <token>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+```
+
+### 2.4 stdio Fallback
+
+Clients that only speak stdio (for example Claude Desktop) can still use the snippet inside the **stdio fallback** panel:
+
+```json
+{
+  "mcpServers": {
+    "conlang-maker": {
+      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
+      "args": ["--mode", "read-only", "--toolsets", "core,audit,compute"]
+    }
+  }
+}
+```
+
+Executable locations in stdio mode:
 
 | Environment | Executable / Command |
 |-------------|----------------------|
-| **macOS** | `/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp` *(or `/Applications/conlang-maker.app/Contents/MacOS/conlang-mcp`)* |
+| **macOS** | `/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp` |
 | **Windows** | `%LOCALAPPDATA%\Conlang Maker\conlang-mcp.exe` |
 | **Linux** | `/usr/bin/conlang-mcp` *(or alongside your extracted package / AppImage binary)* |
-| **Development (from source)** | `bun mcp/main.ts` *(run from the repository root)* |
+| **Development (from source)** | `bun mcp/main.ts` *(HTTP: `bun mcp/main.ts serve`)* |
 
-:::tip
-Always prefer copying the snippet directly from Conlang Maker's **MCP Settings** page so the exact installation path and your chosen permission mode are filled in automatically.
-:::
+In stdio mode the client launches the process itself: `--mode` / `--toolsets` / `--family` apply directly and HTTP tokens are not involved.
 
-### Client Configuration Snippets
+### 2.5 CLI Flags & Environment Variables
 
-#### DSH (`~/.config/dsh/config.json`)
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "write",
-        "--toolsets",
-        "core,audit,compute,write,evolution"
-      ]
-    }
-  }
-}
-```
-
-For local development against source code:
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "bun",
-      "args": [
-        "/path/to/conlang-maker/mcp/main.ts",
-        "--mode",
-        "write",
-        "--toolsets",
-        "all"
-      ]
-    }
-  }
-}
-```
-
-#### Claude Desktop (`claude_desktop_config.json`)
-
-- **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "read-only",
-        "--toolsets",
-        "core,audit,compute"
-      ]
-    }
-  }
-}
-```
-
-#### Cursor (`.cursor/mcp.json` or `~/.cursor/mcp.json`)
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "write",
-        "--toolsets",
-        "core,audit,compute,write"
-      ]
-    }
-  }
-}
-```
-
-### CLI Flags & Environment Variables
-
-Every startup option can be set via CLI flag or an equivalent `CONLANG_MCP_*` environment variable (CLI flags take precedence):
+The flags below apply to stdio mode; under `serve`, `--registry` / `--allow-root` form the baseline config for every session while `mode` / `toolsets` / `family` come from each token. Every startup option can also be set via an equivalent `CONLANG_MCP_*` environment variable (CLI flags take precedence):
 
 | CLI Flag | Environment Variable | Default | Description |
 |----------|----------------------|---------|-------------|
@@ -131,40 +134,35 @@ Every startup option can be set via CLI flag or an equivalent `CONLANG_MCP_*` en
 | `--toolsets` | `CONLANG_MCP_TOOLSETS` | `core,audit,compute` | Comma-separated toolsets to expose: `core`, `audit`, `compute`, `write`, `evolution`, `admin`, or `all`. |
 | `--family` | `CONLANG_MCP_FAMILY` | Active family in registry | Default language family (`family_id`, `.conlang` file path, or unambiguous family name) when `family` is omitted in tool calls. |
 | `--registry` | `CONLANG_MCP_REGISTRY` | Platform app-data `registry.json` | Override path to `registry.json` (useful for isolated testing or custom profiles). |
-| `--allow-root` | `CONLANG_MCP_ALLOW_ROOT` | All registered project directories | Comma/colon-separated directory allowlist restricting filesystem access (`..` traversal and out-of-bounds symlinks are rejected). |
+| `--allow-root` | `CONLANG_MCP_ALLOW_ROOT` | All registered project directories | Directory allowlist restricting filesystem access (`..` traversal and out-of-bounds symlinks are rejected). |
+| `--port` | — | `43117` | `serve` only: HTTP listen port. |
+| `--settings` | `CONLANG_MCP_SETTINGS` | App-data `mcp-server.json` | `serve` only: settings file path. |
+| `--parent-pid` | — | — | `serve` only: exit when this parent process disappears. |
 
-### Per-Project Configuration (`.conlang-maker/mcp.json`)
+`conlang-mcp serve` exit codes: `0` clean shutdown, `3` another conlang-mcp already serves the port, `4` the port is taken by another program, `1` any other error.
 
-You can store project-specific MCP and font audit settings in `<project>/.conlang-maker/mcp.json` so they travel with your workspace (and sync across machines):
+### 2.6 Per-Project Configuration (`.conlang-maker/mcp.json`)
+
+Project-specific audit and snapshot settings live in `<project>/.conlang-maker/mcp.json` so they travel with the workspace:
 
 ```json
 {
-  "audit": {
-    "languages": {
-      "lang_proto": {
-        "residual_glyph_pattern": "^roman\\."
-      },
-      "lang_coastal": {
-        "residual_glyph_pattern": "^(roman|latin)\\.",
-        "external_font_project": {
-          "path": "/path/to/font-project",
-          "variant": "coastal"
-        }
-      }
-    }
-  },
-  "snapshots": {
-    "batch_threshold": 20,
-    "max_snapshots": 50
-  }
+  "autoSnapshot": "threshold",
+  "residualGlyphPatterns": ["^roman\\."]
 }
 ```
 
-- **`residual_glyph_pattern`**: Per-language regular expression matched against shaped glyph names during `font_audit_coverage` and `font_audit_family` (can be overridden per tool call).
-- **`external_font_project`** *(optional)*: Associates an external font engineering directory (`encoding.json` / `manifest.json` / `.fea` files) so coverage reports include declared-but-unimplemented rules as actionable hints. `conlang-mcp` **never modifies** external font repositories.
-- **`snapshots`**: Customizes automatic snapshot thresholds and completed-history retention (`max_snapshots`).
+- **`autoSnapshot`**: Automatic snapshot policy (`"always"` on every write, `"threshold"` at the configured threshold and on the first write of a session, `"off"` keeps only destructive-operation snapshots).
+- **`residualGlyphPatterns`**: Regular expressions used by `font_audit_coverage` and `font_audit_family` to detect leftover Latin placeholder glyphs that GSUB did not substitute (can be overridden per tool call).
 
-### Addressing Conventions
+### 2.7 Security Notes
+
+- The server binds `127.0.0.1` only and requires a loopback `Host` header; requests carrying an `Origin` must come from `http://127.0.0.1:<port>`, `http://localhost:<port>` or `http://[::1]:<port>` — this blocks DNS rebinding and cross-site browser calls.
+- Tokens are stored in plaintext in the owner-only (`0600`) `mcp-server.json` and **never appear in logs, audit records, or error messages**. Regenerate or delete a token immediately if it leaks.
+- Request bodies are capped at 4 MiB (413 above that) and idle sessions close after 60 minutes.
+- Every write still goes through the permission mode, optimistic locking (`expected_revision`), project transactions and non-destructive snapshots described in section 3.
+
+### 2.8 Addressing Conventions
 
 - **`family`** *(optional)*: Pass a `family_id` (8-char SHA-256 hash from `family_list`), an absolute `.conlang` path, or an unambiguous family name. When omitted, `conlang-mcp` uses `--family` or the active family in `registry.json`.
 - **`language`**: Pass a `language_id` (e.g., `lang_proto`), unique language display name, or workspace-relative directory path.
@@ -177,7 +175,7 @@ You can store project-specific MCP and font audit settings in `<project>/.conlan
 
 ### Permission Modes
 
-`conlang-mcp` defaults to **`read-only`**. Write and destructive capabilities must be explicitly opted into at server startup:
+The permission mode can be set per process (stdio `--mode`) or per token (the token's `mode` on the HTTP settings page); both default to **`read-only`**, and write/destructive capabilities must be opted into explicitly:
 
 | Mode | Allowed Operations | Transaction Recovery | Extra Confirmation |
 |------|--------------------|----------------------|--------------------|
@@ -186,12 +184,12 @@ You can store project-specific MCP and font audit settings in `<project>/.conlan
 | `write+destructive` | Everything in `write` **plus** destructive or topology/history-restoring operations: `language_delete`, `language_restore`, `corpus_delete`, `import_workspace_bundle`, and `snapshot_rollback`. | Full automatic journal recovery. | Destructive tools **also require `confirm: true`** in call arguments. |
 
 :::warning Dual Gate for Destructive Tools
-Enabling `--mode write+destructive` alone is not enough to trigger a rollback, bundle overwrite, or deletion — the tool call itself must explicitly pass `"confirm": true` (and `expected_revision` / `operation_id`). Otherwise `conlang-mcp` rejects the call with `DESTRUCTIVE_DISABLED` or `VALIDATION`.
+Setting `--mode write+destructive` (or giving a token Full Access) alone is not enough to trigger a rollback, bundle overwrite, or deletion — the tool call itself must explicitly pass `"confirm": true` (and `expected_revision` / `operation_id`). Otherwise `conlang-mcp` rejects the call with `DESTRUCTIVE_DISABLED` or `VALIDATION`.
 :::
 
-### Toolset Filtering (`--toolsets`)
+### Toolset Filtering (`--toolsets` / token `toolsets`)
 
-Tools are grouped into modular toolsets so you can keep your AI assistant's context window lean and focused. For any write/destructive tool to be exposed, **both** its toolset and the required `--mode` must be enabled:
+Tools are grouped into modular toolsets so you can keep your AI assistant's context window lean and focused. For any write/destructive tool to be exposed, **both** its toolset and the required permission mode must be enabled:
 
 | Toolset | Enabled by Default | Focus Area |
 |---------|--------------------|------------|

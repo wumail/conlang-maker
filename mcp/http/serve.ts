@@ -30,12 +30,14 @@ export interface HttpServeOptions {
   baseConfig: McpConfig;
   settingsPath: string;
   initialSettings: McpServerSettings;
-  /** Overrides settings.port (CLI `--port`). */
+  /** Overrides settings.port (CLI `--port`). `0` lets the OS pick a free port. */
   port?: number;
   /** Where to write `mcp-server.state.json`; defaults next to the settings file. */
   statePath?: string;
   /** Where to persist per-token last-used timestamps; defaults next to the settings file. */
   usagePath?: string;
+  /** How often token "last used" timestamps are flushed to disk (tests inject a short delay). */
+  usageFlushMs?: number;
 }
 
 export interface ServerState {
@@ -73,6 +75,7 @@ export class PortInUseError extends Error {
         ? `conlang-mcp v${existing.version ?? "?"} (pid ${existing.pid ?? "?"}) is already serving 127.0.0.1:${port}`
         : `Port ${port} on 127.0.0.1 is already in use by another program`,
     );
+    this.name = "PortInUseError";
   }
 }
 
@@ -164,27 +167,18 @@ async function readBodyLimited(req: Request): Promise<string | Response> {
 
 export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHttpServer> {
   const watcher = new SettingsWatcher(opts.settingsPath, opts.initialSettings);
-  const port = opts.port ?? opts.initialSettings.port;
+  const requestedPort = opts.port ?? opts.initialSettings.port;
   const statePath = opts.statePath ?? path.join(path.dirname(opts.settingsPath), STATE_FILE_NAME);
   const sessions = new Map<string, SessionEntry>();
   const startedAt = new Date().toISOString();
+  const usageFlushMs = opts.usageFlushMs ?? LAST_USED_FLUSH_MS;
 
-  const allowedHosts = new Set([`127.0.0.1:${port}`, `localhost:${port}`, `[::1]:${port}`]);
-  const allowedOrigins = new Set([
-    `http://127.0.0.1:${port}`,
-    `http://localhost:${port}`,
-    `http://[::1]:${port}`,
-  ]);
+  // Filled in once Bun.serve() tells us which port we actually got: with `port: 0` the OS
+  // picks one, and both the Host/Origin allowlists and the state file must use it.
+  let actualPort = requestedPort;
+  let allowedHosts = new Set<string>();
+  let allowedOrigins = new Set<string>();
 
-  const state: ServerState = {
-    name: SERVER_NAME,
-    pid: process.pid,
-    port,
-    url: `http://127.0.0.1:${port}${MCP_PATH}`,
-    version: opts.baseConfig.version,
-    started_at: startedAt,
-    settings_path: opts.settingsPath,
-  };
   const usagePath = opts.usagePath ?? path.join(path.dirname(opts.settingsPath), USAGE_FILE_NAME);
   const tokenLastUsed = readUsageFile(usagePath);
   let lastUsedDirty = false;
@@ -217,7 +211,10 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
         maxRequestBodySize: MAX_BODY_BYTES,
         onsessioninitialized: (sid) => {
           sessions.set(sid, { transport, server, tokenId, grantKey, lastSeen: Date.now() });
-          console.error(`[conlang-mcp] session ${sid.slice(0, 8)} opened by "${config.clientName}" (mode=${config.mode})`);
+          // Never log the token itself, only its display name.
+          console.error(
+            `[conlang-mcp] session ${sid.slice(0, 8)} opened by "${config.clientName}" (mode=${config.mode})`,
+          );
         },
         onsessionclosed: (sid) => {
           sessions.delete(sid);
@@ -231,6 +228,11 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
   };
 
   const handleMcp = async (req: Request): Promise<Response> => {
+    const declared = Number(req.headers.get("content-length") ?? "0");
+    if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+      return jsonRpcError(413, -32000, "Request body too large");
+    }
+
     const settings = watcher.current();
     const auth = req.headers.get("authorization") ?? "";
     const match = /^Bearer\s+(.+)$/i.exec(auth.trim());
@@ -296,7 +298,7 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
         name: SERVER_NAME,
         version: opts.baseConfig.version,
         pid: process.pid,
-        port,
+        port: actualPort,
         started_at: startedAt,
         sessions: sessions.size,
       });
@@ -319,19 +321,38 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
   try {
     bunServer = Bun.serve({
       hostname: "127.0.0.1",
-      port,
+      port: requestedPort,
       // SSE streams are kept alive by 15s comment frames; stay above that.
       idleTimeout: 255,
       fetch: fetchHandler,
     });
   } catch (err) {
+    // Bun 1.3.x sets `code: "EADDRINUSE"` and reports "Failed to start server. Is port N in use?".
     const code = (err as NodeJS.ErrnoException).code;
     if (code === "EADDRINUSE" || /in use|EADDRINUSE/i.test(String((err as Error).message))) {
-      throw new PortInUseError(port, await probeExistingServer(port));
+      throw new PortInUseError(requestedPort, requestedPort > 0 ? await probeExistingServer(requestedPort) : null);
     }
     throw err;
   }
 
+  actualPort = bunServer.port ?? requestedPort;
+  allowedHosts = new Set([`127.0.0.1:${actualPort}`, `localhost:${actualPort}`, `[::1]:${actualPort}`]);
+  allowedOrigins = new Set([
+    `http://127.0.0.1:${actualPort}`,
+    `http://localhost:${actualPort}`,
+    `http://[::1]:${actualPort}`,
+  ]);
+
+  const url = `http://127.0.0.1:${actualPort}${MCP_PATH}`;
+  const state: ServerState = {
+    name: SERVER_NAME,
+    pid: process.pid,
+    port: actualPort,
+    url,
+    version: opts.baseConfig.version,
+    started_at: startedAt,
+    settings_path: opts.settingsPath,
+  };
   writeStateFile(statePath, state);
 
   const flushTimer = setInterval(() => {
@@ -339,7 +360,7 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
       lastUsedDirty = false;
       writeUsageFile(usagePath, tokenLastUsed);
     }
-  }, LAST_USED_FLUSH_MS);
+  }, usageFlushMs);
   const sweepTimer = setInterval(() => {
     const cutoff = Date.now() - SESSION_IDLE_MS;
     for (const [sid, entry] of sessions) {
@@ -351,8 +372,8 @@ export async function startHttpServer(opts: HttpServeOptions): Promise<RunningHt
 
   let stopped = false;
   return {
-    port,
-    url: state.url,
+    port: actualPort,
+    url,
     sessionCount: () => sessions.size,
     async stop() {
       if (stopped) return;

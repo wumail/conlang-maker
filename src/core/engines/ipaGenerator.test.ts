@@ -409,3 +409,49 @@ describe("romanizationToPhonemes & generateIPA (legacy + T1.7 traced)", () => {
     expect(miss.steps[0]?.applications).toEqual([]);
   });
 });
+
+describe("initial stress and transcription separators", () => {
+  function stressedConfig(): PhonologyConfig {
+    const map = makeMap([
+      { input: "m", output_phoneme: "m" },
+      { input: "a", output_phoneme: "a" },
+      { input: "l", output_phoneme: "l" },
+      { input: "k", output_phoneme: "k" },
+      { input: "ā", output_phoneme: "aː" },
+      { input: "·", output_phoneme: "." },
+    ]);
+    map.rules[5].output_type = "separator";
+    const config = makeConfig(map);
+    config.phonotactics.stress = { position: "initial", domain: "word" };
+    return config;
+  }
+
+  test("keeps stem stress after a real prefix and accepts NFC/NFD input", () => {
+    const config = stressedConfig();
+    expect(generateIPA("ma·ala", config, { stem_start: 3 }).phonemic).toBe("/maˈala/");
+    expect(generateIPA("māla", config).phonemic).toBe("/ˈmaːla/");
+    expect(generateIPA("ma\u0304la", config).phonemic).toBe("/ˈmaːla/");
+    expect(generateIPATraced("ma·ala", config, { stem_start: 3 }).prosody?.phonemic_positions).toEqual([2]);
+  });
+
+  test("separators preserve phoneme parsing without adding an inventory phoneme", () => {
+    const config = stressedConfig();
+    expect(generateIPA("ka·ala", config).phonemic).toBe("/ˈkaala/");
+    expect(romanizationToPhonemesTraced("ka·ala", config.romanization_maps[0]).segments[2].output).toBe("");
+  });
+
+  test("stress stays aligned through allophonic prefix changes", () => {
+    const config = stressedConfig();
+    config.allophony_rules = [{ rule_id: "shorten-prefix", description: "prefix deletion", target: "ma", replacement: "m", context_before: "#", context_after: "", priority: 1 }];
+    const result = generateIPA("maala", config, { stem_start: 2 });
+    expect(result.phonemic).toBe("/maˈala/");
+    expect(result.surface).toBe("[mˈala]");
+  });
+
+  test("word and entry stress domains preserve explicit phrase choices", () => {
+    const config = stressedConfig();
+    expect(generateIPA("ala mala", config).phonemic).toBe("/ˈala ˈmala/");
+    config.phonotactics.stress = { position: "initial", domain: "entry" };
+    expect(generateIPA("ala mala", config).phonemic).toBe("/ˈala mala/");
+  });
+});

@@ -53,6 +53,17 @@ function formatAuditTime(timestamp: string): string {
   return Number.isNaN(parsed) ? trimmed : new Date(parsed).toLocaleString();
 }
 
+/**
+ * HTTP calls carry the token name; legacy stdio calls and GUI writes have no client,
+ * so fall back to the recorded origin.
+ */
+function renderClient(t: TFunction, entry: McpAuditLogEntry): string {
+  if (entry.client) return entry.client;
+  if (entry.origin === "gui") return t("mcp.originGui");
+  if (entry.origin === "mcp") return t("mcp.originStdio");
+  return entry.origin || "—";
+}
+
 export const McpAuditLogCard: React.FC<McpAuditLogCardProps> = ({
   logs,
   loading,
@@ -102,9 +113,10 @@ export const McpAuditLogCard: React.FC<McpAuditLogCardProps> = ({
               <thead>
                 <tr>
                   <th>{t("mcp.colTime")}</th>
+                  <th>{t("mcp.colClient")}</th>
                   <th>{t("mcp.colTool")}</th>
-                  <th>{t("mcp.colLanguage")}</th>
-                  <th>{t("mcp.colStatus")}</th>
+                  <th className="whitespace-nowrap">{t("mcp.colLanguage")}</th>
+                  <th className="whitespace-nowrap">{t("mcp.colStatus")}</th>
                   <th>{t("mcp.colSummary")}</th>
                 </tr>
               </thead>
@@ -114,13 +126,16 @@ export const McpAuditLogCard: React.FC<McpAuditLogCardProps> = ({
                     <td className="whitespace-nowrap font-mono text-[11px] text-base-content/70">
                       {formatAuditTime(entry.timestamp)}
                     </td>
+                    <td className="text-xs whitespace-nowrap max-w-[9rem] truncate" title={renderClient(t, entry)}>
+                      {renderClient(t, entry)}
+                    </td>
                     <td className="font-mono text-xs">{entry.tool}</td>
                     <td className="font-mono text-xs text-base-content/70">
                       {entry.language_id ?? "—"}
                     </td>
-                    <td>
+                    <td className="w-px whitespace-nowrap">
                       <span
-                        className={`${BADGE} ${getStatusBadgeClass(entry.status)}`}
+                        className={`${BADGE} ${getStatusBadgeClass(entry.status)} whitespace-nowrap`}
                       >
                         {renderStatusLabel(t, entry.status)}
                       </span>

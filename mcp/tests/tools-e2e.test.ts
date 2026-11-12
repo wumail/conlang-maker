@@ -341,6 +341,45 @@ describe("MCP End-to-End Stdio Integration Suite (All Tool Domains, Resources & 
           });
           expect(scaSim.results).toBeDefined();
 
+          const rawSca = await callOk("sca_simulate", {
+            language: "lang_root",
+            words: ["xa"],
+            input_format: "raw",
+            rules_text: "x > s",
+          });
+          expect(rawSca.input_format).toBe("raw");
+          const rawScaRows = rawSca.results as Array<{ input: string; output: string }>;
+          expect(rawScaRows[0].input).toBe("xa");
+          expect(rawScaRows[0].output).toBe("sa");
+
+          const phonemicSca = await callOk("sca_simulate", {
+            language: "lang_root",
+            words: ["xa"],
+            input_format: "romanized",
+            rules_text: "x > s",
+          });
+          const phonemicScaRows = phonemicSca.results as Array<{ input: string; output: string }>;
+          expect(phonemicScaRows[0].input).toBe("/ʃa/");
+          expect(phonemicScaRows[0].output).toBe("/ʃa/");
+
+          const rawParentSca = await callOk("sca_simulate", {
+            language: "lang_child",
+            source: "parent_lexicon",
+            input_format: "raw",
+          });
+          for (const row of rawParentSca.results as Array<{ input: string; romanized: string }>) {
+            expect(row.input).toBe(row.romanized);
+          }
+
+          const inlineRawSca = await callOk("sca_simulate", {
+            words: ["/xa/"],
+            input_format: "raw",
+            rules_text: "x > s",
+          });
+          const inlineRawScaRows = inlineRawSca.results as Array<{ input: string; output: string }>;
+          expect(inlineRawScaRows[0].input).toBe("/xa/");
+          expect(inlineRawScaRows[0].output).toBe("/sa/");
+
           const scaFeat = await callOk("sca_feature_query", { phoneme: "p" });
           expect(scaFeat).toBeDefined();
 
@@ -605,6 +644,8 @@ describe("MCP End-to-End Stdio Integration Suite (All Tool Domains, Resources & 
               language: "lang_child",
               dry_run: true,
               phonotactics: { syllable_structure: "CVC" },
+              font_features: ["ss01=1"],
+              font_input: { phonemes: { "ʃ": "a" }, vowels: [], multigraphs: [], separator: "·" },
             });
             const phonoRev = (phonoDry.base_revisions as Record<string, string>)[
               "phonology.json"
@@ -614,8 +655,20 @@ describe("MCP End-to-End Stdio Integration Suite (All Tool Domains, Resources & 
               operation_id: "op_phono_child_1",
               expected_revision: phonoRev,
               phonotactics: { syllable_structure: "CVC" },
+              font_features: ["ss01=1"],
+              font_input: { phonemes: { "ʃ": "a" }, vowels: [], multigraphs: [], separator: "·" },
             });
             expect(phonoCommit.committed).toBe(true);
+            const languageShape = await callOk("font_shape", {
+              language: "lang_child", text: "sh", input_mode: "language",
+            });
+            const languageRows = languageShape.results as Array<{ original_input: string; font_input: string; has_notdef: boolean }>;
+            expect(languageRows[0].original_input).toBe("sh");
+            expect(languageRows[0].font_input).toBe("a");
+            expect(languageRows[0].has_notdef).toBe(false);
+            expect((languageShape.layout as Record<string, unknown>).features_source).toBe("language_config");
+            const fontSettings = await callOk("phono_get", { language: "lang_child", sections: ["font"] });
+            expect((fontSettings.local_config as Record<string, unknown>).font_features).toEqual(["ss01=1"]);
             const legacyDir = path.join(
               env.workspaceDir,
               "stages/child/.conlang-maker/legacy",

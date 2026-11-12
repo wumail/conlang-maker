@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 import { exportToCSV } from "../../utils/exportCSV";
 import { ipaFuzzySearch } from "../../utils/ipaSearch";
-import { generateIPA } from "../../utils/ipaGenerator";
 import { BTN_GHOST_SQ, TOGGLE, SELECT, BADGE } from "../../lib/ui";
 import { PhonologyConfig, PhonologyLoadResult, WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
@@ -28,7 +27,8 @@ import { ConfirmModal } from "../common/ConfirmModal";
 import { ScriptLine } from "../writing/ScriptText";
 import {
   getWordEvolution,
-  hasWordChangedFromParent,
+  getInheritedParentEntryId,
+  getWordChangeDetails,
   WordLifecycleFlags,
 } from "../../utils/wordLifecycle";
 
@@ -141,33 +141,22 @@ export const Sidebar: React.FC = () => {
     const result: Record<string, WordLifecycleFlags> = {};
 
     wordsList.forEach((word) => {
-      const parentEntryId = word.etymology?.parent_entry_id;
-      const parentWord =
-        parentLanguage && parentEntryId ? parentWordsById[parentEntryId] : null;
+      const parentEntryId = parentLanguage
+        ? getInheritedParentEntryId(word, parentLanguage.language_id)
+        : null;
+      const parentWord = parentEntryId ? parentWordsById[parentEntryId] : null;
       const evolution = getWordEvolution(word);
       const isNew = !!parentLanguage && !parentWord;
-      const isChanged =
-        !!parentLanguage && !!parentWord
-          ? (() => {
-              const lexicalChanged = hasWordChangedFromParent(word, parentWord);
-              if (lexicalChanged) return true;
-              if (!parentPhonoConfig) return false;
-              const childSurface = generateIPA(
-                word.con_word_romanized,
-                config,
-              ).surface;
-              const parentSurface = generateIPA(
-                parentWord.con_word_romanized,
-                parentPhonoConfig,
-              ).surface;
-              return childSurface !== parentSurface;
-            })()
-          : false;
+      const changes = parentWord
+        ? getWordChangeDetails(word, parentWord, config, parentPhonoConfig)
+        : undefined;
+      const isChanged = changes ? Object.values(changes).some(Boolean) : false;
       const isDeprecated = evolution.is_deprecated;
       result[word.entry_id] = {
         isNew,
         isDeprecated,
         isChanged: isDeprecated ? false : isChanged,
+        changes,
       };
     });
 
@@ -600,34 +589,37 @@ export const Sidebar: React.FC = () => {
                   />
                 </div>
               )}
-              <div className="flex-1 min-w-0 relative">
-                {lifecycle &&
-                  (lifecycle.isNew ||
-                    lifecycle.isDeprecated ||
-                    lifecycle.isChanged) && (
-                    <div className="absolute right-0 top-0 flex items-center gap-1">
-                      {lifecycle.isNew && (
-                        <span className={`${BADGE} badge-success`}>
-                          {t("lexicon.lifecycle.added")}
-                        </span>
-                      )}
-                      {lifecycle.isDeprecated && (
-                        <span className={`${BADGE} badge-error`}>
-                          {t("lexicon.lifecycle.deprecated")}
-                        </span>
-                      )}
-                      {lifecycle.isChanged && (
-                        <span className={`${BADGE} badge-warning`}>
-                          {t("lexicon.lifecycle.changed")}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                <div className="font-semibold text-base-content truncate">
-                  {word.con_word_romanized}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold text-base-content truncate min-w-0">
+                    {word.con_word_romanized}
+                  </div>
+                  {lifecycle &&
+                    (lifecycle.isNew ||
+                      lifecycle.isDeprecated ||
+                      lifecycle.isChanged) && (
+                      <div className="flex items-center gap-1 shrink-0 whitespace-nowrap">
+                        {lifecycle.isNew && (
+                          <span className={`${BADGE} badge-success`}>
+                            {t("lexicon.lifecycle.added")}
+                          </span>
+                        )}
+                        {lifecycle.isDeprecated && (
+                          <span className={`${BADGE} badge-error`}>
+                            {t("lexicon.lifecycle.deprecated")}
+                          </span>
+                        )}
+                        {lifecycle.isChanged && (
+                          <span className={`${BADGE} badge-warning`}>
+                            {t("lexicon.lifecycle.changed")}
+                          </span>
+                        )}
+                      </div>
+                    )}
                 </div>
                 <ScriptLine
                   text={word.con_word_romanized}
+                  entryId={word.entry_id}
                   className="block text-lg leading-tight truncate"
                 />
                 {ipaMode && word.phonetic_ipa && (

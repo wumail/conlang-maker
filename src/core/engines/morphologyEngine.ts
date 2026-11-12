@@ -25,6 +25,7 @@ export interface InflectionResult {
   result: string;
   applied: boolean;
   log: string;
+  stem_start?: number;
 }
 
 // ── 辅助函数 ─────────────────────────────────────────────
@@ -222,12 +223,14 @@ export function applyInflection(
   // 3. 按 type 分支应用
   let result = word;
   let typeLog = "";
+  let stemStart = 0;
 
   const ruleType: MorphologyType = rule.type;
 
   switch (ruleType) {
     case "prefix":
       result = applyPrefix(word, effectiveAffix);
+      stemStart = Array.from(effectiveAffix).length;
       typeLog = `prefix "${effectiveAffix}"`;
       break;
 
@@ -252,6 +255,7 @@ export function applyInflection(
       const cfg = rule.circumfix_config;
       if (cfg) {
         result = applyCircumfix(word, cfg.prefix_part, cfg.suffix_part);
+        stemStart = Array.from(cfg.prefix_part).length;
         typeLog = `circumfix "${cfg.prefix_part}-...-${cfg.suffix_part}"`;
       } else {
         typeLog = "circumfix: missing config";
@@ -287,7 +291,12 @@ export function applyInflection(
 
   const logParts = [typeLog];
   if (conditionLog) logParts.unshift(conditionLog);
-  return { result, applied: true, log: logParts.join(" | ") };
+  return {
+    result,
+    applied: true,
+    log: logParts.join(" | "),
+    ...(stemStart > 0 ? { stem_start: stemStart } : {}),
+  };
 }
 
 /**
@@ -298,20 +307,64 @@ export function generateParadigm(
   posId: string,
   rules: InflectionRule[],
   phonoConfig: PhonologyConfig,
+  context?: { entryId: string; grammar: GrammarConfig },
 ): {
   dimensionValues: Record<string, string>;
   tag: string;
   result: string;
   log: string;
+  stem_start?: number;
 }[] {
   const posRules = rules.filter((r) => r.pos_id === posId && !r.disabled);
-  return posRules.map((rule) => {
-    const { result, log } = applyInflection(word, rule, phonoConfig);
+  const regular = posRules.map((rule) => {
+    const { result, log, stem_start } = applyInflection(word, rule, phonoConfig);
     return {
       dimensionValues: rule.dimension_values,
       tag: rule.tag,
       result,
       log,
+      ...(stem_start === undefined ? {} : { stem_start }),
+    };
+  });
+  if (!context) return regular;
+
+  const dimensions = context.grammar.inflection_dimensions.filter(
+    (dimension) => dimension.applies_to_pos.includes(posId),
+  );
+  const dimensionIds = new Set(dimensions.map((dimension) => dimension.dim_id));
+  const overrides = context.grammar.irregular_overrides.filter((form) =>
+    form.entry_id === context.entryId &&
+    (context.grammar.inflection_dimensions.length === 0 || Object.keys(form.dimension_values).every((id) => dimensionIds.has(id))),
+  );
+  const dimensionKey = (values: Record<string, string>) => JSON.stringify(
+    Object.entries(values).sort(([left], [right]) => left.localeCompare(right)),
+  );
+  const cells = new Map(regular.map((cell) => [dimensionKey(cell.dimensionValues), cell]));
+  for (const form of overrides) {
+    const covered = regular.some((cell) => Object.entries(form.dimension_values).every(
+      ([dimension, value]) => cell.dimensionValues[dimension] === value,
+    ));
+    const key = dimensionKey(form.dimension_values);
+    if (covered || cells.has(key)) continue;
+    const tag = dimensions.map((dimension) =>
+      dimension.values.find((value) => value.val_id === form.dimension_values[dimension.dim_id])?.gloss?.replace(/\.+$/u, ""),
+    ).filter(Boolean).join(".");
+    cells.set(key, {
+      dimensionValues: form.dimension_values,
+      tag,
+      result: form.surface_form,
+      log: "",
+      ...(form.stem_start === undefined ? {} : { stem_start: form.stem_start }),
+    });
+  }
+  return Array.from(cells.values()).map((cell) => {
+    const form = findIrregularOverride(context.entryId, cell.dimensionValues, overrides);
+    if (!form) return cell;
+    return {
+      ...cell,
+      result: form.surface_form,
+      log: `irregular override -> "${form.surface_form}"`,
+      stem_start: form.stem_start,
     };
   });
 }
@@ -358,6 +411,7 @@ export function applyAgglutinativeChain(
   let current = word;
   const logs: string[] = [];
   let anyApplied = false;
+  let stemStart = 0;
 
   for (const slot of slots) {
     // 找到绑定到此槽位且匹配维度值的规则
@@ -376,12 +430,13 @@ export function applyAgglutinativeChain(
       continue;
     }
 
-    const { result, applied, log } = applyInflection(
+    const { result, applied, log, stem_start } = applyInflection(
       current,
       slotRule,
       phonoConfig,
     );
     if (applied) {
+      stemStart += stem_start ?? 0;
       current = result;
       anyApplied = true;
       logs.push(`slot[${slot.label || slot.slot_id}]: ${log}`);
@@ -392,6 +447,7 @@ export function applyAgglutinativeChain(
     result: current,
     applied: anyApplied,
     log: logs.length > 0 ? logs.join(" → ") : "no slots matched",
+    ...(stemStart > 0 ? { stem_start: stemStart } : {}),
   };
 }
 
@@ -417,6 +473,7 @@ export function applyFusionalInflection(
       result: irregular.surface_form,
       applied: true,
       log: `irregular override → "${irregular.surface_form}"`,
+      ...(irregular.stem_start === undefined ? {} : { stem_start: irregular.stem_start }),
     };
   }
 

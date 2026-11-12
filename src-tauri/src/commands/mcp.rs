@@ -37,32 +37,46 @@ fn dev_target_sidecar_candidates(manifest_dir: &Path) -> Vec<PathBuf> {
     out
 }
 
-/// Resolve the path to the `conlang-mcp` executable (`T5.2`).
-/// 1. Checks sibling binary next to `tauri::utils::platform::current_exe()` (production bundle).
-/// 2. Falls back in dev builds to `src-tauri/binaries/conlang-mcp-<target-triple>` if built locally.
-/// 3. Otherwise returns the expected sidecar path next to `current_exe()`.
-#[command]
-pub fn get_mcp_binary_path() -> Result<String, String> {
+/// Locates the `conlang-mcp` executable (`T5.2`, T-R2):
+/// 1. sibling binary next to the running executable (production bundle),
+/// 2. dev builds: `src-tauri/binaries/conlang-mcp-<target-triple>`.
+///
+/// Returns `None` when neither exists.
+pub fn resolve_mcp_binary() -> Option<PathBuf> {
     let current = tauri::utils::platform::current_exe()
         .or_else(|_| std::env::current_exe())
-        .map_err(|e| format!("IO: Cannot determine current executable path: {e}"))?;
-
-    let exe_dir = current
-        .parent()
-        .ok_or_else(|| "IO: Executable has no parent directory".to_string())?;
+        .ok()?;
+    let exe_dir = current.parent()?;
     let bundled_sidecar = exe_dir.join(sidecar_binary_name());
     if bundled_sidecar.is_file() {
-        return Ok(bundled_sidecar.to_string_lossy().into_owned());
+        return Some(bundled_sidecar);
     }
 
     let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    for candidate in dev_target_sidecar_candidates(&manifest_dir) {
-        if candidate.is_file() {
-            return Ok(candidate.to_string_lossy().into_owned());
-        }
+    dev_target_sidecar_candidates(&manifest_dir)
+        .into_iter()
+        .find(|candidate| candidate.is_file())
+}
+
+/// Resolve the path to the `conlang-mcp` executable (`T5.2`).
+/// Falls back to the expected sidecar path next to the current executable when nothing
+/// was built yet, so the settings page can still show where the binary belongs.
+#[command]
+pub fn get_mcp_binary_path() -> Result<String, String> {
+    if let Some(found) = resolve_mcp_binary() {
+        return Ok(found.to_string_lossy().into_owned());
     }
 
-    Ok(bundled_sidecar.to_string_lossy().into_owned())
+    let current = tauri::utils::platform::current_exe()
+        .or_else(|_| std::env::current_exe())
+        .map_err(|e| format!("IO: Cannot determine current executable path: {e}"))?;
+    let exe_dir = current
+        .parent()
+        .ok_or_else(|| "IO: Executable has no parent directory".to_string())?;
+    Ok(exe_dir
+        .join(sidecar_binary_name())
+        .to_string_lossy()
+        .into_owned())
 }
 
 /// Read recent MCP / workspace audit log entries (`<project>/.conlang-maker/mcp_audit.ndjson`),

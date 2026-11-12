@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { FontInspection } from "../types";
+import { EMPTY_FONT_INPUT_INDEX, type FontInputIndex } from "../core/engines/fontInput";
 
 interface FontStore {
   /** Bumped after a language imports or removes its own font file or on external font change. */
@@ -17,6 +18,7 @@ interface FontStore {
   loaded: boolean;
   loading: boolean;
   error: string | null;
+  inputIndex: FontInputIndex;
   bump: () => void;
   setCodepoints: (codepoints: number[] | null) => void;
 }
@@ -31,6 +33,7 @@ export const useFontStore = create<FontStore>((set) => ({
   loaded: false,
   loading: false,
   error: null,
+  inputIndex: EMPTY_FONT_INPUT_INDEX,
   bump: () =>
     set((state) => ({
       revision: state.revision + 1,

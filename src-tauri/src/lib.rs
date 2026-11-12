@@ -2,6 +2,8 @@ pub mod commands;
 pub mod models;
 pub mod utils;
 
+use tauri::Manager;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -10,6 +12,17 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_process::init())
+        .setup(|app| {
+            app.manage(commands::mcp_server::McpServerProcess::default());
+            // Start the MCP HTTP server without blocking the first window paint.
+            let handle = app.handle().clone();
+            std::thread::spawn(move || {
+                if let Err(err) = commands::mcp_server::start_server(&handle) {
+                    eprintln!("[mcp-server] autostart failed: {err}");
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             // Lexicon
             commands::lexicon::load_all_words,
@@ -92,7 +105,25 @@ pub fn run() {
             // MCP Sidecar & Audit Logs (T5.2)
             commands::mcp::get_mcp_binary_path,
             commands::mcp::get_mcp_audit_logs,
+            // MCP HTTP server hosting (T-R1..T-R3)
+            commands::mcp_server::mcp_server_get_settings,
+            commands::mcp_server::mcp_server_status,
+            commands::mcp_server::mcp_server_start,
+            commands::mcp_server::mcp_server_stop,
+            commands::mcp_server::mcp_server_restart,
+            commands::mcp_server::mcp_server_set_port,
+            commands::mcp_server::mcp_token_create,
+            commands::mcp_server::mcp_token_update,
+            commands::mcp_server::mcp_token_regenerate,
+            commands::mcp_server::mcp_token_delete,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            // D1: the server is owned by the GUI and stops with it. A hard crash is
+            // covered by the server's own `--parent-pid` watchdog.
+            if matches!(event, tauri::RunEvent::Exit) {
+                commands::mcp_server::stop_owned_server(app_handle);
+            }
+        });
 }

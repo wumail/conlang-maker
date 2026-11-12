@@ -1,3 +1,5 @@
+import { DEFAULT_FONT_FEATURES } from "../../src/core/engines/fontLayout";
+
 export type LayoutNormalization = "as_used" | "NFC" | "NFD" | "none";
 
 export interface LayoutOptions {
@@ -5,6 +7,7 @@ export interface LayoutOptions {
   script?: string;
   language?: string;
   features?: string[];
+  features_source?: "override" | "language_config";
   normalization?: LayoutNormalization;
 }
 
@@ -18,17 +21,7 @@ export const GUI_DEFAULT_LAYOUT = {
   language_tag: "en" as const,
   script_source: "unicode_runs" as const,
   normalization: "as_used" as const,
-  features: [
-    "ccmp",
-    "rlig",
-    "liga",
-    "clig",
-    "calt",
-    "locl",
-    "mark",
-    "mkmk",
-    "kern",
-  ] as readonly string[],
+  features: DEFAULT_FONT_FEATURES,
 };
 
 export const DEFAULT_SHAPING_LAYOUT: Required<
@@ -48,7 +41,7 @@ export interface AppliedLayoutMetadata {
   script_source: "override" | "unicode_runs";
   language_tag: string;
   features: string[];
-  features_source: "override" | "GUI_DEFAULT_LAYOUT";
+  features_source: "override" | "language_config" | "GUI_DEFAULT_LAYOUT";
 }
 
 export interface CmapRange {

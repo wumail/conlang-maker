@@ -2,17 +2,17 @@
 
 通过 Model Context Protocol (MCP) 将 AI 助手直接接入你的 Conlang Maker 语系工作区，一站式完成音系分析、词典编纂、历时音变推演与 OpenType 自造字字体覆盖审计。
 
-**导航入口**：点击侧边栏或标题栏的 `MCP 设置`（`Settings -> MCP`），即可查看捆绑的 `conlang-mcp` 可执行文件路径、一键复制客户端配置片段，并浏览最近的 MCP 操作审计日志。
+**导航入口**：点击侧边栏或标题栏的 `MCP 设置`（`Settings -> MCP`），即可查看服务状态与地址、管理访问令牌、复制各客户端配置片段（含 stdio 后备），并浏览最近的 MCP 操作审计日志。
 
 ---
 
 ## 1. 功能概览 —— MCP 能带来什么
 
-`conlang-mcp` 是 Conlang Maker 内置的本地 **Model Context Protocol (MCP)** 服务端，通过标准输入输出（`stdio`）与各类 AI 客户端（**DSH**、**Claude Desktop**、**Cursor** 等）通信，把你的**工作区语言资产**与 Conlang Maker 的**语言学计算引擎**统一暴露为结构化语义工具、只读资源和引导工作流。
+`conlang-mcp` 是 Conlang Maker 内置的本地 **Model Context Protocol (MCP)** 服务端。桌面端会以 **Streamable HTTP**（仅本机 `127.0.0.1`）托管它，各类 AI 客户端（**Cursor**、**Claude Code** 等）凭访问令牌接入；只支持 stdio 的客户端（如 **Claude Desktop**）仍可使用 stdio 后备模式。它把你的**工作区语言资产**与 Conlang Maker 的**语言学计算引擎**统一暴露为结构化语义工具、只读资源和引导工作流。
 
 ### 核心能力
 
-- **独立无头运行（无需打开 GUI）**：`conlang-mcp` 直接读写磁盘上的工作区文件。即使没有启动 Conlang Maker 桌面端，你也可以在 AI 客户端里检索词典、推演音变或执行整棵语系树的字体覆盖审计。
+- **两种运行方式**：桌面端的 HTTP 服务随应用启停；stdio 模式（`conlang-mcp` / `conlang-mcp --stdio`）可由客户端自行拉起，即使没有启动 GUI 也能直接读写磁盘上的工作区文件——检索词典、推演音变或执行整棵语系树的字体覆盖审计。
 - **100% 共享核心计算引擎（`src/core`）**：与桌面 GUI 共用同一套 TypeScript 语言学引擎（IPA 转换与罗马音逐段追踪、音素切分、形态屈折与变位表生成、派生构词、语言类型学分析、Pull Sync 差异计算、语料莱比锡自动标注、SCA 历时音变推演），并内置 **HarfBuzz (WebAssembly)** 完成真实的 OpenType 排版（`GSUB`/`GPOS`）与字形覆盖审计。
 - **语义级寻址**：AI 不再直接拼改底层 `.ndjson` 分桶或 JSON 文件，而是以“语系、谱系树、正字法映射表、跨代对齐词条（`entry_id`）、形态规则、分域快照”为单位安全操作。
 - **与运行中的 GUI 安全共存**：你可以一边打开 Conlang Maker 编辑语言，一边让 AI 助手协作处理同一个项目：
@@ -24,106 +24,109 @@
 
 ---
 
-## 2. 安装定位与客户端接入
+## 2. 启动服务与客户端接入
 
-### 查找 `conlang-mcp` 可执行文件
+### 2.1 服务由 GUI 托管
 
-Conlang Maker 安装包已将 `conlang-mcp` 作为独立原生可执行文件（sidecar）随桌面应用一同分发。打开桌面端进入 **MCP 设置** 页面，即可直接看到当前机器上的真实路径，并一键复制 **DSH**、**Claude Desktop**、**Cursor** 配置片段。
+打开 Conlang Maker 桌面端后，`conlang-mcp` 会以 **Streamable HTTP** 模式自动启动，只监听本机回环地址：
 
-各平台常见路径参考：
+```
+http://127.0.0.1:43117/mcp
+```
+
+**MCP 设置** 页顶部的「服务状态」卡片显示当前状态（运行中 / 已停止 / 启动中 / 端口被占用 / 出错）、服务地址、版本、当前会话数与进程 PID，并提供：
+
+| 操作 | 说明 |
+| --- | --- |
+| 启动 / 停止 / 重启 | 手动控制服务进程 |
+| 端口 | 默认 `43117`，改成别的端口后自动重启服务 |
+| 日志文件 | 启动失败时显示错误摘要与 `logs/mcp-server.log` 路径 |
+
+服务随应用启动、随应用退出而停止；不做登录自启。如果 GUI 被强制结束，服务会通过父进程看门狗在数秒内自行退出。
+
+:::tip
+`curl http://127.0.0.1:43117/healthz` 会返回 `{ok, name, version, pid, port, started_at, sessions}`，可用于确认服务是否正常。
+:::
+
+### 2.2 访问令牌
+
+HTTP 模式按 **令牌** 授权：每个 Agent 使用一个令牌，令牌各自携带权限模式、工具集与默认语系。
+
+在「访问令牌」卡片中可以：
+
+- **新建令牌**：填写名称，选择权限模式（沿用[第 3 节](#3-权限模式与安全边界)的三档说明）、工具集（按权限模式自动推导 / 全部 / 自定义多选）与默认语系（动态发现 / 当前打开的语系 / 从已注册语系中选择）。
+- **复制令牌**：令牌默认打码显示，点击眼睛图标可查看明文，点击复制按钮写入剪贴板。
+- **重新生成**：立即作废旧令牌，使用它的客户端会失效。
+- **启用 / 停用**：停用后该令牌的请求立即返回 401。
+- **删除**：从 `mcp-server.json` 中移除。
+
+表格中的「最近使用」来自 `mcp-token-usage.json`（服务最多每 15 秒落盘一次）。
+
+:::warning
+权限模式或工具集改动后，该令牌已有的会话会在下一次请求时收到 404，客户端按 MCP 规范重新初始化即可拿到新权限。若某个客户端不会自动重连，手动重连一次即可。
+:::
+
+### 2.3 客户端配置
+
+在令牌表格中选中一个令牌，页面下方的「客户端接入配置」会生成对应片段，可直接复制。
+
+**Cursor**（`.cursor/mcp.json` 或 `~/.cursor/mcp.json`）：
+
+```json
+{
+  "mcpServers": {
+    "conlang-maker": {
+      "url": "http://127.0.0.1:43117/mcp",
+      "headers": { "Authorization": "Bearer <令牌>" }
+    }
+  }
+}
+```
+
+**Claude Code**：
+
+```bash
+claude mcp add --transport http conlang-maker http://127.0.0.1:43117/mcp \
+  --header "Authorization: Bearer <令牌>"
+```
+
+**其他 HTTP 客户端**：向 `http://127.0.0.1:43117/mcp` 发送请求，并带上
+
+```
+Authorization: Bearer <令牌>
+Content-Type: application/json
+Accept: application/json, text/event-stream
+```
+
+### 2.4 stdio 后备
+
+只支持 stdio 的客户端（例如 Claude Desktop）仍可使用「stdio 后备配置」折叠面板中的片段：
+
+```json
+{
+  "mcpServers": {
+    "conlang-maker": {
+      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
+      "args": ["--mode", "read-only", "--toolsets", "core,audit,compute"]
+    }
+  }
+}
+```
+
+stdio 模式下可执行文件路径：
 
 | 运行环境 | 可执行文件 / 启动命令 |
 |---------|---------------------|
 | **macOS** | `/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp` |
 | **Windows** | `%LOCALAPPDATA%\Conlang Maker\conlang-mcp.exe` |
 | **Linux** | `/usr/bin/conlang-mcp`（或安装包/AppImage 同级目录） |
-| **源码开发模式** | 在仓库根目录运行 `bun mcp/main.ts` |
+| **源码开发模式** | `bun mcp/main.ts`（HTTP：`bun mcp/main.ts serve`） |
 
-:::tip
-推荐直接在 Conlang Maker 桌面端的 **MCP 设置** 页选择默认权限模式后点击“复制配置”，避免手写路径出错。
-:::
+stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family` 直接生效，不经过 HTTP 令牌。
 
-### 客户端配置示例
+### 2.5 启动参数与环境变量
 
-#### DSH（`~/.config/dsh/config.json`）
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "write",
-        "--toolsets",
-        "core,audit,compute,write,evolution"
-      ]
-    }
-  }
-}
-```
-
-如果在源码开发环境下联调：
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "bun",
-      "args": [
-        "/path/to/conlang-maker/mcp/main.ts",
-        "--mode",
-        "write",
-        "--toolsets",
-        "all"
-      ]
-    }
-  }
-}
-```
-
-#### Claude Desktop（`claude_desktop_config.json`）
-
-- **macOS**：`~/Library/Application Support/Claude/claude_desktop_config.json`
-- **Windows**：`%APPDATA%\Claude\claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "read-only",
-        "--toolsets",
-        "core,audit,compute"
-      ]
-    }
-  }
-}
-```
-
-#### Cursor（`.cursor/mcp.json` 或 `~/.cursor/mcp.json`）
-
-```json
-{
-  "mcpServers": {
-    "conlang": {
-      "command": "/Applications/Conlang Maker.app/Contents/MacOS/conlang-mcp",
-      "args": [
-        "--mode",
-        "write",
-        "--toolsets",
-        "core,audit,compute,write"
-      ]
-    }
-  }
-}
-```
-
-### 启动参数与环境变量
-
-所有命令行参数均支持对应的 `CONLANG_MCP_*` 环境变量（命令行参数优先级更高）：
+以下参数适用于 stdio 模式；在 `serve` 模式下 `--registry` / `--allow-root` 作为所有会话的基线配置，`mode` / `toolsets` / `family` 由每个令牌覆盖。所有命令行参数均支持对应的 `CONLANG_MCP_*` 环境变量（命令行参数优先级更高）：
 
 | 命令行参数 | 环境变量 | 默认值 | 说明 |
 |-----------|---------|-------|------|
@@ -132,8 +135,13 @@ Conlang Maker 安装包已将 `conlang-mcp` 作为独立原生可执行文件（
 | `--family` | `CONLANG_MCP_FAMILY` | 注册表当前激活语系 | 调用工具省略 `family` 参数时默认使用的语系（`family_id`、`.conlang` 路径或无歧义名称）。 |
 | `--registry` | `CONLANG_MCP_REGISTRY` | 系统应用数据目录下的 `registry.json` | 覆盖工作区注册表文件路径（便于隔离测试或多配置切换）。 |
 | `--allow-root` | `CONLANG_MCP_ALLOW_ROOT` | 所有已注册工作区目录 | 允许访问的根目录白名单（禁止 `..` 路径逃逸与越界符号链接）。 |
+| `--port` | — | `43117` | 仅 `serve`：HTTP 监听端口。 |
+| `--settings` | `CONLANG_MCP_SETTINGS` | 应用数据目录下的 `mcp-server.json` | 仅 `serve`：设置文件路径。 |
+| `--parent-pid` | — | — | 仅 `serve`：父进程消失后自动退出。 |
 
-### 项目级配置文件（`.conlang-maker/mcp.json`）
+`conlang-mcp serve` 的退出码：`0` 正常退出、`3` 本端口已有 conlang-mcp 在运行、`4` 端口被其他程序占用、`1` 其他错误。
+
+### 2.6 项目级配置文件（`.conlang-maker/mcp.json`）
 
 你可以在工作区根目录下的 `.conlang-maker/mcp.json` 中保存随项目同步的审计规则与快照策略：
 
@@ -147,13 +155,20 @@ Conlang Maker 安装包已将 `conlang-mcp` 作为独立原生可执行文件（
 - **`autoSnapshot`**：自动快照策略（`"always"` 每次写入均快照、`"threshold"` 默认按阈值与会话首次写入快照、`"off"` 仅保留破坏性强制快照）。
 - **`residualGlyphPatterns`**：`font_audit_coverage` 与 `font_audit_family` 默认用于检测“未被 GSUB 替换掉的残留拉丁占位字形”的正则列表（工具调用时也可单独覆盖 `residual_glyph_pattern`）。
 
+### 2.7 安全说明
+
+- 服务只绑定 `127.0.0.1`，并要求 `Host` 头为本机回环地址；带 `Origin` 的请求只接受 `http://127.0.0.1:<端口>`、`http://localhost:<端口>` 或 `http://[::1]:<端口>`，用来挡住 DNS rebinding 与浏览器跨站调用。
+- 令牌以明文保存在仅本人可读写（`0600`）的 `mcp-server.json` 中，**不会出现在日志、审计记录或报错信息里**。泄露后请立即「重新生成」或删除该令牌。
+- 请求体上限 4 MiB（超出返回 413）；会话空闲 60 分钟后自动关闭。
+- 所有写入仍受第 3 节的权限模式、乐观锁（`expected_revision`）、项目事务与非破坏性快照保护。
+
 ---
 
 ## 3. 权限模式与安全边界
 
 ### 三档权限模式
 
-`conlang-mcp` 默认以 **`read-only`（只读）** 模式启动，写入与破坏性能力必须显式开启：
+权限模式可以按进程（stdio 的 `--mode`）或按令牌（HTTP 设置页中的令牌 `mode`）设置，默认都是 **`read-only`（只读）**，写入与破坏性能力必须显式开启：
 
 | 模式 | 允许的操作 | 未完成事务处理 | 额外确认要求 |
 |------|-----------|--------------|-------------|
@@ -162,10 +177,10 @@ Conlang Maker 安装包已将 `conlang-mcp` 作为独立原生可执行文件（
 | `write+destructive` | 包含 `write` 全部能力，并开放破坏性或拓扑/历史恢复操作：`language_delete`、`language_restore`、`corpus_delete`、`import_workspace_bundle`、`snapshot_rollback`。 | 自动执行完整事务恢复。 | 调用参数中**必须额外显式传入 `"confirm": true`**。 |
 
 :::warning 破坏性操作双重门禁
-仅在启动参数设置 `--mode write+destructive` 并不会自动放行删除或回滚——每次调用破坏性工具时，参数里还必须显式带上 `"confirm": true`（建议先用 `"dry_run": true` 预览影响范围），否则服务会返回 `DESTRUCTIVE_DISABLED` 或 `VALIDATION`。
+仅在启动参数设置 `--mode write+destructive`（HTTP 模式下则是把令牌的权限模式设为“完全权限”）并不会自动放行删除或回滚——每次调用破坏性工具时，参数里还必须显式带上 `"confirm": true`（建议先用 `"dry_run": true` 预览影响范围），否则服务会返回 `DESTRUCTIVE_DISABLED` 或 `VALIDATION`。
 :::
 
-### 工具集按需裁剪（`--toolsets`）
+### 工具集按需裁剪（`--toolsets` / 令牌 `toolsets`）
 
 为了避免一次性向模型注入过多工具挤占上下文窗口，76 个工具按职责划分为 6 个工具集（写工具需同时满足工具集启用与 `--mode` 权限）：
 

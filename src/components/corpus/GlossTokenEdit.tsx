@@ -79,7 +79,7 @@ export function GlossTokenEdit({
               >
                 <div className="min-w-0">
                   <span className="font-mono">{w.con_word_romanized}</span>
-                  <ScriptLine text={w.con_word_romanized} className="ml-2" />
+                  <ScriptLine text={w.con_word_romanized} entryId={w.entry_id} className="ml-2" />
                 </div>
                 <span className="text-base-content/50 ml-2">
                   {w.senses[0]?.gloss}

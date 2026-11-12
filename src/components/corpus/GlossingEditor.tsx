@@ -19,7 +19,7 @@ import {
   CorpusDiffScope,
   CorpusScaDiffItem,
   PendingSuggestion,
-  resolveEntryIpa,
+  resolveInflectedIpa,
 } from "../../core/workflows/autoGloss";
 import { BTN_PRIMARY, BTN_GHOST, CARD, CARD_BODY } from "../../lib/ui";
 
@@ -48,7 +48,8 @@ export function GlossingEditor() {
 
   if (!corpus) return null;
 
-  const getEntryIpa = (entry: WordEntry): string => resolveEntryIpa(entry, phonoConfig);
+  const getEntryIpa = (_entry: WordEntry, form: string, stemStart?: number): string =>
+    resolveInflectedIpa(form, stemStart, phonoConfig);
 
   const closeScaPreview = () => {
     setScaDiffItems([]);

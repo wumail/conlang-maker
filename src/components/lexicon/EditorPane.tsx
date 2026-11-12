@@ -23,10 +23,12 @@ import {
 } from "../../lib/ui";
 import {
   getWordEvolution,
-  hasWordChangedFromParent,
+  getInheritedParentEntryId,
+  getWordChangeDetails,
   WordLifecycleFlags,
 } from "../../utils/wordLifecycle";
 import { ScriptPreview } from "../writing/ScriptText";
+import { WordChangeBadges } from "./WordChangeBadges";
 
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
@@ -164,61 +166,38 @@ export const EditorPane: React.FC = () => {
     };
   }, [projectPath, activeLanguageId, lineageLanguages]);
 
-  // Parent word for the active word
-  const parentWord = word?.etymology?.parent_entry_id
-    ? parentWordsById[word.etymology.parent_entry_id] ?? null
+  const inheritedParentId = word && parentLanguage
+    ? getInheritedParentEntryId(word, parentLanguage.language_id)
     : null;
+  const parentWord = inheritedParentId ? parentWordsById[inheritedParentId] ?? null : null;
 
   const evolutionPathWords = useMemo(() => {
     if (!word || !activeLanguageId) return [] as string[];
-
-    const baseEntryId = word.etymology.parent_entry_id ?? word.entry_id;
-    const wordsOnPath: string[] = [];
-
-    lineageLanguages.forEach((lang) => {
-      if (lang.language_id === activeLanguageId) {
-        const current = word.con_word_romanized.trim();
-        if (current) {
-          wordsOnPath.push(current);
-        }
-        return;
-      }
-
-      const ancestorWord = ancestorWordsByLanguage[lang.language_id]?.[baseEntryId];
-      const ancestorRomanized = ancestorWord?.con_word_romanized?.trim();
-      if (ancestorRomanized) {
-        wordsOnPath.push(ancestorRomanized);
-      }
-    });
-
-    const dedupedWords = wordsOnPath.filter(
-      (pathWord, index) => index === 0 || pathWord !== wordsOnPath[index - 1],
-    );
-
-    if (dedupedWords.length === 0) {
-      const fallback = word.con_word_romanized.trim();
-      return fallback ? [fallback] : [];
+    const path = [word.con_word_romanized.trim()];
+    let current = word;
+    for (let index = lineageLanguages.length - 1; index > 0; index -= 1) {
+      const parent = lineageLanguages[index - 1];
+      const parentId = getInheritedParentEntryId(current, parent.language_id);
+      const ancestor = parentId ? ancestorWordsByLanguage[parent.language_id]?.[parentId] : null;
+      if (!ancestor) break;
+      path.push(ancestor.con_word_romanized.trim());
+      current = ancestor;
     }
-
-    return dedupedWords;
+    return path.reverse().filter((value, index, values) => value && (index === 0 || value !== values[index - 1]));
   }, [word, activeLanguageId, lineageLanguages, ancestorWordsByLanguage]);
 
-  // Lifecycle flags
   const lifecycleFlags = useMemo<WordLifecycleFlags | null>(() => {
     if (!word) return null;
-    const evo = getWordEvolution(word);
-    const isNew = !!parentLanguage && !parentWord;
-    const isDeprecated = evo.is_deprecated;
-    let isChanged = false;
-    if (parentLanguage && parentWord) {
-      isChanged = hasWordChangedFromParent(word, parentWord);
-      if (!isChanged && parentPhonoConfig) {
-        const childSurface = generateIPA(word.con_word_romanized, phonoConfig).surface;
-        const parentSurface = generateIPA(parentWord.con_word_romanized, parentPhonoConfig).surface;
-        isChanged = childSurface !== parentSurface;
-      }
-    }
-    return { isNew, isDeprecated, isChanged: isDeprecated ? false : isChanged };
+    const isDeprecated = getWordEvolution(word).is_deprecated;
+    const changes = parentWord
+      ? getWordChangeDetails(word, parentWord, phonoConfig, parentPhonoConfig)
+      : undefined;
+    return {
+      isNew: !!parentLanguage && !parentWord,
+      isDeprecated,
+      isChanged: !isDeprecated && !!changes && Object.values(changes).some(Boolean),
+      changes,
+    };
   }, [word, parentLanguage, parentWord, parentPhonoConfig, phonoConfig]);
 
   // SCA rule name lookup
@@ -339,7 +318,7 @@ export const EditorPane: React.FC = () => {
             className={`text-4xl font-bold border-b-2 border-transparent hover:border-base-300 focus:border-primary outline-none w-full bg-transparent`}
             placeholder={t("lexicon.word")}
           />
-          <ScriptPreview text={word.con_word_romanized} className="text-3xl leading-tight mt-1" />
+          <ScriptPreview text={word.con_word_romanized} entryId={word.entry_id} className="text-3xl leading-tight mt-1" />
           <div className="flex items-center gap-2 mt-2 text-base-content/60">
             <span className="font-mono text-lg">
               {word.phonetic_override ? (
@@ -391,7 +370,7 @@ export const EditorPane: React.FC = () => {
           </div>
           {lifecycleFlags &&
             (lifecycleFlags.isNew || lifecycleFlags.isDeprecated || lifecycleFlags.isChanged) && (
-              <div className="flex gap-1 mt-2">
+              <div className="flex flex-wrap gap-1 mt-2">
                 {lifecycleFlags.isNew && (
                   <span className={`${BADGE} badge-success`}>{t("lexicon.lifecycle.added")}</span>
                 )}
@@ -399,7 +378,7 @@ export const EditorPane: React.FC = () => {
                   <span className={`${BADGE} badge-error`}>{t("lexicon.lifecycle.deprecated")}</span>
                 )}
                 {lifecycleFlags.isChanged && (
-                  <span className={`${BADGE} badge-warning`}>{t("lexicon.lifecycle.changed")}</span>
+                  <WordChangeBadges changes={lifecycleFlags.changes} />
                 )}
               </div>
             )}

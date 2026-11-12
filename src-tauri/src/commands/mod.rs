@@ -8,6 +8,7 @@ pub mod grammar;
 pub mod lexicon;
 pub mod lock;
 pub mod mcp;
+pub mod mcp_server;
 pub mod oplog;
 pub mod phonology;
 pub mod registry;

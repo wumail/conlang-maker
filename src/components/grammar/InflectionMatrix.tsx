@@ -11,6 +11,7 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { applyInflection } from "../../utils/morphologyEngine";
 import { generateIPA } from "../../utils/ipaGenerator";
 import { SELECT, INPUT_MONO, BADGE } from "../../lib/ui";
+import { ScriptLine } from "../writing/ScriptText";
 
 export const InflectionMatrix: React.FC = () => {
   const { t } = useTranslation();
@@ -47,9 +48,9 @@ export const InflectionMatrix: React.FC = () => {
     if (!testWord) return null;
     const rule = findRule(combo);
     if (!rule) return null;
-    const { result, applied } = applyInflection(testWord, rule, phonoConfig);
+    const { result, applied, stem_start } = applyInflection(testWord, rule, phonoConfig);
     if (!applied) return null;
-    const { phonemic } = generateIPA(result, phonoConfig);
+    const { phonemic } = generateIPA(result, phonoConfig, { stem_start });
     return { form: result, ipa: phonemic, tag: rule.tag };
   };
 
@@ -126,6 +127,7 @@ export const InflectionMatrix: React.FC = () => {
                         </td>
                         <td className="font-mono font-bold">
                           {res?.form ?? "—"}
+                          {res && <ScriptLine text={res.form} ipa={res.ipa} className="block text-lg" />}
                         </td>
                         <td className="font-mono text-primary text-sm">
                           {res?.ipa ?? ""}
@@ -180,6 +182,7 @@ export const InflectionMatrix: React.FC = () => {
                                 <span className="font-mono font-bold text-sm">
                                   {res.form}
                                 </span>
+                                <ScriptLine text={res.form} ipa={res.ipa} className="block text-lg" />
                                 <br />
                                 <span className="font-mono text-xs text-primary">
                                   {res.ipa}

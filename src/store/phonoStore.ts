@@ -77,6 +77,7 @@ interface PhonoStore {
   addRomanizationMap: (map: RomanizationMap) => void;
   deleteRomanizationMap: (mapId: string) => void;
   setGlyphAnnotations: (annotations: GlyphAnnotation[]) => void;
+  setFontFeatures: (features: string[]) => void;
 
   // Phonotactics
   updateSyllableStructure: (structure: string) => void;
@@ -817,6 +818,14 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         "local",
       ),
     );
+    get().saveConfig();
+  },
+
+  setFontFeatures: (features) => {
+    set((state) => applyLocalUpdate(state, (baseLocal) => ({
+      ...baseLocal,
+      font_features: [...features],
+    })));
     get().saveConfig();
   },
 

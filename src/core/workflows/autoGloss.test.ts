@@ -194,7 +194,7 @@ describe("autoGloss workflow (T1.6)", () => {
         morpheme_break: "kana-si",
         gloss_labels: "house-PL",
         linked_entry_id: "e_kana",
-        ipa: "/kana/",
+        ipa: "/kanasi/",
       },
     ]);
 
@@ -230,5 +230,28 @@ describe("autoGloss workflow (T1.6)", () => {
       createTokenId: (l, t) => `t_${l}_${t}`,
     });
     expect(secondRun.report).toEqual(result.report);
+  });
+
+  test("compiled forms generate their full pronunciation with stem stress", () => {
+    const stressed = structuredClone(phono);
+    stressed.phonotactics.stress = { position: "initial", domain: "word" };
+    const compiled = structuredClone(grammar);
+    compiled.irregular_overrides = [{
+      entry_id: "e_kana",
+      dimension_values: { dim_num: "val_pl" },
+      surface_form: "kakanasi",
+      stem_start: 2,
+    }];
+    const result = autoGloss({ originalText: "kakanasi", words, grammar: compiled, phono: stressed });
+    expect(result.lines[0]?.tokens[0]?.ipa).toBe("/kaˈkanasi/");
+    stressed.phoneme_inventory.vowels.push("aː");
+    stressed.romanization_maps[0].rules.push({
+      rule_id: "long_a", input: "ā", output_phoneme: "aː", context_before: "", context_after: "",
+    });
+    compiled.irregular_overrides[0].surface_form = "ka\u0304kanasi";
+    compiled.irregular_overrides[0].stem_start = 3;
+    const decomposed = autoGloss({ originalText: "kākanasi".normalize("NFD"), words, grammar: compiled, phono: stressed });
+    expect(decomposed.report.unresolved).toBe(0);
+    expect(decomposed.lines[0]?.tokens[0]?.ipa).toBe("/kaːˈkanasi/");
   });
 });

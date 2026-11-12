@@ -764,6 +764,7 @@ where
             summary: plan.audit_summary,
             snapshot_id: plan.snapshot_id,
             status: "committed".to_string(),
+            client: None,
         };
 
         let result_record = TxResultRecord {

@@ -14,7 +14,7 @@ import { applySoundChanges } from "../engines/scaEngine";
 
 export const AUTO_APPLY_CONFIDENCE = 0.88;
 
-const WORD_TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{N}'-]*/gu;
+const WORD_TOKEN_RE = /[\p{L}\p{N}][\p{L}\p{M}\p{N}·'’-]*/gu;
 
 export interface ParsedInflection {
   entry: WordEntry;
@@ -23,6 +23,7 @@ export interface ParsedInflection {
   score: number;
   confidence: number;
   trace: string;
+  stemStart?: number;
 }
 
 export interface AffixRuleInfo {
@@ -84,7 +85,16 @@ export interface CorpusScaDiffItem {
 }
 
 export function normalizeToken(word: string): string {
-  return word.toLowerCase().replace(/^[^\p{L}\p{N}-]+|[^\p{L}\p{N}-]+$/gu, "");
+  return word.normalize("NFC").toLowerCase()
+    .replace(/^[^\p{L}\p{M}\p{N}-]+|[^\p{L}\p{M}\p{N}-]+$/gu, "");
+}
+
+function normalizedStemStart(form: string, offset: number | undefined): number | undefined {
+  if (offset === undefined) return undefined;
+  const prefix = Array.from(form).slice(0, offset).join("")
+    .normalize("NFC").toLowerCase()
+    .replace(/^[^\p{L}\p{M}\p{N}-]+/u, "");
+  return Array.from(prefix).length;
 }
 
 export function getEntryGloss(entry: WordEntry): string {
@@ -189,6 +199,7 @@ export function buildParsedCandidate(
     score: prefixes.length * 100 + suffixes.length * 100 + affixLength,
     confidence: 0.96,
     trace: `concatenative(${prefixes.length}P/${suffixes.length}S)`,
+    stemStart: prefixes.reduce((length, prefix) => length + Array.from(prefix.affix).length, 0),
   };
 }
 
@@ -251,6 +262,7 @@ function parseHyphenatedAffixes(
       }
 
       const candidate = buildParsedCandidate(entry, stem, prefixes, suffixes);
+      candidate.stemStart = (candidate.stemStart ?? 0) + prefixes.length;
       candidate.score += 1000;
       candidate.trace += ":hyphen";
       candidates.push(candidate);
@@ -331,7 +343,7 @@ export function parseConcatenativeByRules(
     .filter((r) => r.type === "prefix")
     .map((r) => ({
       rule: r,
-      affix: (r.affix || "").toLowerCase().trim(),
+      affix: (r.affix || "").normalize("NFC").toLowerCase().trim(),
       label: buildRuleLabel(r, valueGlossMap),
     }))
     .filter((r) => r.affix);
@@ -340,7 +352,7 @@ export function parseConcatenativeByRules(
     .filter((r) => r.type === "suffix")
     .map((r) => ({
       rule: r,
-      affix: (r.affix || "").toLowerCase().trim(),
+      affix: (r.affix || "").normalize("NFC").toLowerCase().trim(),
       label: buildRuleLabel(r, valueGlossMap),
     }))
     .filter((r) => r.affix);
@@ -417,12 +429,12 @@ export function buildTransformativeIndex(
   const index = new Map<string, ParsedInflection[]>();
 
   for (const entry of wordsList) {
-    const stem = (entry.con_word_romanized || "").toLowerCase();
+    const stem = (entry.con_word_romanized || "").normalize("NFC").toLowerCase();
     if (!stem) continue;
 
     for (const rule of rules) {
       if (!matchesPos(rule, entry)) continue;
-      const { result, applied } = applyInflection(stem, rule, phonoConfig);
+      const { result, applied, stem_start } = applyInflection(stem, rule, phonoConfig);
       if (!applied) continue;
 
       const form = normalizeToken(result);
@@ -430,6 +442,7 @@ export function buildTransformativeIndex(
 
       const label = buildRuleLabel(rule, valueGlossMap);
       const candidate = buildTransformativeCandidate(entry, rule, label, form);
+      candidate.stemStart = normalizedStemStart(result, stem_start);
       const arr = index.get(form) || [];
       arr.push(candidate);
       index.set(form, arr);
@@ -467,7 +480,7 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
 
   const sentences = originalText.split(/[.!?。！？]+/).filter((s) => s.trim());
   const wordsMap = new Map(
-    wordsList.map((w) => [w.con_word_romanized.toLowerCase(), w]),
+    wordsList.map((w) => [w.con_word_romanized.normalize("NFC").toLowerCase(), w]),
   );
 
   const activeRules = grammarConfig.inflection_rules.filter((r) => !r.disabled);
@@ -504,6 +517,31 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
   }
 
   const tokenParseCache = new Map<string, ParsedInflection | null>();
+  const entriesById = new Map(wordsList.map((entry) => [entry.entry_id, entry]));
+  const ambiguousForms = new Set<string>();
+  for (const form of grammarConfig.irregular_overrides) {
+    const entry = entriesById.get(form.entry_id);
+    if (!entry) continue;
+    const key = normalizeToken(form.surface_form);
+    const stemStart = normalizedStemStart(form.surface_form, form.stem_start);
+    if (ambiguousForms.has(key)) continue;
+    const previous = tokenParseCache.get(key);
+    if (previous && (previous.entry.entry_id !== entry.entry_id || previous.stemStart !== stemStart)) {
+      // Ambiguous compiled forms require an explicit choice.
+      tokenParseCache.set(key, null);
+      ambiguousForms.add(key);
+      continue;
+    }
+    tokenParseCache.set(key, {
+      entry,
+      morphemeBreak: form.surface_form,
+      glossLabels: [getEntryGloss(entry), ...Object.values(form.dimension_values).map((value) => valueGlossMap.get(value))].filter(Boolean).join("-"),
+      score: form.surface_form.length,
+      confidence: 1,
+      trace: "irregular_override",
+      stemStart,
+    });
+  }
   const pending: PendingSuggestion[] = [];
   let total = 0;
   let autoApplied = 0;
@@ -563,7 +601,7 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
           morpheme_break: picked.morphemeBreak,
           gloss_labels: picked.glossLabels,
           linked_entry_id: picked.entry.entry_id,
-          ipa: resolveEntryIpa(picked.entry, phonoConfig),
+          ipa: resolveInflectedIpa(clean, picked.stemStart, phonoConfig),
         };
       }
 
@@ -611,7 +649,7 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
 export function applySuggestionToLines(
   lines: GlossedLine[],
   suggestion: PendingSuggestion,
-  getIpa: (entry: WordEntry) => string,
+  getIpa: (entry: WordEntry, surfaceForm: string, stemStart?: number) => string,
 ): GlossedLine[] {
   return lines.map((line) => {
     if (line.line_id !== suggestion.lineId) return line;
@@ -624,11 +662,20 @@ export function applySuggestionToLines(
           morpheme_break: suggestion.suggestion.morphemeBreak,
           gloss_labels: suggestion.suggestion.glossLabels,
           linked_entry_id: suggestion.suggestion.entry.entry_id,
-          ipa: getIpa(suggestion.suggestion.entry),
+          ipa: getIpa(suggestion.suggestion.entry, suggestion.surfaceForm, suggestion.suggestion.stemStart),
         };
       }),
     };
   });
+}
+
+export function resolveInflectedIpa(
+  surfaceForm: string,
+  stemStart: number | undefined,
+  config: PhonologyConfig,
+): string {
+  const generated = generateIPA(normalizeToken(surfaceForm), config, { stem_start: stemStart });
+  return generated.phonemic;
 }
 
 function makeContextSnippet(text: string, start: number, end: number): string {

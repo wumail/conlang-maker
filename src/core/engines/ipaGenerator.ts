@@ -4,8 +4,14 @@ import {
   AllophonyRule,
   PhonologyConfig,
 } from "../../types";
+import { tokenizePhonemes } from "./phonemeTokenizer";
 
 const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
+
+export interface IpaGenerationContext {
+  /** Raw input codepoint offset supplied by the morphological generator. */
+  stem_start?: number;
+}
 
 interface CompiledRomanizationRule {
   rule: RomanizationRule;
@@ -350,7 +356,7 @@ export function romanizationToPhonemesTraced(
         source_spans: spanInfo.source_spans,
         input: rawCps.slice(spanInfo.start, spanInfo.end).join(""),
         normalized_input: normSlice,
-        output: entry.rule.output_phoneme.normalize("NFC"),
+        output: entry.rule.output_type === "separator" ? "" : entry.rule.output_phoneme.normalize("NFC"),
         rule_id: entry.rule.rule_id,
         kind: "matched",
       });
@@ -635,14 +641,74 @@ export const applyAllophony = (
  * Full traced IPA generation pipeline:
  * romanized text → phonemes (via romanization map) → allophony → IPA string + trace.
  */
+function phonemeOffsetForStem(
+  segments: RomanizationSegment[],
+  stemStart: number,
+): number {
+  let offset = 0;
+  for (const segment of segments) {
+    if (segment.end > stemStart) return offset;
+    offset += Array.from(segment.output).length;
+  }
+  return offset;
+}
+
+function initialStressPositions(
+  phonemes: string,
+  config: PhonologyConfig,
+  explicitStem: number | undefined,
+): number[] {
+  const stress = config.phonotactics.stress;
+  if (!stress || stress.position !== "initial") return [];
+  const vowels = new Set(config.phoneme_inventory.vowels);
+  const positions: number[] = [];
+  const words = phonemes.matchAll(/[\p{L}\p{M}]+(?:[.·'-][\p{L}\p{M}]+)*/gu);
+  for (const match of words) {
+    if (/[ˈˌ]/u.test(match[0])) continue;
+    if (!tokenizePhonemes(match[0], [...vowels]).some((token) => vowels.has(token))) continue;
+    const start = Array.from(phonemes.slice(0, match.index)).length;
+    const end = start + Array.from(match[0]).length;
+    const position = explicitStem !== undefined && explicitStem >= start && explicitStem < end
+      ? explicitStem
+      : start;
+    positions.push(position);
+    if (stress.domain === "entry") break;
+  }
+  return positions;
+}
+
+function transformStressPositions(positions: number[], steps: AllophonyStep[]): number[] {
+  return steps.reduce((current, step) => current.map((position) => {
+    let shift = 0;
+    for (const change of step.applications) {
+      if (change.end <= position) {
+        shift += Array.from(change.output).length - (change.end - change.start);
+      } else if (change.start < position) {
+        return change.start + shift;
+      }
+    }
+    return position + shift;
+  }), positions);
+}
+
+function insertStress(text: string, positions: number[]): string {
+  const chars = Array.from(text);
+  for (const position of [...new Set(positions)].sort((a, b) => b - a)) {
+    if (position < chars.length && WORD_CHAR_RE.test(chars[position])) chars.splice(position, 0, "ˈ");
+  }
+  return chars.join("");
+}
+
 export function generateIPATraced(
   text: string,
   config: PhonologyConfig,
+  context: IpaGenerationContext = {},
 ): {
   phonemic: string;
   surface: string;
   romanization: ReturnType<typeof romanizationToPhonemesTraced> | null;
   allophony_steps: AllophonyStep[];
+  prosody?: { phonemic_positions: number[]; surface_positions: number[]; stem_start?: number };
 } {
   const defaultMap =
     config.romanization_maps.find((m) => m.is_default) ??
@@ -665,11 +731,21 @@ export function generateIPATraced(
     config.phonotactics.macros,
   );
 
+  if (context.stem_start !== undefined && (
+    !Number.isInteger(context.stem_start) || context.stem_start < 0 || context.stem_start > Array.from(text).length
+  )) throw new RangeError("stem_start must be an input codepoint offset");
+  const stemOffset = context.stem_start === undefined
+    ? undefined
+    : phonemeOffsetForStem(romanization.segments, context.stem_start);
+  const stressPositions = initialStressPositions(phonemes, config, stemOffset);
+  const surfacePositions = transformStressPositions(stressPositions, steps);
+
   return {
-    phonemic: `/${phonemes}/`,
-    surface: phonemes !== surfaceRaw ? `[${surfaceRaw}]` : "",
+    phonemic: `/${insertStress(phonemes, stressPositions)}/`,
+    surface: phonemes !== surfaceRaw ? `[${insertStress(surfaceRaw, surfacePositions)}]` : "",
     romanization,
     allophony_steps: steps,
+    ...(config.phonotactics.stress ? { prosody: { phonemic_positions: stressPositions, surface_positions: surfacePositions, ...context } } : {}),
   };
 }
 
@@ -682,8 +758,9 @@ export function generateIPATraced(
 export const generateIPA = (
   romanized: string,
   config: PhonologyConfig,
+  context: IpaGenerationContext = {},
 ): { phonemic: string; surface: string } => {
-  const traced = generateIPATraced(romanized, config);
+  const traced = generateIPATraced(romanized, config, context);
   return {
     phonemic: traced.phonemic,
     surface: traced.surface,

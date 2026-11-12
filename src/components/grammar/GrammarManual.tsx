@@ -8,11 +8,14 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGrammarStore } from "../../store/grammarStore";
 import { usePhonoStore } from "../../store/phonoStore";
+import { useLexiconStore } from "../../store/lexiconStore";
+import { ScriptLine } from "../writing/ScriptText";
 import { generateParadigm } from "../../utils/morphologyEngine";
 import type {
   GrammarChapter,
   GrammarConfig,
   PhonologyConfig,
+  WordEntry,
 } from "../../types";
 import { Plus, Trash2, GripVertical, Eye, Edit3 } from "lucide-react";
 import {
@@ -44,6 +47,7 @@ const renderContentWithParadigms = (
   content: string,
   config: GrammarConfig,
   phonoConfig: PhonologyConfig,
+  words: WordEntry[],
   t: any,
 ) => {
   const parts = content.split(/({{paradigm:[^}]+}})/g);
@@ -57,11 +61,18 @@ const renderContentWithParadigms = (
       );
 
     const [, posId, testWord] = match;
+    const matchingWords = words.filter((word) =>
+      word.senses.some((sense) => sense.pos_id === posId) &&
+      (word.entry_id === testWord || word.con_word_romanized.normalize("NFC") === testWord.normalize("NFC")),
+    );
+    const entry = matchingWords.find((word) => word.entry_id === testWord) ??
+      (matchingWords.length === 1 ? matchingWords[0] : undefined);
     const results = generateParadigm(
-      testWord,
+      entry?.con_word_romanized ?? testWord,
       posId,
       config.inflection_rules,
       phonoConfig,
+      entry ? { entryId: entry.entry_id, grammar: config } : undefined,
     );
     if (results.length === 0)
       return (
@@ -85,9 +96,12 @@ const renderContentWithParadigms = (
               <td className="font-mono text-xs">
                 {r.tag || Object.values(r.dimensionValues).join("·")}
               </td>
-              <td className="font-mono font-bold">{r.result}</td>
+              <td className="font-mono font-bold">
+                {r.result}
+                <ScriptLine text={r.result} className="block text-lg" />
+              </td>
               <td className="font-mono text-primary text-sm">
-                {generateIPA(r.result, phonoConfig).phonemic}
+                {generateIPA(r.result, phonoConfig, { stem_start: r.stem_start }).phonemic}
               </td>
             </tr>
           ))}
@@ -102,6 +116,7 @@ export const GrammarManual: React.FC = () => {
   const { config, addChapter, updateChapter, deleteChapter, reorderChapters } =
     useGrammarStore();
   const phonoConfig = usePhonoStore((s) => s.config);
+  const words = useLexiconStore((state) => state.wordsList);
   const chapters = [...config.grammar_manual].sort((a, b) => a.order - b.order);
 
   const [previewChapterId, setPreviewChapterId] = useState<string | null>(null);
@@ -227,6 +242,7 @@ export const GrammarManual: React.FC = () => {
                         ch.content,
                         config,
                         phonoConfig,
+                        words,
                         t,
                       )}
                     </div>

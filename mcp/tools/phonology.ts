@@ -47,6 +47,7 @@ const PHONO_SECTIONS = [
   "tones",
   "allophony",
   "glyph_annotations",
+  "font",
 ] as const;
 
 type PhonoSection = (typeof PHONO_SECTIONS)[number];
@@ -98,6 +99,10 @@ function projectPhonologySections(
   }
   if (set.has("glyph_annotations") && cfg.glyph_annotations) {
     out.glyph_annotations = cfg.glyph_annotations;
+  }
+  if (set.has("font")) {
+    out.font_features = cfg.font_features;
+    out.font_input = cfg.font_input;
   }
   return out;
 }
@@ -605,6 +610,7 @@ export function registerPhonologyTools(
         .describe(
           "Include codepoint-provenance RomanizationSegment[] and AllophonyStep[]",
         ),
+      stem_start: z.number().int().min(0).optional().describe("Optional raw input codepoint offset of the stem, used for stress after grammatical prefixes"),
     },
     handler: async (args) => {
       const inputs = collectBatchTexts(
@@ -645,7 +651,10 @@ export function registerPhonologyTools(
         : phono.config;
 
       const results = inputs.map((word) => {
-        const traced = generateIPATraced(word, effectiveConfig);
+        if (args.stem_start !== undefined && args.stem_start > Array.from(word).length) {
+          throw new McpError("VALIDATION", "stem_start exceeds the input codepoint length.");
+        }
+        const traced = generateIPATraced(word, effectiveConfig, { stem_start: args.stem_start });
         const unmatchedChars =
           traced.romanization?.segments
             .filter(
@@ -664,6 +673,7 @@ export function registerPhonologyTools(
                   normalized_input: traced.romanization?.normalized_input ?? "",
                   segments: traced.romanization?.segments ?? [],
                   allophony_steps: traced.allophony_steps,
+                  ...(traced.prosody ? { prosody: traced.prosody } : {}),
                 },
               }
             : {}),
@@ -860,6 +870,7 @@ export function registerPhonologyTools(
       blacklist_patterns: z.array(z.string()).optional(),
       vowel_harmony: vowelHarmonyPatchSchema.optional(),
       tone_system: toneSystemPatchSchema.optional(),
+      stress: z.object({ position: z.literal("initial"), domain: z.enum(["word", "entry"]) }).nullable().optional(),
     })
     .passthrough();
 
@@ -888,6 +899,15 @@ export function registerPhonologyTools(
       phoneme_inventory: phonoInventoryPatchSchema.optional(),
       phonotactics: phonotacticsPatchSchema.optional(),
       allophony_rules: z.array(allophonyRuleInputSchema).optional(),
+      font_features: z.array(z.string().regex(/^[+-]?[A-Za-z0-9]{4}(?:=\d+)?$/)).optional(),
+      font_input: z.object({
+        phonemes: z.record(z.string().min(1), z.string()),
+        vowels: z.array(z.string().min(1)),
+        multigraphs: z.array(z.string().min(2)),
+        separator: z.string().min(1),
+        use_parent_phonemes: z.boolean().optional(),
+        source_substitutions: z.record(z.string().min(1), z.string()).optional(),
+      }).nullable().optional(),
       ...commonWriteInputFields,
     },
     handler: async (args) => {
@@ -896,11 +916,13 @@ export function registerPhonologyTools(
       if (
         args.phoneme_inventory === undefined &&
         args.phonotactics === undefined &&
-        args.allophony_rules === undefined
+        args.allophony_rules === undefined &&
+        args.font_features === undefined &&
+        args.font_input === undefined
       ) {
         throw new McpError(
           "VALIDATION",
-          "Provide at least one section to update: phoneme_inventory, phonotactics, or allophony_rules.",
+          "Provide at least one phonology or font input section to update.",
         );
       }
 
@@ -926,6 +948,16 @@ export function registerPhonologyTools(
             description: `Update phonology for '${resolved.language.name}'`,
             buildNextLocalConfig: (currentLocal) => {
               const next = structuredClone(currentLocal);
+
+              if (args.font_features !== undefined) {
+                next.font_features = [...args.font_features];
+                updatedSections.push("font_features");
+              }
+              if (args.font_input !== undefined) {
+                if (args.font_input === null) delete next.font_input;
+                else next.font_input = structuredClone(args.font_input);
+                updatedSections.push("font_input");
+              }
 
               if (args.phoneme_inventory) {
                 updatedSections.push("phoneme_inventory");
@@ -1077,6 +1109,7 @@ export function registerPhonologyTools(
       rule_id: z.string().optional(),
       input: z.string().min(1),
       output_phoneme: z.string(),
+      output_type: z.enum(["phoneme", "separator"]).optional(),
       context_before: z.string().optional(),
       context_after: z.string().optional(),
     })

@@ -230,8 +230,13 @@ const irregularOverrideInputSchema = z
     entry_id: z.string(),
     dimension_values: z.record(z.string(), z.string()),
     surface_form: z.string(),
+    stem_start: z.number().int().min(0).optional(),
   })
-  .passthrough();
+  .passthrough()
+  .refine((form) => form.stem_start === undefined || form.stem_start <= Array.from(form.surface_form).length, {
+    message: "stem_start exceeds the surface_form codepoint length",
+    path: ["stem_start"],
+  });
 
 function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
@@ -491,7 +496,7 @@ export function registerGrammarSandboxTools(
             rule,
             snapshot.phono.config,
           );
-          const ipa = generateIPA(inf.result, snapshot.phono.config);
+          const ipa = generateIPA(inf.result, snapshot.phono.config, { stem_start: inf.stem_start });
           return {
             input: target.word,
             entry_id: target.entry_id || null,
@@ -545,7 +550,7 @@ export function registerGrammarSandboxTools(
                   snapshot.phono.config,
                 );
 
-        const ipa = generateIPA(inf.result, snapshot.phono.config);
+        const ipa = generateIPA(inf.result, snapshot.phono.config, { stem_start: inf.stem_start });
         return {
           input: target.word,
           entry_id: target.entry_id || null,
@@ -625,6 +630,7 @@ export function registerGrammarSandboxTools(
         target.pos_id,
         snapshot.gram.config.inflection_rules,
         snapshot.phono.config,
+        target.entry_id ? { entryId: target.entry_id, grammar: snapshot.gram.config } : undefined,
       );
 
       const overrides = target.entry_id
@@ -642,11 +648,14 @@ export function registerGrammarSandboxTools(
         const surfaceForm = matchedOverride
           ? matchedOverride.surface_form
           : cell.result;
-        const ipa = generateIPA(surfaceForm, snapshot.phono.config);
+        const ipa = generateIPA(surfaceForm, snapshot.phono.config, {
+          stem_start: matchedOverride ? matchedOverride.stem_start : cell.stem_start,
+        });
         return {
           dimension_values: cell.dimensionValues,
           tag: cell.tag,
           result: surfaceForm,
+          stem_start: matchedOverride ? matchedOverride.stem_start : cell.stem_start,
           phonemic_ipa: ipa.phonemic,
           surface_ipa: ipa.surface || null,
           irregular_override: Boolean(matchedOverride),
