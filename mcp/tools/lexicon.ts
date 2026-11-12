@@ -9,6 +9,7 @@ import {
 } from "../../src/core/engines/importCSV";
 import { ipaFuzzySearch } from "../../src/core/engines/ipaSearch";
 import {
+  QC_RULE_KEYS,
   type QCIssue,
   type QCRuleKey,
   runQualityCheck,
@@ -81,14 +82,6 @@ const ORIGIN_TYPES = [
   "evolved",
 ] as const;
 
-const QC_RULE_KEYS: readonly QCRuleKey[] = [
-  "missingPos",
-  "unmappedSpelling",
-  "emptyIpa",
-  "patternMismatch",
-  "missingRequired",
-  "duplicateWord",
-] as const;
 
 const senseInputSchema = z
   .object({
@@ -836,18 +829,18 @@ export function registerLexiconTools(
     name: "lex_quality_check",
     title: "Run Lexicon Quality Checks",
     description:
-      "Run lexicon quality checks (missingPos, unmappedSpelling, emptyIpa, patternMismatch, missingRequired, duplicateWord) and return issues grouped by category plus paginated details.",
+      "Run lexicon quality checks (missingPos, unmappedSpelling, emptyIpa, patternMismatch, missingRequired, duplicateWord, phonotacticViolation, blacklistHit, vowelHarmonyViolation, homophonyClash) and return issues grouped by category plus paginated details.",
     toolsets: ["audit", "compute"],
     access: "read",
     inputSchema: {
       ...familyInputFields,
       ...languageInputFields,
       disabled_rules: z
-        .array(z.enum(["missingPos", "unmappedSpelling", "emptyIpa", "patternMismatch", "missingRequired", "duplicateWord"]))
+        .array(z.enum(QC_RULE_KEYS))
         .optional()
         .describe("QC rules to skip"),
       enabled_rules: z
-        .array(z.enum(["missingPos", "unmappedSpelling", "emptyIpa", "patternMismatch", "missingRequired", "duplicateWord"]))
+        .array(z.enum(QC_RULE_KEYS))
         .optional()
         .describe("If set, run only these QC rules"),
       severity: z

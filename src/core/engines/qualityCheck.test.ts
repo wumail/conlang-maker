@@ -1,0 +1,289 @@
+import { describe, expect, test } from "bun:test";
+import type {
+  GrammarConfig,
+  PartOfSpeech,
+  PhonologyConfig,
+  WordEntry,
+} from "../../types";
+import rawGrammar from "../../../tests/fixtures/workspace-basic/roots/root/grammar.json";
+import { QC_RULE_KEYS, runQualityCheck, type QCRuleKey } from "./qualityCheck";
+
+/** 关闭除目标规则外的全部规则，保证单测互不干扰 */
+function only(rule: QCRuleKey): QCRuleKey[] {
+  return QC_RULE_KEYS.filter((key) => key !== rule);
+}
+
+function nounPos(overrides: Partial<PartOfSpeech> = {}): PartOfSpeech {
+  return {
+    pos_id: "noun",
+    name: "Noun",
+    gloss_abbr: "N",
+    word_pattern: "",
+    requires_definition: false,
+    requires_pronunciation: false,
+    ...overrides,
+  };
+}
+
+function grammarWith(partsOfSpeech: PartOfSpeech[]): GrammarConfig {
+  const grammar = structuredClone(rawGrammar) as GrammarConfig;
+  grammar.parts_of_speech = partsOfSpeech;
+  return grammar;
+}
+
+function phonologyWith(
+  structure: string,
+  options: Partial<PhonologyConfig["phonotactics"]> = {},
+  rules: { input: string; output: string }[] = [
+    { input: "p", output: "p" },
+    { input: "t", output: "t" },
+    { input: "k", output: "k" },
+    { input: "a", output: "a" },
+    { input: "e", output: "e" },
+    { input: "i", output: "i" },
+    { input: "o", output: "o" },
+    { input: "n", output: "n" },
+  ],
+): PhonologyConfig {
+  return {
+    language_id: "lang_qc",
+    phoneme_inventory: {
+      consonants: ["p", "t", "k", "n"],
+      vowels: ["a", "e", "i", "o"],
+    },
+    romanization_maps: [
+      {
+        map_id: "map_qc",
+        name: "QC",
+        is_default: true,
+        rules: rules.map((rule, index) => ({
+          rule_id: `rule_${index}`,
+          input: rule.input,
+          output_phoneme: rule.output,
+          context_before: "",
+          context_after: "",
+        })),
+      },
+    ],
+    allophony_rules: [],
+    phonotactics: {
+      macros: {},
+      syllable_structure: structure,
+      blacklist_patterns: [],
+      vowel_harmony: { enabled: false, group_a: [], group_b: [] },
+      tone_system: { enabled: false, tones: [] },
+      stress: null,
+      ...options,
+    },
+  };
+}
+
+function word(
+  id: string,
+  romanized: string,
+  overrides: Partial<WordEntry> = {},
+): WordEntry {
+  return {
+    entry_id: id,
+    language_id: "lang_qc",
+    con_word_romanized: romanized,
+    phonetic_ipa: "taka",
+    phonetic_override: false,
+    senses: [
+      {
+        sense_id: `sense_${id}`,
+        pos_id: "noun",
+        gloss: "gloss",
+        definitions: [],
+        examples: [],
+      },
+    ],
+    etymology: {
+      origin_type: "a_priori",
+      parent_entry_id: null,
+      source_language_id: null,
+      applied_sound_changes: [],
+      semantic_shift_note: "",
+    },
+    metadata: { tags: [], created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z" },
+    ...overrides,
+  };
+}
+
+const grammar = grammarWith([nounPos()]);
+
+describe("runQualityCheck: rule catalogue", () => {
+  test("exposes exactly ten rule keys", () => {
+    expect(QC_RULE_KEYS).toHaveLength(10);
+    expect(new Set(QC_RULE_KEYS).size).toBe(10);
+  });
+});
+
+describe("runQualityCheck: legacy rules", () => {
+  test("missingPos flags entries without a part of speech", () => {
+    const entries = [word("w1", "taka", { senses: [] })];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("missingPos"));
+    expect(issues.map((issue) => issue.rule)).toEqual(["missingPos"]);
+  });
+
+  test("emptyIpa flags blank transcriptions", () => {
+    const entries = [word("w1", "taka", { phonetic_ipa: "" })];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("emptyIpa"));
+    expect(issues.map((issue) => issue.rule)).toEqual(["emptyIpa"]);
+  });
+
+  test("patternMismatch flags forms violating the POS pattern", () => {
+    const strict = grammarWith([nounPos({ word_pattern: "^t" })]);
+    const entries = [word("w1", "kaka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), strict, only("patternMismatch"));
+    expect(issues.map((issue) => issue.rule)).toEqual(["patternMismatch"]);
+  });
+
+  test("missingRequired flags senses that require a definition", () => {
+    const strict = grammarWith([nounPos({ requires_definition: true })]);
+    const entries = [word("w1", "taka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), strict, only("missingRequired"));
+    expect(issues.map((issue) => issue.rule)).toEqual(["missingRequired"]);
+  });
+
+  test("duplicateWord reports the first entry of a duplicated form once", () => {
+    const entries = [word("w1", "Taka"), word("w2", "taka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("duplicateWord"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.entry_id).toBe("w1");
+  });
+});
+
+describe("runQualityCheck: unmappedSpelling (traced)", () => {
+  test("does not flag fully mapped spellings", () => {
+    const entries = [word("w1", "taka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("unmappedSpelling"));
+    expect(issues).toHaveLength(0);
+  });
+
+  test("flags characters that fall through every romanization rule", () => {
+    const entries = [word("w1", "tazka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("unmappedSpelling"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.message).toContain("z");
+  });
+
+  test("ignores separators and spaces", () => {
+    const entries = [word("w1", "taka-ta ka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("unmappedSpelling"));
+    expect(issues).toHaveLength(0);
+  });
+
+  test("recognises digraphs mapped as a single rule without false positives", () => {
+    const phono = phonologyWith(
+      "(C)V(C)",
+      {},
+      [
+        { input: "sh", output: "t" },
+        { input: "a", output: "a" },
+      ],
+    );
+    const entries = [word("w1", "sha")];
+    const issues = runQualityCheck(entries, phono, grammar, only("unmappedSpelling"));
+    expect(issues).toHaveLength(0);
+  });
+});
+
+describe("runQualityCheck: phonotacticViolation", () => {
+  test("accepts words that fit the syllable template", () => {
+    const entries = [word("w1", "taka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("phonotacticViolation"));
+    expect(issues).toHaveLength(0);
+  });
+
+  test("locates the phoneme where syllabification gets stuck", () => {
+    const entries = [word("w1", "ptka")];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, only("phonotacticViolation"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("error");
+    expect(issues[0]!.message).toContain("#0");
+  });
+
+  test("is skipped when no syllable template is configured", () => {
+    const entries = [word("w1", "ptka")];
+    const issues = runQualityCheck(entries, phonologyWith(""), grammar, only("phonotacticViolation"));
+    expect(issues).toHaveLength(0);
+  });
+});
+
+describe("runQualityCheck: blacklistHit", () => {
+  test("flags forms matching a blacklist pattern", () => {
+    const phono = phonologyWith("(C)V(C)", { blacklist_patterns: ["^p"] });
+    const entries = [word("w1", "paka")];
+    const issues = runQualityCheck(entries, phono, grammar, only("blacklistHit"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("error");
+  });
+
+  test("stays silent when nothing matches", () => {
+    const phono = phonologyWith("(C)V(C)", { blacklist_patterns: ["^p"] });
+    const entries = [word("w1", "taka")];
+    expect(runQualityCheck(entries, phono, grammar, only("blacklistHit"))).toHaveLength(0);
+  });
+});
+
+describe("runQualityCheck: vowelHarmonyViolation", () => {
+  const harmony = { enabled: true, group_a: ["a", "o"], group_b: ["e", "i"] };
+
+  test("flags roots mixing both harmony groups", () => {
+    const phono = phonologyWith("(C)V(C)", { vowel_harmony: harmony });
+    const entries = [word("w1", "take")];
+    const issues = runQualityCheck(entries, phono, grammar, only("vowelHarmonyViolation"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]!.severity).toBe("warning");
+  });
+
+  test("accepts consistent roots and disabled harmony", () => {
+    const phono = phonologyWith("(C)V(C)", { vowel_harmony: harmony });
+    expect(runQualityCheck([word("w1", "tako")], phono, grammar, only("vowelHarmonyViolation"))).toHaveLength(0);
+
+    const off = phonologyWith("(C)V(C)", { vowel_harmony: { ...harmony, enabled: false } });
+    expect(runQualityCheck([word("w1", "take")], off, grammar, only("vowelHarmonyViolation"))).toHaveLength(0);
+  });
+});
+
+describe("runQualityCheck: homophonyClash", () => {
+  test("flags distinct entries with identical surface pronunciation and POS", () => {
+    const phono = phonologyWith("(C)V(C)", {}, [
+      { input: "c", output: "k" },
+      { input: "k", output: "k" },
+      { input: "a", output: "a" },
+    ]);
+    const entries = [word("w1", "caka"), word("w2", "kaka")];
+    const issues = runQualityCheck(entries, phono, grammar, only("homophonyClash"));
+    expect(issues).toHaveLength(2);
+    expect(issues.every((issue) => issue.rule === "homophonyClash")).toBe(true);
+  });
+
+  test("does not clash across different parts of speech", () => {
+    const phono = phonologyWith("(C)V(C)", {}, [
+      { input: "c", output: "k" },
+      { input: "k", output: "k" },
+      { input: "a", output: "a" },
+    ]);
+    const mixed = grammarWith([nounPos(), nounPos({ pos_id: "verb", name: "Verb" })]);
+    const second = word("w2", "kaka");
+    second.senses[0]!.pos_id = "verb";
+    const issues = runQualityCheck([word("w1", "caka"), second], phono, mixed, only("homophonyClash"));
+    expect(issues).toHaveLength(0);
+  });
+
+  test("ignores duplicate IDs and blank pronunciations", () => {
+    const phono = phonologyWith("(C)V(C)", {});
+    const entries = [word("w1", "taka"), word("w1", "taka")];
+    expect(runQualityCheck(entries, phono, grammar, only("homophonyClash"))).toHaveLength(0);
+  });
+});
+
+describe("runQualityCheck: disabled rules", () => {
+  test("returns nothing when every rule is disabled", () => {
+    const entries = [word("w1", "tazka", { phonetic_ipa: "", senses: [] })];
+    const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, [...QC_RULE_KEYS]);
+    expect(issues).toEqual([]);
+  });
+});

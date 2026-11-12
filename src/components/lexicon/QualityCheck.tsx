@@ -3,8 +3,12 @@ import { useTranslation } from "react-i18next";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
-import { runQualityCheck } from "../../utils/qualityCheck";
-import type { QCIssue } from "../../utils/qualityCheck";
+import {
+  QC_RULE_KEYS,
+  runQualityCheck,
+  type QCIssue,
+  type QCRuleKey,
+} from "../../utils/qualityCheck";
 import { ShieldCheck, Search, ExternalLink } from "lucide-react";
 import { BTN_PRIMARY, BTN_GHOST, TOGGLE, BADGE } from "../../lib/ui";
 import { PageHeader } from "../common/PageHeader";
@@ -15,21 +19,7 @@ interface QualityCheckProps {
   onNavigateToWord?: () => void;
 }
 
-type QCRuleKey =
-  | "missingPos"
-  | "unmappedSpelling"
-  | "emptyIpa"
-  | "patternMismatch"
-  | "missingRequired"
-  | "duplicateWord";
-const RULE_KEYS: QCRuleKey[] = [
-  "missingPos",
-  "unmappedSpelling",
-  "emptyIpa",
-  "patternMismatch",
-  "missingRequired",
-  "duplicateWord",
-];
+const RULE_KEYS = QC_RULE_KEYS;
 
 export const QualityCheck: React.FC<QualityCheckProps> = ({
   onNavigateToWord,

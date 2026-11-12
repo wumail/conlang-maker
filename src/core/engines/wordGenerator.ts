@@ -165,7 +165,7 @@ function generateSyllable(
 /**
  * Check if a word matches any blacklist pattern.
  */
-function matchesBlacklist(word: string, patterns: string[]): boolean {
+export function matchesBlacklist(word: string, patterns: string[]): boolean {
   for (const pat of patterns) {
     try {
       if (new RegExp(pat).test(word)) return true;

@@ -493,6 +493,10 @@ export default {
         patternMismatch: "Word pattern mismatch",
         missingRequired: "Missing required field",
         duplicateWord: "Duplicate word form",
+        phonotacticViolation: "Syllable structure violation",
+        blacklistHit: "Blacklisted pattern",
+        vowelHarmonyViolation: "Vowel harmony conflict",
+        homophonyClash: "Homophone clash",
       },
     },
     statistics: {

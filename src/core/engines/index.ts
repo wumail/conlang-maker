@@ -4,6 +4,7 @@ export * from "./phonemeTokenizer";
 export * from "./morphologyEngine";
 export * from "./derivationEngine";
 export * from "./wordGenerator";
+export * from "./syllabifier";
 export * from "./qualityCheck";
 export * from "./ipaSearch";
 export * from "./statistics";

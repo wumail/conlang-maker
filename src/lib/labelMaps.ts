@@ -171,6 +171,10 @@ export function useQcRuleLabels(): Record<string, string> {
       patternMismatch: t("qc.rules.patternMismatch"),
       missingRequired: t("qc.rules.missingRequired"),
       duplicateWord: t("qc.rules.duplicateWord"),
+      phonotacticViolation: t("qc.rules.phonotacticViolation"),
+      blacklistHit: t("qc.rules.blacklistHit"),
+      vowelHarmonyViolation: t("qc.rules.vowelHarmonyViolation"),
+      homophonyClash: t("qc.rules.homophonyClash"),
     }),
     [t],
   );

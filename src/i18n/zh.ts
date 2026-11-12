@@ -473,6 +473,10 @@ export default {
         patternMismatch: "词形不符合模式",
         missingRequired: "缺少必填字段",
         duplicateWord: "重复词形",
+        phonotacticViolation: "音节结构违规",
+        blacklistHit: "命中黑名单",
+        vowelHarmonyViolation: "元音和谐冲突",
+        homophonyClash: "同音碰撞",
       },
     },
     statistics: {
