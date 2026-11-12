@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（5 / 20 已完成） |
+| 当前状态 | 执行中（6 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -23,7 +23,7 @@
 | **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [x] | 2026-11-12 / `bcc4e3b` | 8/8 全绿（src 120 pass） | [ ] | |
 | **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | |
 | **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [ ] | |
-| **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [ ] | — | — | [ ] | |
+| **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | |
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [ ] | — | — | [ ] | |
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [ ] | — | — | [ ] | |
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [ ] | — | — | [ ] | |
@@ -161,13 +161,25 @@
 ### P1 高频交互闭环阶段
 
 #### T1.1 零依赖跨 Store 命令合并型 Undo/Redo 引擎
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-12　提交：`3583dda`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `undoManager.ts` 支持 100 步环形栈、800ms 输入合并、按语言隔离与 `structuredClone` 深拷贝。
-  - [ ] 5 个业务 Store 接入 `HistoryOpts` 且撤销后正常触发 500ms 防抖落盘。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `undoManager.ts`（196 行）支持 100 步环形栈、800ms 输入合并、按语言隔离与 `structuredClone` 深拷贝。
+  - [x] 5 个业务 Store 接入 `HistoryOpts` 且撤销后正常触发 500ms 防抖落盘。
+  - [x] `undoManager.test.ts` 11 条用例：推栈/撤销/重做/新操作截断 redo/800ms 合并窗口/跨语言隔离/100 步容量淘汰/清空。
+- 关键实现：
+  1. `undoManager.ts`：模块级 `undoStack/redoStack` + `useSyncExternalStore`，`pushUndoEntry` 在同 `coalesceKey` + 同语言 + ≤800ms 时**保留最初 `undo` 闭包**、仅替换 `redo` 与时间戳；`performUndo/performRedo` 支持按 `languageId` 从栈尾向前过滤（自实现 `findLastMatchingIndex`，避免触碰 tsconfig 的 `lib` 目标）。
+  2. `configHistory.ts`：`recordConfigChange` 对前后像 `structuredClone`（杜绝可变引用污染），`attachConfigHistory` 为「配置整体替换型」Store 提供订阅式记录（含 `applying` 递归守卫）。
+  3. 五处接入：
+     - `lexiconStore.upsertWord/deleteWord`：显式 `HistoryOpts`，新增词条的 undo 走 `deleteWord(skipHistory)`；
+     - `grammarStore/scaStore.applyEdit`：统一编辑入口记录，`restore` 回溯时再走 `applyEdit(..., { skipHistory: true })`；
+     - `corpusStore.upsertCorpus`：语料行增删改全部经此漏斗；
+     - `phonoStore`：16+ 个写方法都收敛到 `saveConfig()`，因此在 `saveConfig` 末尾对比 `localConfig` 基线单点记录，新增 `restoreLocalConfig(snapshot)` 作为回放入口（先对齐基线避免回放被二次记录）。
+  4. UI：`UndoRedoButtons`（顶栏，悬停显示「撤销：编辑词条」）仅在非欢迎页渲染；`useUndoShortcuts()` 在 `App` 中绑定全局快捷键，`e.isComposing` 或焦点在 `INPUT/TEXTAREA/[contenteditable]` 时不拦截，保留浏览器字符级撤销体验。
+- V-ALL：`[exit 0] × 8`（i18n 0/0；tsc 0 error；src 137 pass 含新增 11 条；mcp 34；cargo 47）。
+- 偏差与决定：
+  1. 撤销栈是模块级单例，`bun test` 中多个测试文件共享同一进程，故 `undoManager.test.ts` 增加 `beforeEach(clearHistory)` 保证隔离（首版仅 `afterEach` 时被其他 Store 测试推送的条目干扰）。
+  2. 各 Store 的 `coalesceKey` 默认分别取 `lex:<entryId>`、`<domain>:<languagePath>`、`corpus:<id>:<lineCount>`——粒度按「同一实体/同一语言」定义，符合 PRD「打字不产生逐步撤销」的目标；粒度更细的按字段合并留待 T1.5 DSL 编辑器接入时再细化。
 
 #### T1.2 语料反向索引引擎与词典详情三大内联卡片
 - 执行者：待填　日期：—　提交：—
