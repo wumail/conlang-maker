@@ -10,6 +10,7 @@ import { useSCAStore } from "../store/scaStore";
 import { useCorpusStore } from "../store/corpusStore";
 import { isOwnGuiOperationId } from "../store/conflictStore";
 import { invalidateFontCache } from "./conlangFont";
+import { invalidateLineageLexicon } from "../store/lineageLexiconStore";
 
 export const EXTERNAL_FONT_CHANGED_DOM_EVENT = "conlang-external-font-changed";
 
@@ -202,6 +203,7 @@ export async function handleWorkspaceFileChanged(
     } else {
       await ws.loadWorkspace(ws.conlangFilePath);
     }
+    invalidateLineageLexicon(event.project_path);
     const updatedWs = useWorkspaceStore.getState();
     if (updatedWs.activeLanguagePath) {
       await refreshActivePhonologyRespectingDirty(
@@ -219,6 +221,7 @@ export async function handleWorkspaceFileChanged(
   }
 
   if (event.kind === "phonology") {
+    invalidateLineageLexicon(ws.projectPath, targetLangPath);
     if (isDirectActive || event.language_path) {
       await syncDomainStore(
         "phonology",
@@ -243,6 +246,9 @@ export async function handleWorkspaceFileChanged(
     event.kind === "sca" ||
     event.kind === "corpus"
   ) {
+    if (event.kind === "lexicon") {
+      invalidateLineageLexicon(ws.projectPath, targetLangPath);
+    }
     await syncDomainStore(
       event.kind,
       ws.projectPath,
@@ -254,6 +260,7 @@ export async function handleWorkspaceFileChanged(
   }
 
   if (event.kind === "snapshots") {
+    invalidateLineageLexicon(event.project_path);
     if (ws.isDirty(ws.conlangFilePath)) {
       await ws.triggerExternalConflict(ws.conlangFilePath, event.origin);
     } else {

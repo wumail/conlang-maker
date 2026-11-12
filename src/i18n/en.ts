@@ -50,12 +50,13 @@ export default {
     },
     lexicon: {
       title: "Lexicon",
+      resultCount: "{{count}} entries",
+      noMatches: "No entries match the current filters",
       addWord: "Add Word",
       exportCsv: "Export CSV",
       ipaSearch: "IPA Search",
 
       ipaSearchPlaceholder: "Type IPA to find similar words...",
-      playTts: "Play pronunciation",
       selectWord: "Select a word to edit",
       word: "Word",
       senses: "Senses",
@@ -90,9 +91,6 @@ export default {
       batchEdit: "Batch Edit",
       deleteSelected: "Delete Selected",
       deleteSelectedConfirm: "Delete the selected {{count}} entries?",
-      cleanBlankWords: "Clean Blank Entries",
-      cleanBlankWordsConfirm:
-        "Delete {{count}} entries with empty spelling and empty gloss?",
       setPosAll: "Set Part of Speech (All)",
       noChange: "No Change",
       addTags: "Add Tags",
@@ -579,10 +577,6 @@ export default {
       noChanges: "No changes applied",
       original: "Original",
       result: "Result",
-      pageInfo:
-        "Page {{current}} / {{total}}, {{totalItems}} changed words total",
-      prevPage: "Prev",
-      nextPage: "Next",
       changedCountAll: "{{count}} items will change",
       batchApplyAll: "Apply to Lexicon & Grammar Rules",
       applied: "Applied!",

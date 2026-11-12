@@ -12,6 +12,7 @@ import { useLexiconStore } from "./lexiconStore";
 import { useGrammarStore } from "./grammarStore";
 import { useSCAStore } from "./scaStore";
 import { useCorpusStore } from "./corpusStore";
+import { invalidateLineageLexicon } from "./lineageLexiconStore";
 import {
   computeJsonDiffSummary,
   generateOperationId,
@@ -284,6 +285,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }),
 
     clearWorkspace: () => {
+      invalidateLineageLexicon();
       set({
         projectPath: "",
         conlangFilePath: "",
@@ -298,6 +300,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
     loadWorkspace: async (conlangFilePath: string) => {
       await get().flushSaves();
+      const previousProjectPath = get().projectPath;
       try {
         const loaded = await invoke<WorkspaceLoadResult>(
           "load_workspace_with_revision",
@@ -312,6 +315,9 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           languages,
         };
         const projectPath = deriveProjectPath(conlangFilePath);
+        if (previousProjectPath && previousProjectPath !== projectPath) {
+          invalidateLineageLexicon(previousProjectPath);
+        }
         const prevState = get();
         const sameWorkspace = prevState.conlangFilePath === conlangFilePath;
         const existingLang = sameWorkspace
