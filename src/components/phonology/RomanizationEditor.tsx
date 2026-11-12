@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePhonoStore } from "../../store/phonoStore";
 import { RomanizationMap, RomanizationRule } from "../../types";
@@ -7,6 +7,11 @@ import { ConfirmModal } from "../common/ConfirmModal";
 import { EmptyState } from "../common/EmptyState";
 import { BTN_PRIMARY, BTN_ERROR, BTN_LINK, BADGE } from "../../lib/ui";
 import { RuleTable } from "./RuleTable";
+import {
+  RomanizationLintBanner,
+  buildRuleLintIndex,
+} from "./RomanizationLintBanner";
+import { analyzeRomanization } from "../../core/engines/romanizationLint";
 
 const emptyRule = (): RomanizationRule => ({
   rule_id: crypto.randomUUID(),
@@ -30,6 +35,13 @@ export const RomanizationEditor: React.FC = () => {
     maps[0]?.map_id ?? null,
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+
+  // 映射表与音素表变化时实时重算静态诊断（纯函数，6 类检查）
+  const analysis = useMemo(
+    () => analyzeRomanization(config, { mapScope: "all" }),
+    [config],
+  );
+  const lintIndex = useMemo(() => buildRuleLintIndex(analysis), [analysis]);
 
   const handleAddMap = () => {
     const newMap: RomanizationMap = {
@@ -90,6 +102,9 @@ export const RomanizationEditor: React.FC = () => {
 
   return (
     <div className="bg-base-100 p-6 min-w-[900px] flex-1">
+      <div className="mb-4">
+        <RomanizationLintBanner analysis={analysis} />
+      </div>
       <div className="flex justify-end items-center mb-4">
         <button onClick={handleAddMap} className={BTN_PRIMARY}>
           <Plus size={16} /> {t("phonology.romanization.addMap")}
@@ -168,6 +183,7 @@ export const RomanizationEditor: React.FC = () => {
                 onAddRule={handleAddRule}
                 onDeleteRule={handleDeleteRule}
                 onSortRules={handleSortRules}
+                lintIndex={lintIndex}
               />
             )}
           </div>

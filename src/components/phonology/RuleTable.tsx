@@ -1,7 +1,7 @@
 import React, { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { RomanizationMap, RomanizationRule } from "../../types";
-import { Plus, Trash2, ArrowUpDown } from "lucide-react";
+import { Plus, Trash2, ArrowUpDown, AlertTriangle } from "lucide-react";
 import {
   INPUT_MONO,
   BTN_ERROR,
@@ -22,6 +22,8 @@ interface RuleTableProps {
   onAddRule: (map: RomanizationMap) => void;
   onDeleteRule: (map: RomanizationMap, ruleIdx: number) => void;
   onSortRules: (map: RomanizationMap) => void;
+  /** rule_id → 诊断条数（来自 analyzeRomanization） */
+  lintIndex?: Map<string, number>;
 }
 
 /** Renders the rule grid for a single romanization map */
@@ -33,6 +35,7 @@ export const RuleTable: React.FC<RuleTableProps> = ({
   onAddRule,
   onDeleteRule,
   onSortRules,
+  lintIndex,
 }) => {
   const { t } = useTranslation();
   const [activeRuleIdx, setActiveRuleIdx] = useState<number | null>(null);
@@ -73,7 +76,9 @@ export const RuleTable: React.FC<RuleTableProps> = ({
         </div>
       )}
 
-      {map.rules.map((rule, idx) => (
+      {map.rules.map((rule, idx) => {
+        const lintCount = lintIndex?.get(rule.rule_id) ?? 0;
+        return (
         <div key={rule.rule_id || idx} className={`${ruleGrid} items-center`}>
           <input
             type="text"
@@ -110,15 +115,28 @@ export const RuleTable: React.FC<RuleTableProps> = ({
             className={INPUT_MONO}
             placeholder="_"
           />
-          <button
-            onClick={() => setConfirmDeleteRuleIdx(idx)}
-            className={BTN_ERROR}
-            title={t("common.delete")}
-          >
-            <Trash2 size={14} />
-          </button>
+          <div className="flex items-center gap-1">
+            {lintCount > 0 && (
+              <span
+                className="text-warning"
+                title={t("phonology.romanization.lint.ruleRowHint", {
+                  count: lintCount,
+                })}
+              >
+                <AlertTriangle size={14} />
+              </span>
+            )}
+            <button
+              onClick={() => setConfirmDeleteRuleIdx(idx)}
+              className={BTN_ERROR}
+              title={t("common.delete")}
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
         </div>
-      ))}
+        );
+      })}
 
       <div className="flex items-center gap-3 mt-2">
         <button onClick={() => onAddRule(map)} className={BTN_LINK}>

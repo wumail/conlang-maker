@@ -263,6 +263,21 @@ export default {
         contextBefore: "Context Before",
         contextAfter: "Context After",
         placeholders: {},
+        lint: {
+          healthy: "Romanization map is healthy — no shadowed rules or stray phonemes",
+          issueCount: "{{count}} romanization diagnostics",
+          shadowed: "Shadowed rules",
+          unreachable: "Unreachable phonemes",
+          unknownOutput: "Output outside the inventory",
+          conflict: "Conflicts",
+          duplicate: "Duplicates",
+          case: "Case issues",
+          shadowedBy: "is always consumed by “{{rule}}” first",
+          more: "Other findings",
+          moreDetail:
+            "{{conflict}} conflicting conditions · {{duplicate}} duplicate rules · {{case}} case-sensitivity warnings",
+          ruleRowHint: "{{count}} diagnostic(s) for this rule",
+        },
       },
       phonotactics: {
         syllableStructure: "Syllable Structure",

@@ -255,6 +255,21 @@ export default {
         contextBefore: "前缀环境",
         contextAfter: "后缀环境",
         placeholders: {},
+        lint: {
+          healthy: "罗马化映射健康——无被遮蔽规则、无孤立音素",
+          issueCount: "{{count}} 项罗马化诊断",
+          shadowed: "被遮蔽的死规则",
+          unreachable: "不可达音素",
+          unknownOutput: "输出越界音素",
+          conflict: "条件冲突",
+          duplicate: "重复规则",
+          case: "大小写问题",
+          shadowedBy: "总是先被「{{rule}}」消耗",
+          more: "其余发现",
+          moreDetail:
+            "{{conflict}} 处条件冲突 · {{duplicate}} 条重复规则 · {{case}} 处大小写告警",
+          ruleRowHint: "该规则有 {{count}} 项诊断",
+        },
       },
       phonotactics: {
         syllableStructure: "音节结构",
