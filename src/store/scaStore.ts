@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { recordConfigChange } from "./configHistory";
+import type { HistoryOpts } from "./undoManager";
 import { invoke } from "@tauri-apps/api/core";
 import {
   SCAConfig,
@@ -264,12 +266,29 @@ export const useSCAStore = create<SCAStore>((set, get) => {
     }
   };
 
-  const applyEdit = (updater: (prev: SCAConfig) => SCAConfig): void => {
-    set((state) => ({
-      config: updater(state.config),
+  const applyEdit = (
+    updater: (prev: SCAConfig) => SCAConfig,
+    opts?: HistoryOpts,
+  ): void => {
+    const prevConfig = get().config;
+    const nextConfig = updater(prevConfig);
+    set({
+      config: nextConfig,
       dirty: true,
-    }));
+    });
     get().saveConfig();
+
+    if (!opts?.skipHistory && nextConfig !== prevConfig) {
+      recordConfigChange<SCAConfig>({
+        domain: "sca",
+        labelKey: opts?.labelKey ?? "undo.label.sca.edit",
+        languageId: get().languagePath,
+        coalesceKey: opts?.coalesceKey ?? `sca:${get().languagePath}`,
+        prev: prevConfig,
+        next: nextConfig,
+        restore: (snapshot) => applyEdit(() => snapshot, { skipHistory: true }),
+      });
+    }
   };
 
   return {

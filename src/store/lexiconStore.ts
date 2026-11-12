@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { pushUndoEntry, type HistoryOpts } from "./undoManager";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LexiconLoadResult,
@@ -31,8 +32,8 @@ interface LexiconStore {
   setLanguagePath: (path: string) => void;
   loadWords: (words: WordEntry[]) => void;
   loadFromBackend: (projectPath: string, languagePath: string) => Promise<void>;
-  upsertWord: (word: WordEntry) => void;
-  deleteWord: (entryId: string) => void;
+  upsertWord: (word: WordEntry, opts?: HistoryOpts) => void;
+  deleteWord: (entryId: string, opts?: HistoryOpts) => void;
   deleteWordsBatch: (entryIds: string[]) => Promise<void>;
   setSearchTerm: (term: string) => void;
   setActiveWordId: (id: string | null) => void;
@@ -459,10 +460,11 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
       }
     },
 
-    upsertWord: (word) => {
+    upsertWord: (word, opts) => {
       const { projectPath, languagePath } = get();
       const tracker = getTracker(projectPath, languagePath);
       const wordKey = makeWordKey(projectPath, languagePath, word.entry_id);
+      const prevWord = get().wordsMap[word.entry_id] ?? null;
       let mergedWord = word;
 
       set((state) => {
@@ -490,6 +492,27 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
       syncActiveFlags(projectPath, languagePath);
 
       scheduleDebouncedWordSave(projectPath, languagePath, mergedWord.entry_id);
+
+      if (!opts?.skipHistory) {
+        const nextSnapshot = structuredClone(mergedWord);
+        const prevSnapshot = prevWord ? structuredClone(prevWord) : null;
+        pushUndoEntry({
+          languageId: languagePath,
+          domain: "lexicon",
+          labelKey: opts?.labelKey ?? "undo.label.lexicon.edit",
+          coalesceKey: opts?.coalesceKey ?? `lex:${mergedWord.entry_id}`,
+          undo: () => {
+            if (prevSnapshot) {
+              get().upsertWord(structuredClone(prevSnapshot), { skipHistory: true });
+            } else {
+              get().deleteWord(nextSnapshot.entry_id, { skipHistory: true });
+            }
+          },
+          redo: () => {
+            get().upsertWord(structuredClone(nextSnapshot), { skipHistory: true });
+          },
+        });
+      }
     },
 
     importWords: (words) => {
@@ -557,7 +580,7 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
       });
     },
 
-    deleteWord: (entryId) => {
+    deleteWord: (entryId, opts) => {
       const wordToDelete = get().wordsMap[entryId];
       if (!wordToDelete) return;
 
@@ -586,6 +609,18 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
         };
       });
       syncActiveFlags(projectPath, languagePath);
+
+      if (!opts?.skipHistory) {
+        const deletedSnapshot = structuredClone(wordToDelete);
+        pushUndoEntry({
+          languageId: languagePath,
+          domain: "lexicon",
+          labelKey: opts?.labelKey ?? "undo.label.lexicon.delete",
+          coalesceKey: opts?.coalesceKey,
+          undo: () => get().upsertWord(structuredClone(deletedSnapshot), { skipHistory: true }),
+          redo: () => get().deleteWord(deletedSnapshot.entry_id, { skipHistory: true }),
+        });
+      }
 
       if (tracker.paused) return;
       const operationId = generateOperationId();

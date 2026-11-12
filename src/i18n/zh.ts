@@ -19,6 +19,19 @@ export default {
       statPOS: "词类",
       statCorpus: "语料",
     },
+    undo: {
+      nothingToUndo: "没有可撤销的操作",
+      nothingToRedo: "没有可重做的操作",
+      undoHint: "撤销：{{label}}",
+      redoHint: "重做：{{label}}",
+      label: {
+        lexicon: { edit: "编辑词条", delete: "删除词条" },
+        phonology: { edit: "编辑音系" },
+        grammar: { edit: "编辑语法" },
+        sca: { edit: "编辑音变" },
+        corpus: { edit: "编辑语料" },
+      },
+    },
     common: {
       add: "添加",
       delete: "删除",

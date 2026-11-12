@@ -179,3 +179,19 @@ export function useQcRuleLabels(): Record<string, string> {
     [t],
   );
 }
+
+/** 撤销栈动作名（labelKey → 文案） */
+export function useUndoLabelTexts(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      "undo.label.lexicon.edit": t("undo.label.lexicon.edit"),
+      "undo.label.lexicon.delete": t("undo.label.lexicon.delete"),
+      "undo.label.phonology.edit": t("undo.label.phonology.edit"),
+      "undo.label.grammar.edit": t("undo.label.grammar.edit"),
+      "undo.label.sca.edit": t("undo.label.sca.edit"),
+      "undo.label.corpus.edit": t("undo.label.corpus.edit"),
+    }),
+    [t],
+  );
+}

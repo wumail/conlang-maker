@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { pushUndoEntry, type HistoryOpts } from "./undoManager";
 import { invoke } from "@tauri-apps/api/core";
 import {
   CorpusIndexEntry,
@@ -30,7 +31,7 @@ interface CorpusStore {
 
   loadIndex: (projectPath: string, languagePath: string) => Promise<void>;
   loadCorpus: (corpusId: string) => Promise<void>;
-  upsertCorpus: (text: CorpusText) => void;
+  upsertCorpus: (text: CorpusText, opts?: HistoryOpts) => void;
   deleteCorpus: (corpusId: string) => Promise<void>;
   setActiveCorpusId: (id: string | null) => void;
   flushSaves: () => Promise<void>;
@@ -475,8 +476,10 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
       }
     },
 
-    upsertCorpus: (text) => {
+    upsertCorpus: (text, opts) => {
       const { projectPath, languagePath, index, activeCorpus } = get();
+      const prevCorpus =
+        activeCorpus && activeCorpus.corpus_id === text.corpus_id ? activeCorpus : null;
       const tracker = getTracker(projectPath, languagePath);
       const mergedText = mergeCorpusText(
         tracker.dirtyTexts.get(text.corpus_id) ?? activeCorpus,
@@ -512,6 +515,24 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
       });
 
       scheduleDebouncedCorpusSave(projectPath, languagePath, mergedText.corpus_id);
+
+      if (!opts?.skipHistory) {
+        const nextSnapshot = structuredClone(mergedText);
+        const prevSnapshot = prevCorpus ? structuredClone(prevCorpus) : null;
+        pushUndoEntry({
+          languageId: languagePath,
+          domain: "corpus",
+          labelKey: opts?.labelKey ?? "undo.label.corpus.edit",
+          coalesceKey:
+            opts?.coalesceKey ?? `corpus:${mergedText.corpus_id}:${mergedText.glossed_lines.length}`,
+          undo: () => {
+            if (prevSnapshot) {
+              get().upsertCorpus(structuredClone(prevSnapshot), { skipHistory: true });
+            }
+          },
+          redo: () => get().upsertCorpus(structuredClone(nextSnapshot), { skipHistory: true }),
+        });
+      }
     },
 
     deleteCorpus: async (corpusId) => {

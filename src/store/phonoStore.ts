@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { recordConfigChange } from "./configHistory";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AllophonyRule,
@@ -63,6 +64,8 @@ interface PhonoStore {
     origin?: "gui" | "mcp" | "external",
   ) => Promise<void>;
   localizeInheritedAnnotations: () => void;
+  /** 用快照整体回写 localConfig（撤销/重做专用） */
+  restoreLocalConfig: (config: PhonologyConfig) => void;
 
   // Phoneme inventory
   togglePhoneme: (phoneme: string, kind: "consonants" | "vowels") => void;
@@ -485,6 +488,34 @@ function applyLocalUpdate(
   };
 }
 
+let phonoHistoryBaseline: PhonologyConfig | null = null;
+
+/**
+ * 音系有 16+ 个细粒度写方法，但都会在 `set` 之后调用 `saveConfig()`；
+ * 在这里对比基线即可用单点接入覆盖全部写路径（加载/外部同步不会调用 saveConfig）。
+ */
+function recordPhonoHistoryIfChanged(): void {
+  const state = usePhonoStore.getState();
+  const current = state.localConfig;
+  if (!phonoHistoryBaseline) {
+    phonoHistoryBaseline = current;
+    return;
+  }
+  if (current === phonoHistoryBaseline) return;
+
+  const prev = phonoHistoryBaseline;
+  phonoHistoryBaseline = current;
+  recordConfigChange<PhonologyConfig>({
+    domain: "phonology",
+    labelKey: "undo.label.phonology.edit",
+    languageId: state.languagePath,
+    coalesceKey: `phonology:${state.languagePath}`,
+    prev,
+    next: current,
+    restore: (snapshot) => usePhonoStore.getState().restoreLocalConfig(snapshot),
+  });
+}
+
 export const usePhonoStore = create<PhonoStore>((set, get) => ({
   config: defaultConfig,
   localConfig: defaultConfig,
@@ -692,6 +723,14 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
     const state = get();
     const localToSave = getBaseLocalConfig(state);
     debouncedSave(state.projectPath, state.languagePath, localToSave);
+    recordPhonoHistoryIfChanged();
+  },
+
+  restoreLocalConfig: (config) => {
+    // 先对齐基线，避免回放动作被再次计入历史
+    phonoHistoryBaseline = config;
+    set((state) => applyLocalUpdate(state, () => config));
+    get().saveConfig();
   },
 
   localizeInheritedAnnotations: () => {

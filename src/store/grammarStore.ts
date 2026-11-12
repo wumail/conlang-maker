@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { recordConfigChange } from "./configHistory";
+import type { HistoryOpts } from "./undoManager";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AffixSlot,
@@ -446,12 +448,29 @@ export const useGrammarStore = create<GrammarStore>((set, get) => {
     }
   };
 
-  const applyEdit = (updater: (prev: GrammarConfig) => GrammarConfig): void => {
-    set((state) => ({
-      config: updater(state.config),
+  const applyEdit = (
+    updater: (prev: GrammarConfig) => GrammarConfig,
+    opts?: HistoryOpts,
+  ): void => {
+    const prevConfig = get().config;
+    const nextConfig = updater(prevConfig);
+    set({
+      config: nextConfig,
       dirty: true,
-    }));
+    });
     get().saveConfig();
+
+    if (!opts?.skipHistory && nextConfig !== prevConfig) {
+      recordConfigChange<GrammarConfig>({
+        domain: "grammar",
+        labelKey: opts?.labelKey ?? "undo.label.grammar.edit",
+        languageId: get().languagePath,
+        coalesceKey: opts?.coalesceKey ?? `grammar:${get().languagePath}`,
+        prev: prevConfig,
+        next: nextConfig,
+        restore: (snapshot) => applyEdit(() => snapshot, { skipHistory: true }),
+      });
+    }
   };
 
   return {

@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { check } from "@tauri-apps/plugin-updater";
 import { useTranslation } from "react-i18next";
 import { TitleBar } from "./components/nav/TitleBar";
+import { useUndoShortcuts } from "./lib/useUndoShortcuts";
 import { AppNav } from "./components/nav/AppNav";
 import { ProjectStats } from "./components/nav/ProjectStats";
 import { ExternalConflictModal } from "./components/common/ExternalConflictModal";
@@ -65,6 +66,7 @@ function App() {
   const fontError = useFontStore((s) => s.error);
 
   useConlangFont();
+  useUndoShortcuts();
   useProjectWatcher(projectPath, conlangFilePath);
 
   // 1. On mount, load registry and resolve active family

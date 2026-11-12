@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { QuickEntry } from "../common/QuickEntry";
 import { LanguageToggle } from "../common/LanguageToggle";
+import { UndoRedoButtons } from "./UndoRedoButtons";
 import { useTheme } from "../../lib/useTheme";
 
 const appWindow = getCurrentWindow();
@@ -85,6 +86,7 @@ export function TitleBar({ ready = true }: { ready?: boolean }) {
 
       {/* ── Right: Utility Actions ── */}
       <div className="flex items-center gap-1 shrink-0">
+        {!isWelcome && <UndoRedoButtons />}
         {!isWelcome && (
           <>
             <button

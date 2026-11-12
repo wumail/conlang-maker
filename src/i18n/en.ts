@@ -19,6 +19,19 @@ export default {
       statPOS: "POS",
       statCorpus: "Texts",
     },
+    undo: {
+      nothingToUndo: "Nothing to undo",
+      nothingToRedo: "Nothing to redo",
+      undoHint: "Undo: {{label}}",
+      redoHint: "Redo: {{label}}",
+      label: {
+        lexicon: { edit: "edit entry", delete: "delete entry" },
+        phonology: { edit: "edit phonology" },
+        grammar: { edit: "edit grammar" },
+        sca: { edit: "edit sound changes" },
+        corpus: { edit: "edit corpus" },
+      },
+    },
     common: {
       add: "Add",
       delete: "Delete",
