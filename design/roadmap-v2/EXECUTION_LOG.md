@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（1 / 20 已完成） |
+| 当前状态 | 执行中（2 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -19,7 +19,7 @@
 | 任务 ID | 梯度 | 任务摘要 | 对应 PRD | 执行状态 | 日期 / Commit | `V-ALL` 结果 | Antigravity 终审通过 | 终审备注 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
 | **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [x] | 2026-11-12 / `e28b5bd` | 8/8 全绿（135 项单测：src 83 + mcp 34 + cargo 46 − 计数见 §3） | [ ] | |
-| **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [ ] | — | — | [ ] | |
+| **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [x] | 2026-11-12 / `30a4ad0` | 8/8 全绿（src 120 pass / mcp 34 pass / cargo 47 pass） | [ ] | |
 | **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [ ] | — | — | [ ] | |
 | **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [ ] | — | — | [ ] | |
 | **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [ ] | — | — | [ ] | |
@@ -94,13 +94,21 @@
   3. `mcp:test` 的 `T3.10 1b cross-process lock` 在同一秒内并发跑 cargo/tsc 时偶发失败（子进程 spawn 时序），单独运行与常规重跑均 100% 通过，未改动该测试。
 
 #### T0.2 DP + 最大声母音节切分器与 10 维词典质检引擎
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-12　提交：`30a4ad0`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `src/core/engines/syllabifier.ts` 实现槽位编译、DP 切分、最大声母消歧与音重计算。
-  - [ ] `qualityCheck.ts` 升级 `unmappedSpelling` 并新增 4 类音系/同音质检，单测全覆盖。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `src/core/engines/syllabifier.ts`（287 行）实现槽位编译、DP 切分、最大声母消歧与音重计算。
+  - [x] `qualityCheck.ts`（317 行）升级 `unmappedSpelling` 并新增 4 类音系/同音质检，37 条单测全覆盖。
+- 关键实现：
+  1. `compileSyllableUnits`：把模板直接编译为 `SlotUnit { allowed, optional, role }[]`，同时支持 `(C)(L)V(N)` 与 `C?VC?`，**不做 2^k 字符串展开**；未定义宏回退 `C`/`V` → inventory，其余按字面量槽位。角色分类为 onset / nucleus / coda（首个可容纳元音的槽位起算，连续元音槽位并入 nucleus）。
+  2. `syllabifyWithUnits`：DP 在 `string[]` token 下标上推进（`tʃ`/`kʰ`/`aː` 全程保持单一元素，绝不 `join("")`），`isBetterPlan` 先比音节数、再从 k=1 起比 `onset.length`（最大声母），失败时回填 `failedAtTokenIndex`。
+  3. `unmappedSpelling` 改走 `romanizationToPhonemesTraced().segments`，仅当 `rule_id === null` 且非空白/非已知标点时上报，彻底消除多合字母的字符级漏检与假阳性。
+  4. 新增规则：`phonotacticViolation`（error，消息带卡住的音素下标）、`blacklistHit`（error，复用导出的 `matchesBlacklist`）、`vowelHarmonyViolation`（warning，同一词根混用 group_a/group_b）、`homophonyClash`（warning，表层 IPA + pos_id 分组，≥2 个不同 entry 才报）。
+  5. 性能：每词只调用一次 `generateIPATraced`，同时服务 4 条依赖发音的规则；`QC_RULE_KEYS` 成为 GUI / MCP 唯一规则清单（`mcp/tools/lexicon.ts` 删除本地重复数组，zod enum 直接引用）。
+- V-ALL：`[exit 0] × 8` — i18n 0 错误 0 告警、tsc 0 error、`bun test src` 120 pass（新增 37）、`mcp:check` 0 error、`mcp:test` 34 pass（`lex_quality_check` 未改签名即自动透出新规则）、`cargo test` 47 pass。
+- 偏差与决定：
+  1. IPA 输出带 `/.../` 与 `[...]` 包裹，剥离超音段时一并去除，否则 tokenize 会把斜杠当成音素导致全量误报（已在实现与单测中固化）。
+  2. 无默认罗马化映射（或规则为空）时跳过 `phonotacticViolation`/`vowelHarmonyViolation` 的发音侧推断，避免把「尚未配置音系」的新工作区全量标红。
 
 #### T0.3 罗马化静态诊断实时上屏
 - 执行者：待填　日期：—　提交：—
