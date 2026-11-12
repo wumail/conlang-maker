@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（4 / 20 已完成） |
+| 当前状态 | 执行中（5 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -22,7 +22,7 @@
 | **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [x] | 2026-11-12 / `30a4ad0` | 8/8 全绿（src 120 pass / mcp 34 pass / cargo 47 pass） | [ ] | |
 | **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [x] | 2026-11-12 / `bcc4e3b` | 8/8 全绿（src 120 pass） | [ ] | |
 | **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | |
-| **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [ ] | — | — | [ ] | |
+| **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [ ] | |
 | **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [ ] | — | — | [ ] | |
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [ ] | — | — | [ ] | |
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [ ] | — | — | [ ] | |
@@ -142,12 +142,19 @@
   3. 抽取 `src/utils/lexiconDraft.ts`：`isDraftWord` / `createDraftWord` 供 Sidebar 复用，顺带删除已被注释掉的「清理空词条」死代码与其 2 个翻译键（`lexicon.cleanBlankWords*`），以及随 TTS 注释一起失效的 `lexicon.playTts`。
 
 #### T0.5 四大超长组件解耦拆分（回归 ≤300 行红线）
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-12　提交：`00baaf9`（Sidebar / EditorPane / SCAPreview 见 `4641c2d`）
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `Sidebar.tsx`、`EditorPane.tsx`、`RuleSetList.tsx`、`SCAPreview.tsx` 及其全部拆分子组件行数严格 `≤ 300` 行。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `Sidebar.tsx`(278)、`EditorPane.tsx`(279)、`RuleSetList.tsx`(298)、`SCAPreview.tsx`(165) 及其全部拆分子组件行数严格 `≤ 300`。
+- 行数实测（`wc -l src/components/lexicon/*.tsx src/components/sca/*.tsx`，最大项）：
+  - lexicon：`Statistics`288（既有）、`EditorPane`279、`Sidebar`278、`LexiconFilterBar`246、`QualityCheck`179、`WordEtymologySection`178、`LexiconVirtualList`166、`WordHeaderSection`119、`WordSensesSection`109；
+  - sca：`RuleSetList`298、`FeatureSelector`175（既有）、`SCAPreview`165、`SCARuleEditorRow`113、`SCABatchVirtualPreview`112、`SCARuleCard`97、`SCASingleTester`71、`SCARuleSetImportModal`84、`SCARuleSetToolbar`49。
+- 关键实现：
+  1. `RuleSetList` 拆为容器（状态 + Store 写入 + 导入解析）+ `SCARuleSetToolbar`（页头三按钮与转移提示）+ `SCARuleCard`（规则集折叠头）+ `SCARuleEditorRow`（单规则双形态编辑）+ `SCARuleSetImportModal`（经 `ModalPortal` 的导入弹窗）。
+  2. 抽出 `src/utils/scaRuleSetTransfer.ts`：`serializeRuleSet` / `serializeAllRuleSets` / `safeRuleSetFileName` / `downloadTextFile` / `copyTextToClipboard`，把 DOM 与剪贴板细节移出组件。
+  3. 交互与快捷键行为保持不变：折叠集合、删除二次确认、解析错误逐行提示、复制/下载成功提示 2.4s 自动消失。
+- V-ALL：`[exit 0] × 8`（i18n 0/0；tsc 0 error；src 126 pass；mcp 34；cargo 47）。
+- 偏差与决定：全仓扫描仍有 6 个「本轮未触碰」的既有超长文件（`McpSettingsPage`429、`DerivationEditor`417、`Sandbox`390、`FamilyManager`380、`ExportImport`339、`FontPanel`326）。它们不属于 T0.5 目标文件、本轮也未修改，故不在本任务内拆分；其中 `Sandbox`（T3.3）与 `ExportImport`（T3.4）会在对应任务中一并压到 300 行以内。
 
 ---
 
