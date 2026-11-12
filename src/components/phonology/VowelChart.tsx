@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { VOWELS_EXACT } from "../../data/ipa_data";
 import { hasIpaAudio } from "../../utils/ipaAudio";
 import { LengthVowelTable } from "./LengthVowelTable";
+import { useIpaHeightLabels } from "../../lib/labelMaps";
 
 interface VowelChartProps {
   selectedVowels: Set<string>;
@@ -19,6 +20,7 @@ export const VowelChart: React.FC<VowelChartProps> = ({
   handlePlayAudio,
 }) => {
   const { t } = useTranslation();
+  const heightLabels = useIpaHeightLabels();
 
   // Row labels at y = 0, 50, 100, 150, 200, 250, 300
   const rowLabels: { key: string; y: number }[] = [
@@ -70,7 +72,7 @@ export const VowelChart: React.FC<VowelChartProps> = ({
                 className="absolute right-4 text-base-content/70 text-sm text-right whitespace-nowrap"
                 style={{ top: `${y}px`, transform: "translateY(-50%)" }}
               >
-                {t(`phonology.inventory.${key}`)}
+                {heightLabels[key] ?? key}
               </div>
             ))}
           </div>

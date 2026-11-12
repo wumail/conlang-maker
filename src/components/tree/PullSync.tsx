@@ -169,14 +169,17 @@ export function PullSync() {
           .loadFromBackend(projectPath, activeLang.path);
       }
 
+      const migrationStats = {
+        scanned: stats.words_scanned,
+        links: stats.parent_link_filled,
+        source: stats.source_language_filled,
+        origin: stats.origin_fixed,
+        files: stats.files_changed,
+      };
       setMigrationMessage(
-        t(stats.dry_run ? "tree.migrationPreviewDone" : "tree.migrationDone", {
-          scanned: stats.words_scanned,
-          links: stats.parent_link_filled,
-          source: stats.source_language_filled,
-          origin: stats.origin_fixed,
-          files: stats.files_changed,
-        }),
+        stats.dry_run
+          ? t("tree.migrationPreviewDone", migrationStats)
+          : t("tree.migrationDone", migrationStats),
       );
     } catch (error) {
       if (isConflictError(error)) {
@@ -186,7 +189,9 @@ export function PullSync() {
       }
       console.warn(`迁移旧词条失败：${error}`);
       setMigrationMessage(
-        t(dryRun ? "tree.migrationPreviewFailed" : "tree.migrationFailed"),
+        dryRun
+          ? t("tree.migrationPreviewFailed")
+          : t("tree.migrationFailed"),
       );
     } finally {
       if (dryRun) {

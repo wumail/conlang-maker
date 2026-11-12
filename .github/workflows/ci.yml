@@ -6,7 +6,7 @@ on:
     branches: [main]
 
 jobs:
-  typecheck-and-rust:
+  gates:
     strategy:
       fail-fast: false
       matrix:
@@ -39,12 +39,31 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Check version sync
-        run: bun run version:check
+      # ─── V-ALL 全量门禁（EXECUTION_PLAN.md §0.2，共 8 条，顺序固定） ───
 
-      - name: Type check frontend
+      - name: 1. i18n key consistency
+        run: node scripts/i18n-check.mjs
+
+      - name: 2. Version sync (package.json / Cargo.toml / tauri.conf.json)
+        run: node scripts/version-check.mjs
+
+      - name: 3. Core purity + type check
+        run: bun run core:check
+
+      - name: 4. Frontend type check
         run: bunx tsc --noEmit
 
-      - name: Check Rust backend
-        working-directory: src-tauri
-        run: cargo check
+      - name: 5. Frontend unit tests
+        run: bun test src
+
+      - name: 6. MCP type check
+        run: bun run mcp:check
+
+      - name: 7. MCP integration tests
+        run: bun run mcp:test
+
+      - name: Build MCP sidecar binary (required by Tauri build script)
+        run: bun run mcp:build
+
+      - name: 8. Rust backend tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml

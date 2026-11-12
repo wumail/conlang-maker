@@ -54,13 +54,16 @@ function walkDir(dir) {
  *   - t('dotted.key', { ... })
  *   - { key: 'dotted.key' }    — 间接 i18n 引用（如 imbalance warnings）
  *   - { labelKey: 'dotted.key' } — 标签引用（如 PhonologyPage tabs）
- *   - t(`prefix.${var}`)       → 匹配不到（建议改为显式 key 引用）
+ *   - { nameKey: 'dotted.key' } / { descriptionKey: 'dotted.key' } — 静态数据表引用
+ *   - t(`prefix.${var}`)       → 匹配不到（必须改为 src/lib/labelMaps.ts 的显式映射）
  */
 function extractKeysFromSource(files) {
     const keys = new Set();
     const tCallRegex = /\bt\(\s*['"]([^'"]+)['"]\s*[,)]/g;
-    // 间接引用：key: 'xxx' 或 labelKey: 'xxx'，仅匹配包含 . 的值（排除非 i18n 标识符）
-    const indirectRegex = /\b(?:key|labelKey):\s*['"]([^'"]*\.[^'"]+)['"]/g;
+    // 间接引用：key / labelKey / nameKey / descriptionKey 的显式字面量，
+    // 仅匹配包含 . 的值（排除非 i18n 标识符）
+    const indirectRegex =
+        /\b(?:key|labelKey|nameKey|descriptionKey):\s*['"]([^'"]*\.[^'"]+)['"]/g;
 
     for (const file of files) {
         const content = readFileSync(file, 'utf-8');
@@ -195,8 +198,8 @@ if (unusedKeys.length > 0) {
 
 // ─── 结果 ──
 if (hasErrors) {
-    console.log('❌ i18n check FAILED — however, ignoring strictly for now so build can proceed.\n');
-    process.exit(0);
+    console.log('❌ i18n check FAILED — missing keys or cross-locale drift are blocking errors.\n');
+    process.exit(1);
 } else {
     if (hasWarnings) {
         console.log('✅ i18n check PASSED — zero errors, with warnings\n');

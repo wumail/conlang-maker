@@ -7,6 +7,12 @@ import {
   CO_ARTICULATED_DATA,
 } from "../../data/ipa_data";
 import { hasIpaAudio } from "../../utils/ipaAudio";
+import {
+  useIpaPlaceLabels,
+  useIpaMannerLabels,
+  useIpaCategoryLabels,
+  useIpaSubcategoryLabels,
+} from "../../lib/labelMaps";
 
 interface ConsonantChartsProps {
   isConsonantSelected: (p: string) => boolean;
@@ -25,6 +31,8 @@ export const ConsonantCharts: React.FC<ConsonantChartsProps> = ({
   highlightPair,
 }) => {
   const { t } = useTranslation();
+  const placeLabels = useIpaPlaceLabels();
+  const mannerLabels = useIpaMannerLabels();
 
   return (
     <div className="flex flex-col gap-8">
@@ -78,7 +86,7 @@ export const ConsonantCharts: React.FC<ConsonantChartsProps> = ({
                   key={place}
                   className="p-1 border border-base-300 font-normal text-xs whitespace-pre-wrap"
                 >
-                  {t(`phonology.inventory.places.${place}`).replace("/", "/\n")}
+                  {(placeLabels[place] ?? place).replace("/", "/\n")}
                 </th>
               ))}
             </tr>
@@ -87,7 +95,7 @@ export const ConsonantCharts: React.FC<ConsonantChartsProps> = ({
             {CONSONANT_DATA.map((row, idx) => (
               <tr key={idx}>
                 <td className="p-2 border border-base-300 bg-base-200 text-base-content/70 text-left whitespace-nowrap">
-                  {t(`phonology.inventory.manners.${row.manner}`)}
+                  {mannerLabels[row.manner] ?? row.manner}
                 </td>
                 {row.row.map((cell, i) => {
                   if (cell === null) {
@@ -220,7 +228,11 @@ const SecondaryTable: React.FC<SecondaryTableProps> = ({
   onPlay,
   t,
   flex = "flex-[4]",
-}) => (
+}) => {
+  const categoryLabels = useIpaCategoryLabels();
+  const subcategoryLabels = useIpaSubcategoryLabels();
+
+  return (
   <div className={`overflow-x-auto ${flex}`}>
     <table className="w-full border-collapse text-sm text-center bg-base-100 border border-base-300">
       <thead>
@@ -237,9 +249,9 @@ const SecondaryTable: React.FC<SecondaryTableProps> = ({
         {data.map((row, idx) => (
           <tr key={idx}>
             <td className="p-2 border border-base-300 bg-base-200 text-base-content/70 text-right whitespace-nowrap font-normal w-[30%]">
-              {t(`phonology.inventory.categories.${row.category}`)}{" "}
+              {categoryLabels[row.category] ?? row.category}{" "}
               {row.subcategory
-                ? t(`phonology.inventory.subcategories.${row.subcategory}`)
+                ? (subcategoryLabels[row.subcategory] ?? row.subcategory)
                 : ""}
             </td>
             <td className="border border-base-300 p-2 min-w-[48px] min-h-[32px] text-left">
@@ -277,4 +289,5 @@ const SecondaryTable: React.FC<SecondaryTableProps> = ({
       </tbody>
     </table>
   </div>
-);
+  );
+};

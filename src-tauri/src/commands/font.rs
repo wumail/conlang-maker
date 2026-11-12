@@ -43,7 +43,12 @@ pub struct FontInspection {
     pub version: Option<String>,
     pub codepoints: Vec<u32>,
     pub glyphs: Vec<Vec<u32>>,
+    // NOTE: 这两个布局特性字段仅供内部检查流程使用，尚无语料/GUI 消费方。
+    // 为避免破坏 tests/golden/font_inspect_*.json 的字节级向后兼容契约（v2 §0.1 第 4 条），
+    // 命令输出层不序列化它们；特性检测仍由 FontFaceInfo 在导入流程中完整保留。
+    #[serde(skip_serializing)]
     pub substitution_features: Vec<String>,
+    #[serde(skip_serializing)]
     pub positioning_features: Vec<String>,
     pub warning: Option<String>,
 }

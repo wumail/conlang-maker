@@ -3,6 +3,11 @@ import { useTranslation } from "react-i18next";
 import { useGrammarStore } from "../../store/grammarStore";
 import type { MorphologicalTypology, HeadMarking } from "../../types";
 import { SELECT, CARD } from "../../lib/ui";
+import {
+  useTypologyTypeLabels,
+  useTypologyTypeDescriptionLabels,
+  useHeadMarkingLabels,
+} from "../../lib/labelMaps";
 
 const TYPOLOGY_OPTIONS: MorphologicalTypology[] = [
   "isolating",
@@ -27,6 +32,9 @@ const TYPE_COLORS: Record<MorphologicalTypology, string> = {
 
 export const TypologySection: React.FC = () => {
   const { t } = useTranslation();
+  const typeLabels = useTypologyTypeLabels();
+  const typeDescriptionLabels = useTypologyTypeDescriptionLabels();
+  const headMarkingLabels = useHeadMarkingLabels();
   const { config, updateTypology } = useGrammarStore();
   const typo = config.typology;
 
@@ -65,10 +73,10 @@ export const TypologySection: React.FC = () => {
               }`}
             >
               <div className="font-semibold text-sm">
-                {t(`typology.types.${tp}`)}
+                {typeLabels[tp] ?? tp}
               </div>
               <div className="text-xs mt-1 opacity-75">
-                {t(`typology.typeDescriptions.${tp}`)}
+                {typeDescriptionLabels[tp] ?? ""}
               </div>
             </button>
           ))}
@@ -139,7 +147,7 @@ export const TypologySection: React.FC = () => {
           >
             {HEAD_MARKING_OPTIONS.map((hm) => (
               <option key={hm} value={hm}>
-                {t(`typology.headMarkingOptions.${hm}`)}
+                {headMarkingLabels[hm] ?? hm}
               </option>
             ))}
           </select>

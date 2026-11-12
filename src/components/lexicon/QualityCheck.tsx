@@ -8,6 +8,7 @@ import type { QCIssue } from "../../utils/qualityCheck";
 import { ShieldCheck, Search, ExternalLink } from "lucide-react";
 import { BTN_PRIMARY, BTN_GHOST, TOGGLE, BADGE } from "../../lib/ui";
 import { PageHeader } from "../common/PageHeader";
+import { useQcRuleLabels } from "../../lib/labelMaps";
 
 interface QualityCheckProps {
   /** 点击词条链接后关闭弹窗的回调 */
@@ -34,6 +35,7 @@ export const QualityCheck: React.FC<QualityCheckProps> = ({
   onNavigateToWord,
 }) => {
   const { t } = useTranslation();
+  const ruleLabels = useQcRuleLabels();
   const wordsMap = useLexiconStore((s) => s.wordsMap);
   const setActiveWordId = useLexiconStore((s) => s.setActiveWordId);
   const phonoConfig = usePhonoStore((s) => s.config);
@@ -99,7 +101,7 @@ export const QualityCheck: React.FC<QualityCheckProps> = ({
               onChange={() => toggleRule(key)}
               className={TOGGLE}
             />
-            {t(`qc.rules.${key}`)}
+            {ruleLabels[key] ?? key}
           </label>
         ))}
       </div>
@@ -156,7 +158,7 @@ export const QualityCheck: React.FC<QualityCheckProps> = ({
                       <span
                         className={`${BADGE} badge-sm ${issue.severity === "error" ? "badge-error" : "badge-warning"}`}
                       >
-                        {t(`qc.rules.${issue.rule}`)}
+                        {ruleLabels[issue.rule] ?? issue.rule}
                       </span>
                     </td>
                     <td className="text-xs text-base-content/70 max-w-xs">
