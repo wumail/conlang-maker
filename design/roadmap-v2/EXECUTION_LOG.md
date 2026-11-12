@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 待执行（0 / 20 已完成） |
+| 当前状态 | 执行中（1 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -18,7 +18,7 @@
 
 | 任务 ID | 梯度 | 任务摘要 | 对应 PRD | 执行状态 | 日期 / Commit | `V-ALL` 结果 | Antigravity 终审通过 | 终审备注 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [ ] | — | — | [ ] | |
+| **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [x] | 2026-11-12 / `e28b5bd` | 8/8 全绿（135 项单测：src 83 + mcp 34 + cargo 46 − 计数见 §3） | [ ] | |
 | **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [ ] | — | — | [ ] | |
 | **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [ ] | — | — | [ ] | |
 | **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [ ] | — | — | [ ] | |
@@ -77,13 +77,21 @@
 ### P0 地基加固阶段
 
 #### T0.1 CI 全量门禁接入与僵尸翻译键清零
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-12　提交：`e28b5bd`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `.github/workflows/ci.yml` 接入全部 8 条检查与测试命令。
-  - [ ] `node scripts/i18n-check.mjs` 0 错误、0 未使用键告警。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `.github/workflows/ci.yml` 接入全部 8 条检查与测试命令（`i18n-check` → `version-check` → `core:check` → `tsc --noEmit` → `bun test src` → `mcp:check` → `mcp:test` → `cargo test`），并在 Rust 步骤前新增 `bun run mcp:build`（Tauri `externalBin` sidecar 缺失会让 `cargo test` 的 build script 直接失败）。
+  - [x] `node scripts/i18n-check.mjs` → `0 errors, zero warnings`。
+- 关键实现：
+  1. `scripts/i18n-check.mjs`：Check 1/2 的失败改为 `exit 1`（原实现即使有缺键也 `exit 0`，门禁形同虚设）；间接引用正则扩展为 `key|labelKey|nameKey|descriptionKey`，覆盖 `src/data/phonology_presets.ts` 这类静态数据表的显式 key 引用。
+  2. 新增 `src/lib/labelMaps.ts`（177 行）：把 10 个「模板字符串动态 key」家族收敛为 `Record<string, string>` 显式映射 Hook —— IPA 元音高度(7)/调音部位(12)/发音方式(13)/气流分类(6)/协同调音子类(6)、类型学形态类型(4)/说明(4)/核心标记(4)、屈折类型(2)、质检规则(6)。
+  3. 改造 7 个消费组件：`ConsonantCharts`、`VowelChart`、`TypologySection`、`WordGenerator`、`InflectionSection`、`QualityCheck`、`PullSync`（`t(cond ? "a" : "b")` 三元改为两个显式 `t()` 调用）。
+  4. 删除 47 个确无引用的僵尸键（`en.ts` / `zh.ts` 同步）：`common.{addToken,collapse,expand,run,select}`、`grammar.{posTitle,syntaxTitle,testTitle,derivation.title}`、`lexicon.{newWord,sortDefault,posList.*}`、`nav.qc`、`phonology.{allophony.title,romanization.title,romanization.inventory,phonotactics.title,phonotactics.addPhoneme,phonotactics.selectPhoneme,inventory.places.Palatal,inventory.subcategories.{lateralAffricate,lateralFricative,nasal,none}}`、`sca.{batchApply,changedCount,showingFirst}`、`tree.{borrowWord,importProject,rollbackConfirm,rollbackTitle,snapshotWarning}`、`typology.title`、`wordgen.{addTags,advancedSearch,batchEdit,noChange,removeTags,setPosAll,typologyHint}`。
+- V-ALL：`[exit 0] × 8` — i18n 0/0、version 1.0.7 一致、core purity 32 文件通过、tsc 0 error、`bun test src` 83 pass、`mcp:check` 0 error、`mcp:test` 34 pass、`cargo test` 46 + 1 conformance 全绿。
+- 偏差与决定：
+  1. **基线修复（必要前置）**：开工时仓库并非全绿 —— `mcp:check` / `mcp:test` 因 `node_modules` 缺 `@types/bun`、`@modelcontextprotocol/sdk` 而失败（执行 `bun install` 解决）；`cargo test` 因本机 `MacOSX27.0.sdk` 的 `libSystem.B.tbd` 与 clang 21 不兼容而链接失败（以 `SDKROOT=MacOSX26.5.sdk` 运行，未修改仓库配置）；`conformance` 因上一提交给 `FontInspection` 新增的两个 `Vec<String>` 字段未做序列化约束而与 `tests/golden/font_inspect_*.json` 不一致。按「严禁修改 golden」红线，改为在 `font.rs` 上对这两个字段标注 `#[serde(skip_serializing)]`（GUI/MCP 均未消费，特性检测仍由 `FontFaceInfo` 完整保留），golden 零字节差异恢复。
+  2. **额外组件拆分**：`WordGenerator.tsx`(357) 与 `InflectionSection.tsx`(382) 本就在 300 行红线上，但本任务必须改动其中的动态 key。为满足「修改的 .tsx 必须 ≤ 300 行」，按职责抽出 `RewriteSettingsPanel.tsx`(123) 与 `InflectionRuleFields.tsx`(173)，交互与状态归属不变。
+  3. `mcp:test` 的 `T3.10 1b cross-process lock` 在同一秒内并发跑 cargo/tsc 时偶发失败（子进程 spawn 时序），单独运行与常规重跑均 100% 通过，未改动该测试。
 
 #### T0.2 DP + 最大声母音节切分器与 10 维词典质检引擎
 - 执行者：待填　日期：—　提交：—
