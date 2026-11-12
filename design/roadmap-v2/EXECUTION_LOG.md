@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（3 / 20 已完成） |
+| 当前状态 | 执行中（4 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -21,7 +21,7 @@
 | **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [x] | 2026-11-12 / `e28b5bd` | 8/8 全绿（135 项单测：src 83 + mcp 34 + cargo 46 − 计数见 §3） | [ ] | |
 | **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [x] | 2026-11-12 / `30a4ad0` | 8/8 全绿（src 120 pass / mcp 34 pass / cargo 47 pass） | [ ] | |
 | **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [x] | 2026-11-12 / `bcc4e3b` | 8/8 全绿（src 120 pass） | [ ] | |
-| **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [ ] | — | — | [ ] | |
+| **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | |
 | **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [ ] | — | — | [ ] | |
 | **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [ ] | — | — | [ ] | |
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [ ] | — | — | [ ] | |
@@ -124,13 +124,22 @@
 - 偏差与决定：诊断范围取 `mapScope: "all"` 而非仅默认映射表——编辑器同时展示多张映射表，仅分析默认表会让其余表出现「无诊断」的误导性绿灯。
 
 #### T0.4 谱系词库缓存层与动态高度虚拟列表接入
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-12　提交：`4641c2d`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `lineageLexiconStore.ts` 实现父语言词表请求去重与按 `revision` 失效。
-  - [ ] 词典侧边栏、SCA 批量预览、质检列表接入 `useVirtualizer` 且无固定行高重叠。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `lineageLexiconStore.ts`（258 行）实现父语言词表请求去重与按 `revision` 失效。
+  - [x] 词典侧边栏、SCA 批量预览、质检列表接入 `useVirtualizer` 且无固定行高重叠。
+- 关键实现：
+  1. 缓存键 `${projectPath}::${languagePath}`，记录 `{ snapshot, loadingPromise, error, lastSnapshot }`；`loadLineageLexicon` 并发去重（同键复用同一 Promise），`revision` 未变时复用旧快照对象引用，`useSyncExternalStore` 订阅版本号（未引入新状态库）。
+  2. 失效钩子：`externalChanges` 在 lexicon / phonology / workspace / snapshots 事件上精准失效；`workspaceStore.loadWorkspace` 切换项目时清空旧项目缓存，`clearWorkspace` 全清。
+  3. 虚拟列表严格照抄 §7.2-A 模板：外层滚动容器 `overflow-y-auto contain-strict`，行容器只写 `position/top/left/width/transform` + `ref={measureElement}` + `data-index`，行距由内层 `pb-1.5`／`pb-1` 承担。
+  4. SCA 批量预览删除 100 条/页硬分页（连带删除 `sca.{prevPage,nextPage,pageInfo}` 三个废弃键），改为 `max-h-96` 全量虚拟滚动。
+  5. `Sidebar`/`EditorPane` 不再各自 `invoke("load_all_words")`：父语言走 `useLineageLexicon`，祖先链用 `loadLineageLexicon` + 缓存读取（`useLineageLexiconCacheVersion` 触发重算）。
+- V-ALL：`[exit 0] × 8`（i18n 0/0；tsc 0 error；src 126 pass 含新增 6 条缓存层单测；mcp 34；cargo 47）。
+- 偏差与决定：
+  1. **T0.4/T0.5 合并执行**：`Sidebar`(688)/`EditorPane`(691)/`SCAPreview`(559) 本就超过 300 行，而本任务必须改动它们；为同时满足「修改的 .tsx ≤ 300 行」与「禁止越界重构」，在接入虚拟列表的同时按 T0.5 规定的边界完成拆分（`LexiconFilterBar`/`LexiconVirtualList`/`WordHeaderSection`/`WordSensesSection`/`WordEtymologySection`/`SCASingleTester`/`SCABatchVirtualPreview`），T0.5 因此只剩 `RuleSetList` 拆分与全仓行数复核。
+  2. 抽取 `src/utils/scaPreviewPatch.ts`：原 `SCAPreview` 内两份近 100 行的 `patchXxxRuleWithSCA` 合并为一个泛型 `patchRuleWithSca` + 字段描述表，行为与原实现逐字段等价（affix/infix/circumfix×2/ablaut×2），同时消除重复代码。
+  3. 抽取 `src/utils/lexiconDraft.ts`：`isDraftWord` / `createDraftWord` 供 Sidebar 复用，顺带删除已被注释掉的「清理空词条」死代码与其 2 个翻译键（`lexicon.cleanBlankWords*`），以及随 TTS 注释一起失效的 `lexicon.playTts`。
 
 #### T0.5 四大超长组件解耦拆分（回归 ≤300 行红线）
 - 执行者：待填　日期：—　提交：—
