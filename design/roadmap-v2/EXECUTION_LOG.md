@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（8 / 20 已完成） |
+| 当前状态 | 执行中（9 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -26,7 +26,7 @@
 | **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | |
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [ ] | |
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | |
-| **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [ ] | — | — | [ ] | |
+| **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | |
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [ ] | — | — | [ ] | |
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [ ] | — | — | [ ] | |
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [ ] | — | — | [ ] | |
@@ -217,12 +217,21 @@
   2. 为守住 300 行红线，把语料级 SCA 差异面板抽成 `CorpusScaDiffPanel.tsx`（96 行），`GlossingEditor` 295 → 238 行。
 
 #### T1.4 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`243ed0a`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] 支持跨语系词库秒搜、`>` 动作跳转、`=` 前缀即时演算回显。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] 支持跨语系词库秒搜、`>` 动作跳转、`=` 前缀即时演算回显。
+  - [x] 键盘纯盲操（`Cmd+K` → 输入 → `↑/↓` → `Enter` / `Esc`），输入框全程持焦；组件均 ≤ 300 行（CommandPalette 299 / CommandCalcPreview 126 / App 295 / TitleBar 160）。
+- 关键实现：
+  1. 检索：`searchWords()` 打分顺序为「罗马字前缀 > 子串 > 去斜杠 IPA > 释义 > 标签」，当前语言命中优先；数据源 = 当前 `wordsList` + `listLineageSnapshots(projectPath)`（T0.4 缓存，零额外 IPC），跨语言结果显示语言徽章。
+  2. 动作模式 `>`：切换语言（`setActiveLanguage`）、跳转 9 个页面（`PALETTE_ROUTES`）、新建词条（`createDraftWord` + `upsertWord`，自动进撤销栈）。
+  3. 演算模式 `=`：`generateIPATraced` → 去超音段 → `tokenizePhonemes` → `syllabify`（复用 T0.2 DP 实现，显示 `ka.ta` 与 `HL` 音重串）→ `ScriptPreview` 本族字 → 当前 `scaConfig` 音变推演（含步数）。
+  4. 跨语言跳转：切换语言后以 100ms×30 次轮询等待目标语言词库加载完成再 `setActiveWordId`，全部 timer 在卸载时清理。
+  5. `useCommandPaletteHotkey()` 独立成 hook，`App` 只增加 1 行调用 + 1 个 `<CommandPalette>`；`TitleBar` 增加带 `⌘K` 提示的搜索按钮。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 158 pass（新增 8 条）；`mcp:test` 39 pass；`cargo test` 47 pass。
+- 偏差与决定：
+  1. `=` 的「子语言 SCA 推演」改用**当前语言自身的 SCA 规则**（子语言 SCA 配置不在内存中，取用需额外 IPC 与语言切换）。语义上仍是「按本语言音变规则推演该词」，已在 UI 标注为「音变推演」而非「子语言结果」。
+  2. 面板打开时清空输入并复焦，避免上次查询残留；`Esc` 由输入框与遮罩共同处理。
 
 #### T1.5 单行语言学规则 DSL ↔ 表单双向无损编辑器
 - 执行者：待填　日期：—　提交：—
