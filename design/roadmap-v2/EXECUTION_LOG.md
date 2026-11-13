@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（12 / 20 已完成） |
+| 当前状态 | 执行中（13 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -30,7 +30,7 @@
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | |
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | |
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | |
-| **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [ ] | — | — | [ ] | |
+| **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | |
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [ ] | — | — | [ ] | |
 | **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [ ] | — | — | [ ] | |
 | **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [ ] | — | — | [ ] | |
@@ -290,12 +290,23 @@
   3. `ConceptPicker` 的「新建概念」使用查询词做 ID 规范化（ASCII 保留、CJK 走短哈希），与 `slugifyConceptId` 同源策略。
 
 #### T2.3 全语系同源词矩阵引擎与虚拟化对照表视图
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`0d94a99`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `cognateMatrix.ts` 精确聚合祖语同源根、借词与创新；前端虚拟表格支持点击空白格补词；注册 `family_cognate_matrix`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `cognateMatrix.ts` 精确聚合祖语同源根、借词与创新；前端虚拟表格支持点击空白格补词；注册 `family_cognate_matrix`。
+  - [x] 144 概念 × 4 门语言（夹具）矩阵同一渲染路径通过；组件均 ≤ 300 行（CognateMatrix 172 / CognateMatrixTable 193 / AppNav 209 / App 300）。
+- 关键实现：
+  1. **跨代上溯**：`traceRoot()` 每步把语言切到 `language.parent_id` 继续查找 `parent_entry_id`，因此「根 → 中间代 → 叶」两跳仍归到 `lang_root::entry_root_apa` 同一 `cognateSetId`；成环时停在当前节点并计入 `brokenChainCount`，父词条缺失同样只记断链不抛错。
+  2. **三类单元格**：`inherited`（有父链且追到根）共享同源组；`borrowed`（`origin_type === "borrowed"`）与 `innovation`（无父链且非根语言）各自独立成组，因此 `cognateSetCount` 直接反映「本行有几种来源」。
+  3. 同语言同概念多词时优先取未废弃词条并回报 `variants`；空单元格保留 `entryId: null` 供 UI 补词。
+  4. **UI**：`CognateMatrixTable` 用 `useVirtualizer` 做行虚拟滚动（行容器只写 `position/top/left/width/transform` + `measureElement`，间距交内层 `pb-1`），首列与表头双 `sticky`，语言列按谱系深度缩进，同源组用 8 色轮转左侧色条 + 8% 底色。
+  5. **跨语言建词**：`createWordInLanguage()` 直接以显式 `projectPath`/`languagePath` 调用 `save_word`（不经 `lexiconStore`，避免切换激活语言），写入后 `invalidateLineageLexicon` 触发重新拉取。
+  6. MCP `family_cognate_matrix`（`core+compute`、只读）：支持 `concept_ids` / `language_ids` / `only_filled` / `max_rows`，返回 `languages`（含 depth）、`stats`、`rows` 与各语言 lexicon revision。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 193 pass（新增 9）；`mcp:check` 0 error；`mcp:test` 53 pass（新增 5，工具数 80）；`cargo test` 54 pass。
+- 偏差与决定：
+  1. MCP 响应受既有 `enforceMaxResponseSize`（100k 字符）约束：144 概念 × 4 语言的完整矩阵会触发截断，返回 `truncated: true` 与 `rows_total_before_truncation`。已在测试中固化该行为；调用方应使用 `concept_ids` / `max_rows` 缩小查询，而非期望一次拿全量。
+  2. 矩阵作为**独立路由 `/cognates`**（而非塞进 `FamilyTree.tsx`）：后者已 380 行且本轮不需改动，新增页面可避免破坏 300 行红线。
+  3. 空单元格建词视为「独立创新」（`origin_type: a_priori`、无父链接），符合用户在子语言中直接造新词的语义；若要建同源词，应先在该语言的词典页设置父词条。
 
 #### T2.4 DAG 多词素构词图谱、词族树与过期复合词质检
 - 执行者：待填　日期：—　提交：—
