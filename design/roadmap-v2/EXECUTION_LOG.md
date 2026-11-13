@@ -37,7 +37,7 @@
 | **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [x] | 2026-11-13 / `ffaf8c7` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
 | **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [x] | 2026-11-13 / `79ced40` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
 | **T3.3** | P3 | 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台 | §5.2 | [ ] | — | — | [ ] | |
-| **T3.4** | P3 | 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出 | §5.3 | [ ] | — | — | [ ] | |
+| **T3.4** | P3 | 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出 | §5.3 | [x] | 2026-11-13 / `e003afd` | 8/8 全绿（src 290 / mcp 70 / cargo 54） | [ ] | |
 
 ---
 
@@ -406,17 +406,39 @@
   3. 网格标尺只作用于单字格子，不做整页像素级叠加——逐字 SVG 更易与虚拟列表/分页共存，也不会因滚动产生错位。
 
 #### T3.3 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`05ecab0`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `phraseSandbox.ts` 完成三阶段线性化，修复多修饰语归属并支持主宾格/作通格/三分格；`sandbox_translate` 同步支持 `clause`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `phraseSandbox.ts` 完成三阶段线性化，修复多修饰语归属并支持主宾格/作通格/三分格；`sandbox_translate` 同步支持 `clause`。
+  - [x] 单测 22 条：SVO/SOV/VSO × before/after × nom_acc/erg_abs 全组合、三分格映射、及物/不及物、嵌套 PP、格标记只落中心语、无格维度告警、树结构；MCP 端到端 4 条。
+  - [x] 组件行数：`Sandbox` 52 / `GlossSandboxCard` 110 / `InflectionHelperCard` 107 / `NPBuilderRow` 137 / `ClauseBuilderCard` 278。
+- 关键实现：
+  1. `linearizeNP` 返回独立词数组而非写入全局缓冲：领属者、限定词、数词、形容词、嵌套 PP 全部随各自 NP 走，从根本上修掉旧 `reorderBySyntax` 把所有 `Mod` 串绑到宾语的 Bug。
+  2. 格分配 `assignCaseRoles`：`nom_acc`（S/A=NOM, P=ACC）、`erg_abs`（S/P=ABS, A=ERG）、`tripartite`（S=NOM, A=ERG, P=ACC）；`resolveCaseDimensionValue` 先读 `syntax.case_gloss_map`，再按维度值 gloss 别名（NOM/SBJ、ACC/OBJ 等）匹配，找不到时只告警不报错。
+  3. 属格递归：领属者中心语自动取 `gen` 维度值（GEN/POSS），其自身修饰语不再重复带格。
+  4. 语序按 `word_order` 分组拼接（S 槽位同时承载及物 A），斜格 PP 统一追加在句末；前置/后置介词由 `adposition_type` 决定。
+  5. MCP `sandbox_translate` 新增递归 `clause` schema（`z.lazy` 支持 NP↔PP 互递归），回传 `phrase.alignment / case_tags / words / steps / warnings`。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；version OK；`core:check` 44 文件；tsc 0；`bun test src` 278 pass（新增 22）；`mcp:check` 0；`mcp:test` 70 pass（新增 4）；`cargo test` 54 pass。
+- 偏差与决定：
+  1. 移除了旧的「标注 S/V/O 词元重排」模式：它与新的短语树语义重复且正是 Bug 来源；`sandbox_translate` 的 `annotated_tokens` 入参仍保留，旧调用不受影响。
+  2. 从句（CP）嵌套尚未实现，当前递归深度覆盖 NP↔PP；真正的补语从句需要先定义 `ClauseNode` 作为 NP 的修饰语，留待后续。
+  3. 格标记只写 gloss 标签，实际音系形态仍由 `processSandboxText` 的屈折规则渲染，避免纯引擎依赖音系配置。
 
 #### T3.4 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`e003afd`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `referenceBookBuilder.ts` 输出自包含 Base64 字体单文件 HTML 与 `.typ` 源码；HTML 转义防注入与 `document.fonts.ready` 打印守卫完备。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `referenceBookBuilder.ts` 输出自包含 Base64 字体单文件 HTML 与 `.typ` 源码；HTML 转义防注入与 `document.fonts.ready` 打印守卫完备。
+  - [x] 单测 12 条：HTML 五字符转义、Typst 控制字符转义、字体 data URI 有无、章节开关、`{{paradigm:...}}` 宏替换与缺失占位、词典/反向索引排序、语料与词条转义、Typst 章节开关。
+  - [x] 行数：`ReferenceBookModal` 201 / `ImportPreviewCard` 99 / `ExportImport` 264。
+- 关键实现：
+  1. `buildReferenceBookHtml` 纯字符串构建：封面 → 目录 → 音系（辅/元音、音节结构、罗马化表）→ 类型学与句法 → 范式（`generateParadigm` 逐词性生成）→ 语法手册（`{{paradigm:id}}` 内嵌宏）→ Leipzig 三行语料 → Part I 本族语→释义双栏 → Part II 释义→本族语双栏。
+  2. 字体：传入 Base64 时注入 `@font-face`（`font-display: block`）并让 `.conlang/.headword` 使用 `ConlangBook`，`@media print` 去掉页边距、目录后强制分页。
+  3. 安全：**先转义正文再替换宏**，宏只输出受控 `<table>`，避免把生成的表格二次转义，也避免用户 HTML 注入；`escapeHtml` 覆盖五个元字符，`escapeTypst` 覆盖反斜杠与 # * _ $ @ < > 反引号。
+  4. Typst 侧同步输出 `#set page/text`、`= 标题`、`#table(...)`、词典条目与双向索引。
+  5. 打印遵循 §7.7 配方：`await win.document.fonts.ready` 后再 `focus()` + `print()`，避免 Base64 字未解码就打印出空白框。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；version OK；`core:check` 45 文件；tsc 0；`bun test src` 290 pass（新增 12）；`mcp:check` 0；`mcp:test` 70 pass；`cargo test` 54 pass；`vite build` 通过。
+- 偏差与决定：
+  1. 语法手册正文按纯文本 + `<br/>` 渲染，只识别 `{{paradigm:...}}` 一种宏；完整 Markdown 渲染会把 react-markdown 带进 core，违反 `core:check` 纯净性。
+  2. 反向索引取每条词条**第一义项**的 gloss 作为排序键；多义项词条在 Part II 只出现一次，避免同一形式重复占位。
+  3. Typst 只输出结构源码，不负责编译 PDF；实际排版交由用户的 Typst 工具链，HTML 打印路径已能独立产出矢量 PDF。
