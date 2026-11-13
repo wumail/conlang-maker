@@ -277,10 +277,7 @@ function App() {
               path="/tree"
               element={<div className="flex-1 p-8 overflow-y-auto flex min-h-0"><FamilyTree /></div>}
             />
-            <Route
-              path="/cognates"
-              element={<CognateMatrixPage />}
-            />
+            <Route path="/cognates" element={<CognateMatrixPage />} />
             <Route
               path="/corpus"
               element={<div className="flex-1 flex overflow-hidden"><CorpusPage /></div>}
