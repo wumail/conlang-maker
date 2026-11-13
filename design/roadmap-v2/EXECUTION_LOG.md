@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（9 / 20 已完成） |
+| 当前状态 | 执行中（10 / 20 已完成 · P1 收官） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -27,7 +27,7 @@
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [ ] | |
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | |
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | |
-| **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [ ] | — | — | [ ] | |
+| **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | |
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [ ] | — | — | [ ] | |
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [ ] | — | — | [ ] | |
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [ ] | — | — | [ ] | |
@@ -234,12 +234,22 @@
   2. 面板打开时清空输入并复焦，避免上次查询残留；`Esc` 由输入框与遮罩共同处理。
 
 #### T1.5 单行语言学规则 DSL ↔ 表单双向无损编辑器
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`c62a352`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] 罗马化、音位变体、SCA（字符+特征模式）往返无损且保留 `@id:<rule_id>`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] 罗马化、音位变体、SCA（字符+特征模式）往返无损且保留 `@id:<rule_id>`。
+  - [x] `ruleDsl.test.ts` 11 条：三类规则 `serialize → parse → deepEqual`、`>`/`→`/`0` 兼容、`[sep]` 分隔符规则、特征表达式 `[+vowel, -long]`、词界 `#` 与说明 `#` 区分、错误行号。
+- 关键实现：
+  1. 统一行语法：`<target> -> <replacement> / <before> _ <after>  ! <exceptions>  # <说明>  @id:<rule_id>`；箭头兼容 `->` / `>` / `→`，空串序列化为 `∅` 且解析同时接受 `∅` 与 `0`。
+  2. `@id:` 保真：序列化固定追加行尾 `@id:<rule_id>`；解析抽掉后原样回填，缺失时 `crypto.randomUUID()` 生成（`rule_` / `allo_` / `sca_` 前缀）。
+  3. **说明分隔符启发式**：语境里的 `#` 是词界标记，故从右往左寻找「尾部非空且不含 `_` / `/`」的 `#` 作为说明起点，`t -> d / # _ #` 不会被误当成注释（单测固化）。
+  4. SCA 特征模式判定：目标/替换/语境任一为 `[+x, -y]` 形式即 `feature_mode = true`，解析为 `FeatureExpression` / `FeatureReplacement`；两侧不合法时给出行内诊断且不吞掉后续行。
+  5. `RuleDslEditor<T>`（99 行，`ModalPortal`）：实时解析、错误清单 `L{line}: message`、有错或零规则时禁用「应用到表单」。
+  6. 三处接入：`RomanizationEditor` 按 map 打开（保留 `output_type: separator`）；`AllophonyEditor` 以行序重排 `priority`（UI 展示为降序，进入/写出各反转一次）；`SCARuleCard` 整组替换（`updateRuleSet`）。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 169 pass（新增 11 条）；`mcp:test` 39 pass；`cargo test` 47 pass；组件行数 RomanizationEditor 239 / AllophonyEditor 284 / SCARuleCard 121 / RuleDslEditor 99 / RuleSetList 291。
+- 偏差与决定：
+  1. 语境分隔符只识别 ` / `（两侧带空格）以保证 `∅` 与特征表达式不被误拆；用户若写 `a->b/_i` 会被当作无语境规则——已在 DSL 提示文案中给出标准写法示例。
+  2. 显式 `output_type: "phoneme"` 在往返后归一为缺省（`undefined`），与原语义等价；分隔符规则完整保留。特征模式规则的 `target/replacement/context_*` 文本字段归一为空串（这些字段在特征模式下不参与匹配）。
 
 ---
 
