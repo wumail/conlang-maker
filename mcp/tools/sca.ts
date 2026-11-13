@@ -9,6 +9,7 @@ import {
   findMatchingPhonemes,
   parseFeatureExpression,
   SCA_BOUNDARY_FEATURE,
+  type SCAProsodyContext,
 } from "../../src/core/engines/scaEngine";
 import {
   type ParsedSCARuleInput,
@@ -551,6 +552,7 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
         args.macros,
       );
       let inventoryPhonemes: string[] = [];
+      let prosodyContext: SCAProsodyContext | undefined;
       const dependencies: Record<string, string> = {};
 
       if (hasLanguageArg) {
@@ -709,6 +711,12 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
               savedRuleSets: sca.config.rule_sets,
               macros: builtMacros,
               inventoryPhonemes: [...combinedConsonants, ...combinedVowels],
+              // 超音段上下文取自当前语言音系：+stressed / +open_syllable 等伪特征依赖它
+              prosodyContext: {
+                phonotactics: phonoLocal.phonotactics,
+                inventory: phonoLocal.phoneme_inventory,
+                stress: phonoLocal.phonotactics.stress ?? null,
+              } satisfies SCAProsodyContext,
               deps,
             };
           },
@@ -722,6 +730,7 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
         }
         macros = collected.macros;
         inventoryPhonemes = collected.inventoryPhonemes;
+        prosodyContext = collected.prosodyContext;
         Object.assign(dependencies, collected.deps);
       } else {
         simItems = (args.words ?? []).map((w) => ({
@@ -754,6 +763,7 @@ export function registerScaTools(server: McpServer, config: McpConfig): void {
           orderedSets,
           macros,
           inventoryPhonemes,
+          prosodyContext,
         );
         const changed = applied.result !== item.input;
         if (changed) changedCount += 1;

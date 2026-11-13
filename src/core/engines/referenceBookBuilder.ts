@@ -5,13 +5,21 @@
  * 与结构对应的 Typst 源码。所有用户输入一律转义。
  */
 import type {
+  ConceptDefinition,
   CorpusText,
   GrammarChapter,
   GrammarConfig,
   PhonologyConfig,
   WordEntry,
 } from "../../types";
+import { getCoreConcept } from "../../data/core_concepts";
 import { generateParadigm } from "./morphologyEngine";
+import {
+  buildFontInputIndex,
+  textToFontInput,
+  type FontInputIndex,
+} from "./fontInput";
+import { fontFeaturesToCss } from "./fontLayout";
 
 export interface ReferenceBookSections {
   phonology: boolean;
@@ -36,6 +44,10 @@ export interface ReferenceBookOptions {
   /** 本族字体（Base64，不含 data URI 前缀） */
   fontBase64?: string | null;
   fontMime?: string;
+  /** 字体文件名，用于 .otf 格式自适应 */
+  fontFileName?: string;
+  /** 工作区自定义概念（与内置概念合并后用于徽章与反向索引） */
+  concepts?: readonly ConceptDefinition[];
 }
 
 export const DEFAULT_REFERENCE_SECTIONS: ReferenceBookSections = {
@@ -76,12 +88,58 @@ export function escapeTypst(value: string): string {
   return value.replace(/[\\#*_$@<>`]/g, (character) => TYPST_ESCAPES[character] ?? character);
 }
 
+/** 本族文字输入：词典词头（走共享索引，保留词条专属读音） */
+export function wordToFontText(
+  word: WordEntry,
+  config: PhonologyConfig,
+  index: FontInputIndex | null,
+): string {
+  if (!config.font_input) return "";
+  return textToFontInput(
+    word.con_word_romanized,
+    config,
+    index ?? undefined,
+    word.entry_id,
+  );
+}
+
+/** 本族文字输入：任意罗马字片段（语料行、范式单元格） */
+export function textToFontText(
+  text: string,
+  config: PhonologyConfig,
+  index: FontInputIndex | null,
+): string {
+  if (!config.font_input) return "";
+  return textToFontInput(text, config, index ?? undefined);
+}
+
+interface RenderContext {
+  fontIndex: FontInputIndex | null;
+  fontFeatures: readonly string[];
+  conceptOf: (conceptId?: string) => ConceptDefinition | undefined;
+  wordsById: Map<string, WordEntry>;
+}
+
+function buildContext(options: ReferenceBookOptions, withFontIndex: boolean): RenderContext {
+  const custom = new Map((options.concepts ?? []).map((concept) => [concept.concept_id, concept]));
+  return {
+    fontIndex:
+      withFontIndex && options.phono.font_input
+        ? buildFontInputIndex(options.words, options.grammar, options.phono)
+        : null,
+    fontFeatures: options.phono.font_features ?? [],
+    conceptOf: (conceptId) =>
+      conceptId ? getCoreConcept(conceptId) ?? custom.get(conceptId) : undefined,
+    wordsById: new Map(options.words.map((word) => [word.entry_id, word])),
+  };
+}
+
 function byRomanized(left: WordEntry, right: WordEntry): number {
   return left.con_word_romanized.localeCompare(right.con_word_romanized);
 }
 
-function senseGloss(word: WordEntry): string {
-  return word.senses[0]?.gloss?.trim() ?? "";
+function senseGlosses(word: WordEntry): string[] {
+  return word.senses.map((sense) => sense.gloss.trim()).filter((gloss) => gloss.length > 0);
 }
 
 function posName(grammar: GrammarConfig, posId: string): string {
@@ -95,13 +153,16 @@ function dimensionName(grammar: GrammarConfig, dimId: string): string {
   );
 }
 
-function table(headers: string[], rows: string[][], className = ""): string {
+type TableCell = string | { html: string };
+
+function renderCell(cell: TableCell): string {
+  return typeof cell === "string" ? escapeHtml(cell) : cell.html;
+}
+
+function table(headers: string[], rows: TableCell[][], className = ""): string {
   const head = headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("");
   const body = rows
-    .map(
-      (row) =>
-        `<tr>${row.map((cell) => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`,
-    )
+    .map((row) => `<tr>${row.map((cell) => `<td>${renderCell(cell)}</td>`).join("")}</tr>`)
     .join("\n");
   return `<table class="${className}"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table>`;
 }
@@ -188,7 +249,17 @@ function buildParadigms(options: ReferenceBookOptions): ParadigmTable[] {
   return tables;
 }
 
-function renderParadigms(options: ReferenceBookOptions): string {
+/** 范式单元格：本族文字在上、罗马字在下（无内嵌字体时保持纯文本） */
+function paradigmFormCell(form: string, options: ReferenceBookOptions, context: RenderContext): TableCell {
+  if (!options.fontBase64) return form;
+  const nativeText = textToFontText(form, options.phono, context.fontIndex);
+  if (!nativeText || nativeText === form) return form;
+  return {
+    html: `<span class="conlang">${escapeHtml(nativeText)}</span><br/><span class="romanized">${escapeHtml(form)}</span>`,
+  };
+}
+
+function renderParadigms(options: ReferenceBookOptions, context: RenderContext): string {
   const tables = buildParadigms(options);
   if (tables.length === 0) {
     return `<section id="paradigms"><h1>3. Paradigms</h1><p>No inflection rules defined.</p></section>`;
@@ -199,7 +270,15 @@ function renderParadigms(options: ReferenceBookOptions): string {
   ${tables
     .map(
       (item) =>
-        `<h2>${escapeHtml(item.title)}</h2>${table(item.headers, item.rows, "paradigm")}`,
+        `<h2>${escapeHtml(item.title)}</h2>${table(
+          item.headers,
+          item.rows.map((row) => [
+            row[0] ?? "",
+            row[1] ?? "",
+            paradigmFormCell(row[2] ?? "", options, context),
+          ]),
+          "paradigm",
+        )}`,
     )
     .join("\n")}
 </section>`;
@@ -244,7 +323,7 @@ function renderManual(options: ReferenceBookOptions): string {
   return `<section id="manual"><h1>4. Grammar Manual</h1>${content}</section>`;
 }
 
-function renderCorpus(options: ReferenceBookOptions): string {
+function renderCorpus(options: ReferenceBookOptions, context: RenderContext): string {
   const corpora = options.corpus ?? [];
   if (corpora.length === 0) {
     return `<section id="corpus"><h1>5. Glossed Texts</h1><p>No corpus texts yet.</p></section>`;
@@ -256,8 +335,15 @@ function renderCorpus(options: ReferenceBookOptions): string {
           const surface = line.tokens.map((token) => token.surface_form).join("  ");
           const morphemes = line.tokens.map((token) => token.morpheme_break).join("  ");
           const glosses = line.tokens.map((token) => token.gloss_labels).join("  ");
-          return `<div class="corpus-line">
-  <div class="conlang">${escapeHtml(surface)}</div>
+          const nativeText = options.fontBase64
+            ? textToFontText(surface, options.phono, context.fontIndex)
+            : "";
+          const nativeLine =
+            nativeText && nativeText !== surface
+              ? `\n  <div class="conlang native-line">${escapeHtml(nativeText)}</div>`
+              : "";
+          return `<div class="corpus-line">${nativeLine}
+  <div class="romanized">${escapeHtml(surface)}</div>
   <div class="gloss">${escapeHtml(morphemes)}</div>
   <div class="gloss">${escapeHtml(glosses)}</div>
   <div class="translation">‘${escapeHtml(line.translation)}’</div>
@@ -270,41 +356,111 @@ function renderCorpus(options: ReferenceBookOptions): string {
   return `<section id="corpus"><h1>5. Glossed Texts</h1>${blocks}</section>`;
 }
 
-function dictionaryEntry(word: WordEntry, grammar: GrammarConfig): string {
-  const senses = word.senses
-    .map(
-      (sense) =>
-        `<span class="pos">${escapeHtml(posName(grammar, sense.pos_id))}</span> ${escapeHtml(sense.gloss)}`,
-    )
-    .join("; ");
-  const ipa = word.phonetic_ipa ? ` /${escapeHtml(word.phonetic_ipa)}/` : "";
-  return `<div class="entry"><span class="headword">${escapeHtml(word.con_word_romanized)}</span>${ipa} — ${senses}</div>`;
+function conceptLabel(concept: ConceptDefinition): string {
+  const parts = [concept.gloss_zh, concept.gloss_en].filter((label) => Boolean(label?.trim()));
+  return parts.length > 0 ? parts.join(" · ") : concept.concept_id;
 }
 
-function renderDictionary(options: ReferenceBookOptions): string {
+/** 简要词源：优先显示构词成分，其次显示派生母词 */
+function etymologyNote(word: WordEntry, context: RenderContext): string {
+  const components = (word.etymology.components ?? [])
+    .map((component) =>
+      component.entry_id ? context.wordsById.get(component.entry_id)?.con_word_romanized : undefined,
+    )
+    .filter((form): form is string => Boolean(form));
+  if (components.length > 0) {
+    return `<div class="etym">&lt; ${escapeHtml(components.join(" + "))}</div>`;
+  }
+  const parent = word.etymology.parent_entry_id
+    ? context.wordsById.get(word.etymology.parent_entry_id)
+    : undefined;
+  if (parent) return `<div class="etym">&lt; ${escapeHtml(parent.con_word_romanized)}</div>`;
+  if (word.etymology.origin_type === "borrowed") return `<div class="etym">borrowed</div>`;
+  return "";
+}
+
+function firstExample(word: WordEntry): string {
+  const example = word.senses
+    .flatMap((sense) => sense.examples)
+    .map((item) => item.trim())
+    .find((item) => item.length > 0);
+  return example ? `<div class="example">‘${escapeHtml(example)}’</div>` : "";
+}
+
+function dictionaryEntry(
+  word: WordEntry,
+  options: ReferenceBookOptions,
+  context: RenderContext,
+): string {
+  const senses = word.senses
+    .map((sense) => {
+      const concept = context.conceptOf(sense.concept_id);
+      const badge = concept
+        ? ` <span class="concept" title="${escapeHtml(concept.concept_id)}">${escapeHtml(conceptLabel(concept))}</span>`
+        : "";
+      return `<span class="pos">${escapeHtml(posName(options.grammar, sense.pos_id))}</span> ${escapeHtml(sense.gloss)}${badge}`;
+    })
+    .join("; ");
+  const nativeText = wordToFontText(word, options.phono, context.fontIndex);
+  const native = `<span class="conlang native-headword">${escapeHtml(nativeText || word.con_word_romanized)}</span>`;
+  const headword = `<span class="headword">${escapeHtml(word.con_word_romanized)}</span>`;
+  const ipa = word.phonetic_ipa ? ` /${escapeHtml(word.phonetic_ipa)}/` : "";
+  return `<div class="entry"><div>${native} ${headword}${ipa} — ${senses}</div>${etymologyNote(word, context)}${firstExample(word)}</div>`;
+}
+
+function renderDictionary(options: ReferenceBookOptions, context: RenderContext): string {
   const words = [...options.words].sort(byRomanized);
   if (words.length === 0) {
     return `<section id="dictionary"><h1>Part I. Conlang → Meaning</h1><p>Lexicon is empty.</p></section>`;
   }
   return `<section id="dictionary">
   <h1>Part I. Conlang → Meaning</h1>
-  <div class="columns">${words.map((word) => dictionaryEntry(word, options.grammar)).join("\n")}</div>
+  <div class="columns">${words.map((word) => dictionaryEntry(word, options, context)).join("\n")}</div>
 </section>`;
 }
 
-function renderReverseIndex(options: ReferenceBookOptions): string {
-  const entries = options.words
-    .map((word) => ({ gloss: senseGloss(word), form: word.con_word_romanized, word }))
-    .filter((item) => item.gloss.length > 0)
-    .sort((left, right) => left.gloss.localeCompare(right.gloss));
-  if (entries.length === 0) {
+interface ReverseRow {
+  key: string;
+  detail: string;
+  form: string;
+}
+
+/** Part II：每个义项与绑定概念（中/英）都生成检索项 */
+function buildReverseRows(options: ReferenceBookOptions, context: RenderContext): ReverseRow[] {
+  const rows: ReverseRow[] = [];
+  const seen = new Set<string>();
+  const push = (word: WordEntry, key: string, detail: string): void => {
+    const trimmed = key.trim();
+    if (!trimmed) return;
+    const dedupe = `${word.entry_id}|${trimmed}`;
+    if (seen.has(dedupe)) return;
+    seen.add(dedupe);
+    const nativeText = wordToFontText(word, options.phono, context.fontIndex);
+    const form = `<span class="conlang">${escapeHtml(nativeText || word.con_word_romanized)}</span> <span class="headword">${escapeHtml(word.con_word_romanized)}</span>`;
+    rows.push({ key: trimmed, detail, form });
+  };
+  for (const word of options.words) {
+    for (const sense of word.senses) {
+      push(word, sense.gloss, posName(options.grammar, sense.pos_id));
+      const concept = context.conceptOf(sense.concept_id);
+      if (!concept) continue;
+      if (concept.gloss_zh) push(word, concept.gloss_zh, concept.concept_id);
+      if (concept.gloss_en) push(word, concept.gloss_en, concept.concept_id);
+    }
+  }
+  return rows.sort((left, right) => left.key.localeCompare(right.key));
+}
+
+function renderReverseIndex(options: ReferenceBookOptions, context: RenderContext): string {
+  const rows = buildReverseRows(options, context);
+  if (rows.length === 0) {
     return `<section id="reverse"><h1>Part II. Meaning → Conlang</h1><p>No glossed senses yet.</p></section>`;
   }
-  const rows = entries.map(
-    (item) =>
-      `<div class="entry"><span class="headword">${escapeHtml(item.gloss)}</span> — ${escapeHtml(item.form)}</div>`,
+  const body = rows.map(
+    (row) =>
+      `<div class="entry"><span class="headword">${escapeHtml(row.key)}</span> <span class="pos">${escapeHtml(row.detail)}</span> → ${row.form}</div>`,
   );
-  return `<section id="reverse"><h1>Part II. Meaning → Conlang</h1><div class="columns">${rows.join("\n")}</div></section>`;
+  return `<section id="reverse"><h1>Part II. Meaning → Conlang</h1><div class="columns">${body.join("\n")}</div></section>`;
 }
 
 const BOOK_CSS = `
@@ -332,6 +488,8 @@ th { background: #f4f4f4; }
 .entry { break-inside: avoid; margin-bottom: .35rem; }
 .headword { font-weight: 600; }
 .pos { font-style: italic; color: #555; }
+.concept { font-size: .72rem; color: #555; border: 1px solid #ddd; border-radius: 3px; padding: 0 .22rem; }
+.etym, .example { font-size: .8rem; color: #555; }
 .mono, .conlang { font-family: "ConlangBook", "Libertinus Serif", serif; }
 .corpus-line { margin: 0 0 1rem; page-break-inside: avoid; }
 .corpus-line .gloss { font-size: .85rem; color: #444; }
@@ -339,6 +497,34 @@ th { background: #f4f4f4; }
 .native, .conlang, .entry .headword { font-variant-ligatures: common-ligatures contextual; }
 @media print { .page { max-width: none; padding: 0; } nav.toc { page-break-after: always; } h1 { page-break-after: avoid; } }
 `;
+
+function isOpenTypeFont(options: ReferenceBookOptions): boolean {
+  return (
+    (options.fontMime ?? "").toLowerCase().includes("otf") ||
+    /\.otf$/i.test(options.fontFileName ?? "")
+  );
+}
+
+function fontSettingsCss(features: readonly string[]): string {
+  try {
+    return fontFeaturesToCss(features);
+  } catch (error) {
+    console.warn(`Invalid font feature configuration: ${error}`);
+    return fontFeaturesToCss();
+  }
+}
+
+function buildBookCss(options: ReferenceBookOptions): string {
+  return `${BOOK_CSS}\n.conlang { font-feature-settings: ${fontSettingsCss(options.phono.font_features ?? [])}; }\n`;
+}
+
+function buildFontFace(options: ReferenceBookOptions): string {
+  if (!options.fontBase64) return "";
+  const openType = isOpenTypeFont(options);
+  const mime = options.fontMime ?? (openType ? "font/otf" : "font/ttf");
+  const format = openType ? "opentype" : "truetype";
+  return `@font-face { font-family: "ConlangBook"; src: url("data:${mime};base64,${options.fontBase64}") format("${format}"); font-display: block; }`;
+}
 
 function buildToc(options: ReferenceBookOptions): string {
   const items: string[] = [];
@@ -354,18 +540,16 @@ function buildToc(options: ReferenceBookOptions): string {
 
 export function buildReferenceBookHtml(options: ReferenceBookOptions): string {
   const generatedAt = options.generatedAt ?? new Date().toISOString().slice(0, 10);
-  const fontFace = options.fontBase64
-    ? `@font-face { font-family: "ConlangBook"; src: url("data:${options.fontMime ?? "font/ttf"};base64,${options.fontBase64}") format("truetype"); font-display: block; }`
-    : "";
+  const context = buildContext(options, true);
 
   const body = [
     options.sections.phonology ? renderPhonology(options) : "",
     options.sections.typology ? renderTypology(options) : "",
-    options.sections.paradigms ? renderParadigms(options) : "",
+    options.sections.paradigms ? renderParadigms(options, context) : "",
     options.sections.manual ? renderManual(options) : "",
-    options.sections.corpus ? renderCorpus(options) : "",
-    options.sections.dictionary ? renderDictionary(options) : "",
-    options.sections.reverseIndex ? renderReverseIndex(options) : "",
+    options.sections.corpus ? renderCorpus(options, context) : "",
+    options.sections.dictionary ? renderDictionary(options, context) : "",
+    options.sections.reverseIndex ? renderReverseIndex(options, context) : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -376,7 +560,7 @@ export function buildReferenceBookHtml(options: ReferenceBookOptions): string {
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>${escapeHtml(options.languageName)} — Reference Grammar</title>
-<style>${fontFace}${BOOK_CSS}</style>
+<style>${buildFontFace(options)}${buildBookCss(options)}</style>
 </head>
 <body>
 <div class="page">
@@ -466,8 +650,9 @@ export function buildReferenceBookTypst(options: ReferenceBookOptions): string {
   if (options.sections.reverseIndex) {
     lines.push("", "= Part II. Meaning to Conlang");
     const entries = options.words
-      .map((word) => ({ gloss: senseGloss(word), form: word.con_word_romanized }))
-      .filter((item) => item.gloss.length > 0)
+      .flatMap((word) =>
+        senseGlosses(word).map((gloss) => ({ gloss, form: word.con_word_romanized })),
+      )
       .sort((left, right) => left.gloss.localeCompare(right.gloss));
     for (const entry of entries) {
       lines.push(`- *${escapeTypst(entry.gloss)}*: ${escapeTypst(entry.form)}`);

@@ -9,6 +9,7 @@ interface NPBuilderRowProps {
   onChange: (next: NPNode) => void;
   showPossessor?: boolean;
   showPP?: boolean;
+  showNumber?: boolean;
 }
 
 const Field: React.FC<{ label: string; children: React.ReactNode }> = ({
@@ -30,6 +31,7 @@ export const NPBuilderRow: React.FC<NPBuilderRowProps> = ({
   onChange,
   showPossessor = false,
   showPP = false,
+  showNumber = false,
 }) => {
   const { t } = useTranslation();
   const patch = (next: Partial<NPNode>): void => onChange({ ...value, ...next });
@@ -62,6 +64,17 @@ export const NPBuilderRow: React.FC<NPBuilderRowProps> = ({
             placeholder="two"
           />
         </Field>
+        {showNumber && (
+          <Field label={t("sandbox.clause.number")}>
+            <input
+              className={`${INPUT_MONO} w-full`}
+              value={value.number ?? ""}
+              onChange={(event) => patch({ number: event.target.value || undefined })}
+              placeholder="SG / PL"
+              data-testid="np-number"
+            />
+          </Field>
+        )}
         <Field label={t("sandbox.clause.adjectives")}>
           <input
             className={`${INPUT_MONO} w-full`}

@@ -122,6 +122,45 @@ describe("allophony DSL", () => {
       description: "",
     });
   });
+
+  test("treats # descriptions containing _ or / as comments, not word boundaries", () => {
+    const parsed = parseAllophonyDsl(
+      "t -> d / V _ V  # voiced_stop  @id:allo_desc1\nk -> g  # C/V  @id:allo_desc2",
+    );
+    expect(parsed.diagnostics).toEqual([]);
+    expect(parsed.rules[0]).toMatchObject({
+      target: "t",
+      replacement: "d",
+      context_before: "V",
+      context_after: "V",
+      description: "voiced_stop",
+    });
+    expect(parsed.rules[1]).toMatchObject({
+      target: "k",
+      replacement: "g",
+      context_before: "",
+      context_after: "",
+      description: "C/V",
+    });
+  });
+
+  test("keeps both word-boundary markers when a description follows them", () => {
+    const parsed = parseAllophonyDsl(
+      "t -> d / # _ #  # word boundary devoicing  @id:allo_boundary_desc",
+    );
+    expect(parsed.diagnostics).toEqual([]);
+    expect(parsed.rules[0]).toMatchObject({
+      context_before: "#",
+      context_after: "#",
+      description: "word boundary devoicing",
+    });
+  });
+
+  test("comment-only input clears the rule set instead of failing", () => {
+    const parsed = parseAllophonyDsl("# 只有注释\n   \n# another C/V / _ note");
+    expect(parsed.rules).toEqual([]);
+    expect(parsed.diagnostics).toEqual([]);
+  });
 });
 
 describe("SCA rules DSL", () => {

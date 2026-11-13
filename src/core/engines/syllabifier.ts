@@ -73,8 +73,23 @@ function isVowelToken(token: string, vowelSet: Set<string>): boolean {
 }
 
 /**
+ * 槽位是否接受该 token：
+ * 1. 直接收录（如 `aː` 这类长元音已在 inventory 中）；
+ * 2. 未直接收录时剥离超音段符号回退匹配基础音素（`aː` → `a`）；
+ *    token 本身保持原样，因此 `aː` 依旧被判定为 heavy 音重。
+ */
+function slotAccepts(unit: SlotUnit, token: string): boolean {
+  if (unit.allowed.has(token)) return true;
+  // 仅对长音（ː / ˑ）回退，避免放过带其他附加符号的非法音素
+  if (!token.includes("ː") && !token.includes("ˑ")) return false;
+  const base = basePhoneme(token);
+  return base.length > 0 && unit.allowed.has(base);
+}
+
+/**
  * 1. 编译模板（避免 2^k 展开指数爆炸）：
- *    支持 `(C)(L)V(N)` 与 `C?VC?` 两种可选语法；
+ *    支持 `(C)(L)V(N)`、`C?VC?` 与 `{CL}V` 等写法；
+ *    宏名可为多字符：花括号 `{CL}` 优先，其次按「最长已知宏键」匹配；
  *    宏未定义时回退：`C` → inventory.consonants，`V` → inventory.vowels，其余 → 字面量槽位。
  */
 export function compileSyllableUnits(
@@ -89,6 +104,27 @@ export function compileSyllableUnits(
   for (const [key, values] of Object.entries(macros ?? {})) {
     effectiveMacros[key] = new Set(values);
   }
+  // 长宏名优先匹配，避免 `CL` 被拆成 `C` + `L`
+  const multiCharKeys = Object.keys(effectiveMacros)
+    .filter((key) => key.length > 1)
+    .sort((left, right) => right.length - left.length);
+
+  const readSlot = (text: string, index: number): { allowed: Set<string>; next: number } | null => {
+    const character = text[index];
+    if (character === undefined) return null;
+    if (character === "{") {
+      const close = text.indexOf("}", index + 1);
+      if (close <= index + 1) return null;
+      const name = text.slice(index + 1, close).trim();
+      return { allowed: effectiveMacros[name] ?? new Set([name]), next: close + 1 };
+    }
+    for (const key of multiCharKeys) {
+      if (text.startsWith(key, index)) {
+        return { allowed: effectiveMacros[key]!, next: index + key.length };
+      }
+    }
+    return { allowed: effectiveMacros[character] ?? new Set([character]), next: index + 1 };
+  };
 
   const rawUnits: { allowed: Set<string>; optional: boolean }[] = [];
   const source = structure.trim();
@@ -102,10 +138,16 @@ export function compileSyllableUnits(
     if (ch === "(") {
       const close = source.indexOf(")", i + 1);
       if (close > i + 1) {
-        const inner = source.slice(i + 1, close).trim();
-        for (const sym of inner) {
-          if (sym === " " || sym === "\t") continue;
-          rawUnits.push({ allowed: effectiveMacros[sym] ?? new Set([sym]), optional: true });
+        const inner = source.slice(i + 1, close);
+        let cursor = 0;
+        while (cursor < inner.length) {
+          const slot = readSlot(inner, cursor);
+          if (!slot) {
+            cursor += 1;
+            continue;
+          }
+          rawUnits.push({ allowed: slot.allowed, optional: true });
+          cursor = slot.next;
         }
         i = close + 1;
         continue;
@@ -115,12 +157,14 @@ export function compileSyllableUnits(
       i += 1;
       continue;
     }
-    const nextIsOptional = source[i + 1] === "?";
-    rawUnits.push({
-      allowed: effectiveMacros[ch] ?? new Set([ch]),
-      optional: nextIsOptional,
-    });
-    i += nextIsOptional ? 2 : 1;
+    const slot = readSlot(source, i);
+    if (!slot) {
+      i += 1;
+      continue;
+    }
+    const nextIsOptional = source[slot.next] === "?";
+    rawUnits.push({ allowed: slot.allowed, optional: nextIsOptional });
+    i = nextIsOptional ? slot.next + 1 : slot.next;
   }
 
   return assignRoles(rawUnits, new Set(inventory.vowels));
@@ -212,7 +256,7 @@ function enumerateSyllableEnds(
     }
     const unit = units[unitIndex]!;
     const token = tokens[tokenIndex];
-    if (token !== undefined && unit.allowed.has(token)) {
+    if (token !== undefined && slotAccepts(unit, token)) {
       walk(unitIndex + 1, tokenIndex + 1);
     }
     if (unit.optional) walk(unitIndex + 1, tokenIndex);

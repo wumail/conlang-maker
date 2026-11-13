@@ -22,7 +22,7 @@ interface RuleTableProps {
   onAddRule: (map: RomanizationMap) => void;
   onDeleteRule: (map: RomanizationMap, ruleIdx: number) => void;
   onSortRules: (map: RomanizationMap) => void;
-  /** rule_id → 诊断条数（来自 analyzeRomanization） */
+  /** `map_id::rule_id` → 诊断条数（来自 analyzeRomanization，按映射表隔离） */
   lintIndex?: Map<string, number>;
 }
 
@@ -77,7 +77,7 @@ export const RuleTable: React.FC<RuleTableProps> = ({
       )}
 
       {map.rules.map((rule, idx) => {
-        const lintCount = lintIndex?.get(rule.rule_id) ?? 0;
+        const lintCount = lintIndex?.get(`${map.map_id}::${rule.rule_id}`) ?? 0;
         return (
         <div key={rule.rule_id || idx} className={`${ruleGrid} items-center`}>
           <input

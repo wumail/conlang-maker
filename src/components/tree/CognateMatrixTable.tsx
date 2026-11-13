@@ -4,6 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import type { CognateMatrixCell, CognateMatrixRow } from "../../core/engines/cognateMatrix";
 import { cognateColor } from "../../core/engines/cognateMatrix";
 import { INPUT_MONO } from "../../lib/ui";
+import { ScriptLine } from "../writing/ScriptText";
 
 const LABEL_WIDTH = 176;
 const CELL_WIDTH = 116;
@@ -11,6 +12,8 @@ const CELL_WIDTH = 116;
 interface CognateMatrixTableProps {
   rows: CognateMatrixRow[];
   languages: { languageId: string; name: string; depth: number }[];
+  /** 当前激活语言（该列额外渲染本族文字预览） */
+  activeLanguageId?: string;
   /** 在指定语言 + 概念下补词 */
   onCreate: (languageId: string, conceptId: string, romanized: string) => Promise<void>;
 }
@@ -25,6 +28,7 @@ interface EditingCell {
 export const CognateMatrixTable: React.FC<CognateMatrixTableProps> = ({
   rows,
   languages,
+  activeLanguageId,
   onCreate,
 }) => {
   const { t } = useTranslation();
@@ -95,17 +99,36 @@ export const CognateMatrixTable: React.FC<CognateMatrixTableProps> = ({
         : cell.kind === "innovation"
           ? t("cognate.innovation")
           : t("cognate.inherited");
+    const ipa = cell.ipa
+      ? cell.ipa.startsWith("/") || cell.ipa.startsWith("[")
+        ? cell.ipa
+        : `/${cell.ipa}/`
+      : "";
+    const isActiveColumn = cell.languageId === activeLanguageId;
 
     return (
       <div
-        className="flex h-7 items-center gap-1 rounded px-1"
+        className="flex min-h-7 items-center gap-1 rounded px-1"
         style={{
           borderLeft: `3px solid ${color ?? "transparent"}`,
           background: color ? `${color}12` : undefined,
         }}
-        title={`${cell.form}${cell.ipa ? ` /${cell.ipa}/` : ""} · ${kindLabel}`}
+        title={`${cell.form}${ipa ? ` ${ipa}` : ""} · ${kindLabel}`}
       >
-        <span className="truncate font-mono text-xs">{cell.form}</span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <div className="truncate font-mono text-xs">{cell.form}</div>
+          {ipa && (
+            <div className="truncate font-mono text-[9px] text-base-content/45">{ipa}</div>
+          )}
+          {isActiveColumn && (
+            <ScriptLine
+              text={cell.form}
+              entryId={cell.entryId ?? undefined}
+              ipa={cell.ipa || undefined}
+              className="block truncate text-[10px] leading-tight"
+            />
+          )}
+        </div>
         {cell.kind !== "inherited" && (
           <span
             className={`shrink-0 text-[9px] ${

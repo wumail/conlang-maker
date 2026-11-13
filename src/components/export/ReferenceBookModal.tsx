@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { BookOpen, Download, FileCode, Printer, X } from "lucide-react";
-import type { CorpusText, ResolvedFontBytes } from "../../types";
+import type { ConceptDefinition, CorpusText, ResolvedFontBytes } from "../../types";
 import {
   buildReferenceBookHtml,
   buildReferenceBookTypst,
@@ -15,7 +15,14 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { useCorpusStore } from "../../store/corpusStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { ModalPortal } from "../common/ModalPortal";
-import { BADGE, BTN_GHOST, BTN_PRIMARY, CARD, CARD_BODY } from "../../lib/ui";
+import {
+  BADGE,
+  BTN_GHOST,
+  BTN_GHOST_SQ,
+  BTN_PRIMARY,
+  CARD,
+  CARD_BODY,
+} from "../../lib/ui";
 
 const SECTION_KEYS: (keyof ReferenceBookSections)[] = [
   "phonology",
@@ -26,6 +33,8 @@ const SECTION_KEYS: (keyof ReferenceBookSections)[] = [
   "dictionary",
   "reverseIndex",
 ];
+
+const EMPTY_CONCEPTS: readonly ConceptDefinition[] = [];
 
 function download(name: string, content: string, type: string): void {
   const blob = new Blob([content], { type });
@@ -60,7 +69,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
   };
 
   const [sections, setSections] = useState<ReferenceBookSections>(DEFAULT_REFERENCE_SECTIONS);
-  const [font, setFont] = useState<{ base64: string; mime: string } | null>(null);
+  const [font, setFont] = useState<{ base64: string; mime: string; fileName: string } | null>(null);
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
@@ -76,6 +85,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
         setFont({
           base64: resolved.bytes_base64,
           mime: resolved.file_name.endsWith(".otf") ? "font/otf" : "font/ttf",
+          fileName: resolved.file_name,
         });
       })
       .catch((error) => console.warn(`Failed to read font for reference book: ${error}`));
@@ -84,6 +94,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
     };
   }, [open, projectPath, conlangFilePath, activeLanguageId]);
 
+  const customConcepts = config.custom_concepts ?? EMPTY_CONCEPTS;
   const options = useMemo(
     () => ({
       languageName,
@@ -95,8 +106,10 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
       sections,
       fontBase64: font?.base64 ?? null,
       fontMime: font?.mime,
+      fontFileName: font?.fileName,
+      concepts: customConcepts,
     }),
-    [languageName, phono, grammar, words, activeCorpus, sections, font],
+    [languageName, phono, grammar, words, activeCorpus, sections, font, customConcepts],
   );
 
   const html = useMemo(() => (open ? buildReferenceBookHtml(options) : ""), [open, options]);
@@ -122,7 +135,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
               <BookOpen className="w-4 h-4 text-primary" />
               {t("export.reference.title")}
             </h3>
-            <button className="btn btn-ghost btn-xs btn-square" onClick={onClose} aria-label={t("common.close")}>
+            <button className={BTN_GHOST_SQ} onClick={onClose} aria-label={t("common.close")}>
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -133,7 +146,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
               <button
                 key={key}
                 type="button"
-                className={`btn btn-xs ${sections[key] ? "btn-primary" : "btn-ghost"}`}
+                className={sections[key] ? BTN_PRIMARY : BTN_GHOST}
                 onClick={() => toggle(key)}
               >
                 {sectionLabels[key]}

@@ -18,6 +18,7 @@ export const InflectionMatrix: React.FC = () => {
   const { config } = useGrammarStore();
   const phonoConfig = usePhonoStore((s) => s.config);
   const { parts_of_speech, inflection_dimensions, inflection_rules } = config;
+  const morphophonologyRules = config.morphophonology_rules ?? [];
 
   const [posId, setPosId] = useState(parts_of_speech[0]?.pos_id ?? "");
   const [testWord, setTestWord] = useState("");
@@ -48,7 +49,12 @@ export const InflectionMatrix: React.FC = () => {
     if (!testWord) return null;
     const rule = findRule(combo);
     if (!rule) return null;
-    const { result, applied, stem_start } = applyInflection(testWord, rule, phonoConfig);
+    const { result, applied, stem_start } = applyInflection(
+      testWord,
+      rule,
+      phonoConfig,
+      morphophonologyRules,
+    );
     if (!applied) return null;
     const { phonemic } = generateIPA(result, phonoConfig, { stem_start });
     return { form: result, ipa: phonemic, tag: rule.tag };

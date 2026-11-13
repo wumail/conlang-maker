@@ -90,6 +90,17 @@ interface GrammarStore {
   deleteDerivation: (ruleId: string) => void;
   setDerivations: (rules: DerivationRule[]) => void;
 
+  /**
+   * 语法同步原子提交：三组规则在**同一次** applyEdit 内写入，
+   * 使 Cmd+Z 只需一次即可完整撤回整次同步。
+   */
+  applyGrammarSyncPatch: (
+    patch: Pick<
+      GrammarConfig,
+      "inflection_rules" | "derivation_rules" | "irregular_overrides"
+    >,
+  ) => void;
+
   // Grammar manual (Phase 2)
   addChapter: (chapter: GrammarChapter) => void;
   updateChapter: (chapterId: string, chapter: GrammarChapter) => void;
@@ -691,6 +702,18 @@ export const useGrammarStore = create<GrammarStore>((set, get) => {
       applyEdit((prev) => ({
         ...prev,
         inflection_rules: mergeById(prev.inflection_rules, rules, "rule_id"),
+      }));
+    },
+
+    applyGrammarSyncPatch: (patch) => {
+      applyEdit((prev) => ({
+        ...prev,
+        inflection_rules: mergeById(prev.inflection_rules, patch.inflection_rules, "rule_id"),
+        derivation_rules: mergeById(prev.derivation_rules, patch.derivation_rules, "rule_id"),
+        irregular_overrides: mergeIrregularOverrides(
+          prev.irregular_overrides,
+          patch.irregular_overrides,
+        ),
       }));
     },
 

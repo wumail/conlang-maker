@@ -2,12 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { AlertTriangle, Ruler, ScanLine } from "lucide-react";
 import type {
+  DistributionStats,
   FontGeometryAuditResult,
   FontMetricsInput,
   GeometryIssueKind,
 } from "../../core/engines/fontGeometryAudit";
 import { auditLanguageFont } from "../../utils/harfbuzzClient";
 import { useGeometryIssueLabels } from "../../lib/labelMaps";
+import { usePhonoStore } from "../../store/phonoStore";
+import type { GlyphAnnotation } from "../../types";
 import { BADGE, BTN_GHOST, CARD, CARD_BODY, SECTION_HEADER } from "../../lib/ui";
 
 export interface GeometryOverlay {
@@ -32,6 +35,14 @@ const FILTER_KINDS: GeometryIssueKind[] = [
   "weight_uneven",
 ];
 
+const EMPTY_ANNOTATIONS: GlyphAnnotation[] = [];
+
+/** 把分布统计渲染成百分比阅读文本 */
+function formatPercent(stats: DistributionStats | null): string {
+  if (!stats) return "—";
+  return `${(stats.mean * 100).toFixed(1)}%`;
+}
+
 export function GlyphGeometryInspector({
   projectPath,
   conlangFilePath,
@@ -40,6 +51,8 @@ export function GlyphGeometryInspector({
 }: GlyphGeometryInspectorProps) {
   const { t } = useTranslation();
   const issueLabels = useGeometryIssueLabels();
+  const config = usePhonoStore((state) => state.config);
+  const annotations = config.glyph_annotations ?? EMPTY_ANNOTATIONS;
   const [result, setResult] = useState<FontGeometryAuditResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -51,7 +64,12 @@ export function GlyphGeometryInspector({
     let cancelled = false;
     setLoading(true);
     setFailed(false);
-    auditLanguageFont({ projectPath, conlangFilePath, languageId })
+    auditLanguageFont({
+      projectPath,
+      conlangFilePath,
+      languageId,
+      glyphAnnotations: annotations,
+    })
       .then((audit) => {
         if (cancelled) return;
         setResult(audit);
@@ -67,7 +85,7 @@ export function GlyphGeometryInspector({
     return () => {
       cancelled = true;
     };
-  }, [projectPath, conlangFilePath, languageId]);
+  }, [projectPath, conlangFilePath, languageId, annotations]);
 
   const flagged = useMemo(() => {
     if (!result || activeKinds.size === 0) return null;
@@ -159,6 +177,31 @@ export function GlyphGeometryInspector({
                   upm {metrics.upm} · x {metrics.xHeight} · cap {metrics.capHeight}
                 </span>
               )}
+            </div>
+
+            <div
+              className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] font-mono rounded-md border border-base-200 bg-base-200/20 px-2 py-1.5"
+              data-testid="geometry-width-stats"
+            >
+              <span className="text-base-content/60">
+                {t("writing.geometry.baseWidthRatio")}
+              </span>
+              <span className="text-right">
+                {formatPercent(result.widthStats.baseAdvanceRatio)}
+              </span>
+              <span className="text-base-content/60">
+                {t("writing.geometry.markWidthRatio")}
+              </span>
+              <span className="text-right">
+                {formatPercent(result.widthStats.markAdvanceRatio)}
+              </span>
+              <span className="text-base-content/60">
+                {t("writing.geometry.sideBearings")}
+              </span>
+              <span className="text-right">
+                {formatPercent(result.widthStats.lsb)} /{" "}
+                {formatPercent(result.widthStats.rsb)}
+              </span>
             </div>
 
             <div className="flex flex-wrap gap-1.5">

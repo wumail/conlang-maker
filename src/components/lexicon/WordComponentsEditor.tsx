@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, RefreshCw } from "lucide-react";
+import { Plus, Trash2, RefreshCw, AlertTriangle } from "lucide-react";
 import type { CompoundRelation, Etymology, WordEntry } from "../../types";
 import { computeComponentsDigest, wouldIntroduceCycle } from "../../core/engines/wordFamily";
 import { INPUT, SELECT, BTN_LINK, BTN_GHOST_SQ, BTN_ERROR, BADGE } from "../../lib/ui";
@@ -48,6 +48,18 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
     });
   };
 
+  /** 当前成分的实时读音摘要；与已保存摘要不一致说明上游成分读音已变 */
+  const liveDigest = useMemo(
+    () => computeComponentsDigest(components, wordsMap),
+    [components, wordsMap],
+  );
+  const storedDigest = word.etymology?.compounds_stale_digest ?? "";
+  const isStale =
+    components.length > 0 && storedDigest !== "" && storedDigest !== liveDigest;
+
+  /** 一键同步核验摘要（复用 refreshDigest 的 commit 逻辑） */
+  const refreshDigest = () => commit({ ...(word.etymology as Etymology) });
+
   const addComponent = (entryId: string) => {
     if (wouldIntroduceCycle(word.entry_id, entryId, wordsMap)) {
       setError(t("lexicon.family.cycleBlocked"));
@@ -81,6 +93,16 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
 
   return (
     <div className="space-y-2">
+      {isStale && (
+        <div className="flex items-center gap-2 rounded-lg border border-warning/50 bg-warning/10 px-3 py-2 text-xs text-warning-content">
+          <AlertTriangle size={14} className="shrink-0" />
+          <span className="flex-1">{t("lexicon.family.staleWarning")}</span>
+          <button className={`${BTN_LINK} text-[11px]`} onClick={refreshDigest}>
+            <RefreshCw size={11} /> {t("lexicon.family.refreshDigest")}
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <span className="text-xs font-medium text-base-content/60">
           {t("lexicon.family.components")}
@@ -143,7 +165,7 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
           <button
             className={BTN_GHOST_SQ}
             title={t("lexicon.family.refreshDigest")}
-            onClick={() => commit({ ...(word.etymology as Etymology) })}
+            onClick={refreshDigest}
           >
             <RefreshCw size={12} />
           </button>
@@ -175,7 +197,7 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
           {t("lexicon.family.digestHint", {
             digest: word.etymology?.compounds_stale_digest ?? "—",
           })}
-          <button className={`${BTN_LINK} text-[10px]`} onClick={() => commit({ ...(word.etymology as Etymology) })}>
+          <button className={`${BTN_LINK} text-[10px]`} onClick={refreshDigest}>
             {t("lexicon.family.refreshDigest")}
           </button>
         </p>

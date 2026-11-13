@@ -68,7 +68,9 @@ export default {
           alreadyApplied: "already bound",
           conflict: "conflict",
           unresolved: "new concept",
+          needsConfirm: "numeric guess (confirm)",
         },
+        needsConfirmHint: "Guessed by Swadesh index — verify meaning before checking",
       },
     },
     ruleDsl: {
@@ -162,6 +164,7 @@ export default {
         missing: "missing",
         refreshDigest: "Re-verify",
         digestHint: "Pronunciation digest {{digest}}",
+        staleWarning: "Upstream component pronunciation changed — review and re-verify",
         depthHint: "Depth {{depth}}",
         relation: {
           root: "root",
@@ -228,6 +231,8 @@ export default {
       originAPosteriori: "A posteriori",
       originEvolved: "Evolved",
       originBorrowed: "Borrowed",
+      originDerived: "Derived",
+      originMixed: "Mixed",
 
       autoGenHint: "Set up romanization map to auto-generate IPA",
       unlockAuto: "Switch to auto-generation",
@@ -588,6 +593,7 @@ export default {
       before: "before _",
       after: "_ after",
       resetTest: "Test again",
+      featureMode: "Feature mode",
     },
     derivation: {
         addRule: "Add Rule",
@@ -654,6 +660,11 @@ export default {
         dropOblique: "− Oblique PP",
         steps: "Derivation steps",
         tree: "Phrase tree",
+        number: "Number",
+        polarity: "Polarity",
+        affirmative: "Affirmative",
+        negative: "Negative",
+        nativeScript: "Native script",
       },
     },
     wordgen: {
@@ -947,6 +958,9 @@ export default {
         issueMarkGap: "Mark clearance",
         issueStem: "Thin stem",
         issueWeight: "Uneven weight",
+        baseWidthRatio: "Base width ratio",
+        markWidthRatio: "Mark width ratio",
+        sideBearings: "LSB / RSB",
       },
       glyphsHint:
         "Every encoded glyph in this font is listed here for reference. Click a character to copy it or record optional notes on what it stands for.",
@@ -1025,9 +1039,6 @@ export default {
         },
       },
             title: "Export & Import",
-      pdf: "PDF Export",
-      pdfDesc: "Generate a complete language reference document",
-      downloadPDF: "Download PDF",
       excel: "Excel Export",
       excelDesc: "Export phonemes, romanization, and lexicon as spreadsheet",
       downloadExcel: "Download Excel",

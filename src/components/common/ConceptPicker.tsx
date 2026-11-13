@@ -9,6 +9,7 @@ import {
 } from "../../data/core_concepts";
 import { INPUT, BTN_GHOST_SQ } from "../../lib/ui";
 import { useSemanticFieldLabels } from "../../lib/labelMaps";
+import { slugifyConceptId } from "../../core/workflows/conceptMigration";
 
 interface ConceptPickerProps {
   /** 已绑定的 concept_id */
@@ -60,11 +61,13 @@ export const ConceptPicker: React.FC<ConceptPickerProps> = ({
   const createCustom = () => {
     const label = query.trim();
     if (!label || !onCreate) return;
+    // 自定义概念 ID 与迁移工作流共用同一 slug 规则，避免两处生成的 ID 不一致
+    const baseId = slugifyConceptId(label);
+    const taken =
+      Boolean(getCoreConcept(baseId)) ||
+      customConcepts.some((concept) => concept.concept_id === baseId);
     const concept: ConceptDefinition = {
-      concept_id: `custom_${label
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "") || Date.now().toString(36)}`,
+      concept_id: taken ? `${baseId}_custom` : baseId,
       gloss_en: label,
       gloss_zh: label,
       semantic_field: field || "culture",

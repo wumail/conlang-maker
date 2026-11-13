@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { recordConfigChange } from "./configHistory";
+import { invalidateLineageLexicon } from "./lineageLexiconStore";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AllophonyRule,
@@ -411,6 +412,8 @@ async function flushSave(key: string): Promise<void> {
   try {
     await write;
     saveErrors.delete(key);
+    // 音系落盘成功：谱系词库快照内嵌了 phonoConfig，必须失效以免父/子语言推演用旧读音
+    invalidateLineageLexicon(pending.projectPath, pending.languagePath);
   } catch (error) {
     if (saveRevisions.get(key) === pending.revision && !pendingSaves.has(key)) {
       pendingSaves.set(key, { ...pending, timer: null });
@@ -491,13 +494,37 @@ function applyLocalUpdate(
   };
 }
 
+/**
+ * 撤销基线：始终代表「当前语言」最近一次已记录的快照（初始为加载完成时的 localConfig）。
+ * 切换语言时必须在 loadConfig 里重置，否则语言 A 的快照会被当作语言 B 的前像，
+ * 撤销 B 的编辑就会把 A 的配置写回 B（跨语言串台）。
+ */
 let phonoHistoryBaseline: PhonologyConfig | null = null;
+
+/** 深拷贝音系配置快照（配置本身是纯 JSON，无函数/循环引用） */
+function cloneConfig(config: PhonologyConfig): PhonologyConfig {
+  return JSON.parse(JSON.stringify(config)) as PhonologyConfig;
+}
+
+/**
+ * 单次写动作的合并键覆盖：
+ *  - `null`  → 使用默认的 `phonology:<language>` 输入合并键；
+ *  - 空字符串 → 离散动作（增删规则/映射表），不与任何动作合并。
+ */
+let phonoCoalesceKeyOverride: string | null = null;
+
+function sameConfig(a: PhonologyConfig, b: PhonologyConfig): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
 
 /**
  * 音系有 16+ 个细粒度写方法，但都会在 `set` 之后调用 `saveConfig()`；
  * 在这里对比基线即可用单点接入覆盖全部写路径（加载/外部同步不会调用 saveConfig）。
  */
 function recordPhonoHistoryIfChanged(): void {
+  const override = phonoCoalesceKeyOverride;
+  phonoCoalesceKeyOverride = null;
+
   const state = usePhonoStore.getState();
   const current = state.localConfig;
   if (!phonoHistoryBaseline) {
@@ -505,17 +532,33 @@ function recordPhonoHistoryIfChanged(): void {
     return;
   }
   if (current === phonoHistoryBaseline) return;
+  // 基线可能来自深拷贝（内容相同但引用不同），避免记录空操作
+  if (sameConfig(current, phonoHistoryBaseline)) {
+    phonoHistoryBaseline = current;
+    return;
+  }
 
   const prev = phonoHistoryBaseline;
   phonoHistoryBaseline = current;
+  const languagePath = state.languagePath;
+  const coalesceKey =
+    override === null
+      ? `phonology:${state.languagePath}`
+      : override || undefined;
   recordConfigChange<PhonologyConfig>({
     domain: "phonology",
     labelKey: "undo.label.phonology.edit",
-    languageId: state.languagePath,
-    coalesceKey: `phonology:${state.languagePath}`,
+    languageId: languagePath,
+    coalesceKey,
     prev,
     next: current,
-    restore: (snapshot) => usePhonoStore.getState().restoreLocalConfig(snapshot),
+    restore: (snapshot) => {
+      const live = usePhonoStore.getState();
+      // 跨语言防护：历史前像只允许回写到它所属的语言，
+      // 防止撤销其它语言的动作时把它的配置写进当前语言并落盘。
+      if (live.languagePath !== languagePath) return;
+      live.restoreLocalConfig(snapshot);
+    },
   });
 }
 
@@ -583,6 +626,8 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
 
   loadConfig: async (projectPath: string, languagePath: string) => {
     const generation = ++loadGeneration;
+    // 切换语言立刻丢弃旧的撤销基线，避免语言 A 的快照成为语言 B 的前像
+    phonoHistoryBaseline = null;
     const empty = { ...defaultConfig };
     set({
       config: empty,
@@ -669,6 +714,9 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         languagePath,
         loading: false,
       });
+      // 基线对齐到本次加载完成后的本地配置：切换语言后的第一次编辑，
+      // 其前像必然是语言自身的初始 localConfig，而不是上一个语言的快照。
+      phonoHistoryBaseline = cloneConfig(localClean);
     } catch (err) {
       if (generation !== loadGeneration) return;
       set({ loading: false, loadError: String(err) });
@@ -717,6 +765,8 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         effectiveRevision: result.effective_revision ?? cur.effectiveRevision,
         dependencies: result.dependencies ?? cur.dependencies,
       });
+      // 外部同步分支：localConfig 未变，基线同步为当前本地配置，保证后续编辑前像正确
+      phonoHistoryBaseline = cloneConfig(baseLocal);
     } catch (err) {
       console.warn("Failed to refresh inherited phonology state:", err);
     }
@@ -827,6 +877,8 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         romanization_maps: [...baseLocal.romanization_maps, map],
       })),
     );
+    // 新增映射表是离散动作：不与 800ms 内的其它编辑合并成一步撤销
+    phonoCoalesceKeyOverride = "";
     get().saveConfig();
   },
 
@@ -839,6 +891,7 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         ),
       })),
     );
+    phonoCoalesceKeyOverride = "";
     get().saveConfig();
   },
 
@@ -975,6 +1028,8 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         allophony_rules: [...baseLocal.allophony_rules, rule],
       })),
     );
+    // 新增规则是离散动作：不与 800ms 内的其它编辑合并
+    phonoCoalesceKeyOverride = "";
     get().saveConfig();
   },
 
@@ -999,6 +1054,7 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         ),
       })),
     );
+    phonoCoalesceKeyOverride = "";
     get().saveConfig();
   },
 }));

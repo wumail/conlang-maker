@@ -1,6 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import type { WordEntry } from "../types";
-import { PALETTE_ROUTES, parsePaletteMode, searchWords } from "./commandPalette";
+import {
+  getLineageLexicon,
+  loadLineageLexicon,
+  resetLineageLexiconLoader,
+  setLineageLexiconLoader,
+  type LineageLexiconSnapshot,
+} from "../store/lineageLexiconStore";
+import {
+  PALETTE_ROUTES,
+  parsePaletteMode,
+  searchWords,
+  warmLineageLexiconCache,
+} from "./commandPalette";
 
 function word(
   id: string,
@@ -128,5 +140,52 @@ describe("PALETTE_ROUTES", () => {
   test("exposes the nine navigable pages", () => {
     expect(PALETTE_ROUTES).toHaveLength(9);
     expect(PALETTE_ROUTES.map((route) => route.path)).toContain("/lexicon");
+  });
+});
+
+describe("warmLineageLexiconCache", () => {
+  const requested: string[] = [];
+
+  const installLoader = () => {
+    requested.length = 0;
+    setLineageLexiconLoader(async (_projectPath, languagePath) => {
+      requested.push(languagePath);
+      const snapshot: LineageLexiconSnapshot = {
+        wordsById: {},
+        phonoConfig: {} as LineageLexiconSnapshot["phonoConfig"],
+        revision: `rev:${languagePath}`,
+      };
+      return snapshot;
+    });
+  };
+
+  afterEach(() => {
+    resetLineageLexiconLoader();
+  });
+
+  test("preloads every uncached language once and skips cached ones", async () => {
+    installLoader();
+
+    const started = warmLineageLexiconCache("/proj", [
+      "/proj/a",
+      "/proj/b",
+      "/proj/a",
+      "",
+    ]);
+    expect(started).toBe(2);
+
+    await Promise.all([
+      loadLineageLexicon("/proj", "/proj/a"),
+      loadLineageLexicon("/proj", "/proj/b"),
+    ]);
+    expect(requested.sort()).toEqual(["/proj/a", "/proj/b"]);
+    expect(getLineageLexicon("/proj", "/proj/a")).not.toBeNull();
+    expect(getLineageLexicon("/proj", "/proj/b")).not.toBeNull();
+
+    // 已进入缓存的语言不再触发 IPC
+    expect(warmLineageLexiconCache("/proj", ["/proj/a", "/proj/b"])).toBe(0);
+    // 没有工作区路径时不预热
+    expect(warmLineageLexiconCache("", ["/proj/c"])).toBe(0);
+    expect(requested).toHaveLength(2);
   });
 });

@@ -93,7 +93,11 @@ export const EditorPane: React.FC = () => {
     field: keyof WordEntry,
     value: WordEntry[keyof WordEntry],
   ) => {
-    upsertWord({ ...word, [field]: value });
+    // 字段级合并键：同一字段的连续输入合并为一步，不同字段互不吞并
+    upsertWord(
+      { ...word, [field]: value },
+      { coalesceKey: `lex:${word.entry_id}:${field}` },
+    );
   };
 
   const handleSenseChange = (
@@ -102,28 +106,40 @@ export const EditorPane: React.FC = () => {
     value: Sense[keyof Sense],
   ) => {
     const nextSenses = [...word.senses];
-    nextSenses[index] = { ...nextSenses[index], [field]: value };
-    handleChange("senses", nextSenses);
+    const sense = nextSenses[index];
+    if (!sense) return;
+    nextSenses[index] = { ...sense, [field]: value };
+    // 义项级合并键：不同义项的输入不会合并成同一步撤销
+    upsertWord(
+      { ...word, senses: nextSenses },
+      { coalesceKey: `lex:${word.entry_id}:sense:${sense.sense_id}` },
+    );
+  };
+
+  /** 离散动作（增删义项）不参与输入合并，避免连续操作被压成一步 */
+  const applyDiscreteChange = (patch: Partial<WordEntry>) => {
+    upsertWord({ ...word, ...patch }, { coalesceKey: "" });
   };
 
   const addSense = () => {
-    handleChange("senses", [
-      ...word.senses,
-      {
-        sense_id: crypto.randomUUID(),
-        pos_id: partsOfSpeech[0]?.pos_id || "",
-        gloss: "",
-        definitions: [],
-        examples: [],
-      },
-    ]);
+    applyDiscreteChange({
+      senses: [
+        ...word.senses,
+        {
+          sense_id: crypto.randomUUID(),
+          pos_id: partsOfSpeech[0]?.pos_id || "",
+          gloss: "",
+          definitions: [],
+          examples: [],
+        },
+      ],
+    });
   };
 
   const removeSense = (index: number) => {
-    handleChange(
-      "senses",
-      word.senses.filter((_, i) => i !== index),
-    );
+    applyDiscreteChange({
+      senses: word.senses.filter((_, i) => i !== index),
+    });
   };
 
   const showEvolutionChain =

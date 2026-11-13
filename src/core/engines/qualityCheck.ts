@@ -272,11 +272,21 @@ export function runQualityCheck(
     }
 
     // Rule 9: 元音和谐冲突
+    // 多词根复合词只在各成分词根自身受检，整词绕开混检以消除误报
     if (!disabled.has("vowelHarmonyViolation") && harmony?.enabled && harmonyA.size > 0 && harmonyB.size > 0) {
+      const rootComponents = (word.etymology?.components ?? []).filter((component) => {
+        const entryId = component.entry_id;
+        if (!entryId || entryId === word.entry_id) return false;
+        const isRootRelation =
+          component.relation === "root" ||
+          component.relation === "head" ||
+          component.relation === "modifier";
+        return isRootRelation && wordsMap[entryId] !== undefined;
+      });
       const tokens = phonemes.length > 0 ? phonemes : [...word.con_word_romanized];
       const groupAHits = tokens.filter((token) => harmonyA.has(token));
       const groupBHits = tokens.filter((token) => harmonyB.has(token));
-      if (groupAHits.length > 0 && groupBHits.length > 0) {
+      if (rootComponents.length < 2 && groupAHits.length > 0 && groupBHits.length > 0) {
         issues.push({
           entry_id: word.entry_id,
           word: word.con_word_romanized,
@@ -325,17 +335,18 @@ export function runQualityCheck(
   }
 
   // Rule 10: 同音碰撞（表层发音相同 + 共享词性）
+  // 同一词条可能因多个同 pos_id 义项被重复采集，按 entry_id 去重后再告警
   if (!disabled.has("homophonyClash")) {
     for (const group of homophoneGroups.values()) {
-      const uniqueIds = new Set(group.entries.map((entry) => entry.entry_id));
-      if (uniqueIds.size < 2) continue;
-      for (const entry of group.entries) {
+      const uniqueEntries = [...new Map(group.entries.map((entry) => [entry.entry_id, entry])).values()];
+      if (uniqueEntries.length < 2) continue;
+      for (const entry of uniqueEntries) {
         issues.push({
           entry_id: entry.entry_id,
           word: entry.con_word_romanized,
           rule: "homophonyClash",
           severity: "warning",
-          message: `Homophone of ${uniqueIds.size} entries sharing /${group.ipa}/`,
+          message: `Homophone of ${uniqueEntries.length} entries sharing /${group.ipa}/`,
         });
       }
     }

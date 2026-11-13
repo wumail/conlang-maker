@@ -51,6 +51,8 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
             <option value="a_posteriori">{t("lexicon.originAPosteriori")}</option>
             <option value="evolved">{t("lexicon.originEvolved")}</option>
             <option value="borrowed">{t("lexicon.originBorrowed")}</option>
+            <option value="derived">{t("lexicon.originDerived")}</option>
+            <option value="mixed">{t("lexicon.originMixed")}</option>
           </select>
         </div>
         <div>

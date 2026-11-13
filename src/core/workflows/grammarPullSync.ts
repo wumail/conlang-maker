@@ -11,14 +11,30 @@ import type {
   DerivationRule,
   GrammarConfig,
   InflectionRule,
+  InfixConfig,
+  CircumfixConfig,
   IrregularOverride,
   PhonemeInventory,
+  PhonologyConfig,
   Phonotactics,
   SCAConfig,
 } from "../../types";
-import { applySoundChanges, buildMacrosFromInventory } from "../engines/scaEngine";
+import {
+  applySoundChanges,
+  buildMacrosFromInventory,
+  type SCAProsodyContext,
+} from "../engines/scaEngine";
 
 export type GrammarSyncKind = "inflection" | "derivation" | "irregular";
+
+/** 单条规则内某个表面字段的音变前后值 */
+export interface GrammarSyncFieldPatch {
+  /** 如 `affix`、`condition.then_affix`、`circumfix_config.prefix_part` */
+  field: string;
+  before: string;
+  after: string;
+  changed: boolean;
+}
 
 export interface GrammarSyncRow {
   kind: GrammarSyncKind;
@@ -37,6 +53,8 @@ export interface GrammarSyncRow {
   status: "apply" | "unchanged" | "locked";
   /** 条件环境指纹（`"*"` 表示无条件） */
   environment: string;
+  /** 词缀全部子字段的逐项音变结果（含 condition / infix / circumfix / ablaut） */
+  fields?: GrammarSyncFieldPatch[];
 }
 
 export interface SyncretismCollision {
@@ -72,6 +90,8 @@ export interface PlanGrammarPullSyncOptions {
   /** 子语言音系（提供宏展开所需的辅音/元音表） */
   inventory?: PhonemeInventory;
   phonotactics?: Phonotactics;
+  /** 完整音系（提供重音/音节所需的超音段上下文） */
+  phonology?: PhonologyConfig;
   /** 仅同步这些词性（默认全部） */
   posIds?: readonly string[];
 }
@@ -107,13 +127,103 @@ function irregularRowId(override: IrregularOverride): string {
   return `${override.entry_id}::${dimensionKey(override.dimension_values)}`;
 }
 
+function prosodyContextFor(
+  phonology?: PhonologyConfig,
+): SCAProsodyContext | undefined {
+  if (!phonology) return undefined;
+  return {
+    phonotactics: phonology.phonotactics,
+    inventory: phonology.phoneme_inventory,
+    stress: phonology.phonotactics.stress ?? null,
+  };
+}
+
 function transform(
   affix: string,
   childSca: SCAConfig,
   macros: ReturnType<typeof macrosFor>,
+  prosodyContext?: SCAProsodyContext,
 ): string {
   if (!affix.trim()) return affix;
-  return applySoundChanges(affix, childSca.rule_sets, macros).result;
+  return applySoundChanges(affix, childSca.rule_sets, macros, [], prosodyContext).result;
+}
+
+function evolveField(
+  field: string,
+  parentValue: string | undefined,
+  childValue: string | undefined,
+  locked: boolean,
+  childSca: SCAConfig,
+  macros: ReturnType<typeof macrosFor>,
+  prosodyContext?: SCAProsodyContext,
+): GrammarSyncFieldPatch | null {
+  if (!parentValue || !parentValue.trim()) return null;
+  const before = childValue ?? parentValue;
+  const after = locked
+    ? parentValue
+    : transform(parentValue, childSca, macros, prosodyContext);
+  return { field, before, after, changed: !locked && before !== after };
+}
+
+interface FieldContext {
+  locked: boolean;
+  childSca: SCAConfig;
+  macros: ReturnType<typeof macrosFor>;
+  prosodyContext?: SCAProsodyContext;
+}
+
+type FieldSource = {
+  condition?: ConditionClause | null;
+  infix_config?: { morpheme: string };
+  circumfix_config?: { prefix_part: string; suffix_part: string };
+  ablaut_config?: { target_vowel: string; replacement_vowel: string };
+};
+
+/** 除 affix 之外的全部词缀子字段（屈折/派生同构） */
+function ruleFieldPatches(
+  parent: FieldSource,
+  child: FieldSource | undefined,
+  ctx: FieldContext,
+): GrammarSyncFieldPatch[] {
+  const specs: Array<[string, string | undefined, string | undefined]> = [
+    ["condition.then_affix", parent.condition?.then_affix, child?.condition?.then_affix],
+    ["condition.else_affix", parent.condition?.else_affix, child?.condition?.else_affix],
+    ["infix_config.morpheme", parent.infix_config?.morpheme, child?.infix_config?.morpheme],
+    [
+      "circumfix_config.prefix_part",
+      parent.circumfix_config?.prefix_part,
+      child?.circumfix_config?.prefix_part,
+    ],
+    [
+      "circumfix_config.suffix_part",
+      parent.circumfix_config?.suffix_part,
+      child?.circumfix_config?.suffix_part,
+    ],
+    [
+      "ablaut_config.target_vowel",
+      parent.ablaut_config?.target_vowel,
+      child?.ablaut_config?.target_vowel,
+    ],
+    [
+      "ablaut_config.replacement_vowel",
+      parent.ablaut_config?.replacement_vowel,
+      child?.ablaut_config?.replacement_vowel,
+    ],
+  ];
+  const patches: GrammarSyncFieldPatch[] = [];
+  for (const [field, parentValue, childValue] of specs) {
+    const patch = evolveField(
+      field,
+      parentValue,
+      childValue,
+      ctx.locked,
+      ctx.childSca,
+      ctx.macros,
+      ctx.prosodyContext,
+    );
+    if (patch) patches.push(patch);
+  }
+  return patches;
 }
 
 function buildRow(input: {
@@ -127,6 +237,8 @@ function buildRow(input: {
   environment: string;
   childSca: SCAConfig;
   macros: ReturnType<typeof macrosFor>;
+  prosodyContext?: SCAProsodyContext;
+  fields?: GrammarSyncFieldPatch[];
 }): GrammarSyncRow {
   const {
     kind,
@@ -139,12 +251,17 @@ function buildRow(input: {
     environment,
     childSca,
     macros,
+    prosodyContext,
+    fields,
   } = input;
-  const after = locked ? parentAffix : transform(parentAffix, childSca, macros);
+  const after = locked
+    ? parentAffix
+    : transform(parentAffix, childSca, macros, prosodyContext);
   const before = childAffix ?? parentAffix;
+  const subFieldChanged = !locked && (fields ?? []).some((patch) => patch.changed);
   const status: GrammarSyncRow["status"] = locked
     ? "locked"
-    : before === after
+    : before === after && !subFieldChanged
       ? "unchanged"
       : "apply";
   return {
@@ -159,6 +276,7 @@ function buildRow(input: {
     changed: status === "apply",
     status,
     environment,
+    ...(fields && fields.length > 0 ? { fields } : {}),
   };
 }
 
@@ -166,8 +284,17 @@ function buildRow(input: {
 export function planGrammarPullSync(
   options: PlanGrammarPullSyncOptions,
 ): GrammarSyncPlan {
-  const { parentGrammar, childGrammar, childSca, inventory, phonotactics, posIds } = options;
-  const macros = macrosFor(inventory, phonotactics);
+  const {
+    parentGrammar,
+    childGrammar,
+    childSca,
+    inventory,
+    phonotactics,
+    phonology,
+    posIds,
+  } = options;
+  const macros = macrosFor(inventory ?? phonology?.phoneme_inventory, phonotactics ?? phonology?.phonotactics);
+  const prosodyContext = prosodyContextFor(phonology);
   const posFilter = posIds && posIds.length > 0 ? new Set(posIds) : null;
 
   const childInflectionById = new Map(
@@ -187,6 +314,7 @@ export function planGrammarPullSync(
     if (posFilter && !posFilter.has(rule.pos_id)) continue;
     const locked = rule.sca_mutable === false;
     if (locked) lockedCount += 1;
+    const childRule = childInflectionById.get(rule.rule_id);
     inflection.push(
       buildRow({
         kind: "inflection",
@@ -194,11 +322,13 @@ export function planGrammarPullSync(
         tag: rule.tag,
         posId: rule.pos_id,
         parentAffix: rule.affix,
-        childAffix: childInflectionById.get(rule.rule_id)?.affix,
+        childAffix: childRule?.affix,
         locked,
         environment: conditionFingerprint(rule.condition),
         childSca,
         macros,
+        prosodyContext,
+        fields: ruleFieldPatches(rule, childRule, { locked, childSca, macros, prosodyContext }),
       }),
     );
   }
@@ -207,6 +337,7 @@ export function planGrammarPullSync(
   for (const rule of parentGrammar.derivation_rules) {
     const locked = rule.sca_mutable === false;
     if (locked) lockedCount += 1;
+    const childRule = childDerivationById.get(rule.rule_id);
     derivation.push(
       buildRow({
         kind: "derivation",
@@ -214,11 +345,13 @@ export function planGrammarPullSync(
         tag: rule.name,
         posId: rule.source_pos_id,
         parentAffix: rule.affix,
-        childAffix: childDerivationById.get(rule.rule_id)?.affix,
+        childAffix: childRule?.affix,
         locked,
         environment: conditionFingerprint(rule.condition),
         childSca,
         macros,
+        prosodyContext,
+        fields: ruleFieldPatches(rule, childRule, { locked, childSca, macros, prosodyContext }),
       }),
     );
   }
@@ -238,6 +371,7 @@ export function planGrammarPullSync(
         environment: dimensionKey(override.dimension_values),
         childSca,
         macros,
+        prosodyContext,
       }),
     );
   }
@@ -321,11 +455,13 @@ export function applyGrammarPullSync(
 
   const inflection_rules: InflectionRule[] = childGrammar.inflection_rules.map((rule) => {
     const row = inflectionByRuleId.get(rule.rule_id);
-    return row ? { ...rule, affix: row.after } : rule;
+    if (!row) return rule;
+    return applyInflectionFieldPatches({ ...rule, affix: row.after }, row.fields ?? []);
   });
   const derivation_rules: DerivationRule[] = childGrammar.derivation_rules.map((rule) => {
     const row = derivationByRuleId.get(rule.rule_id);
-    return row ? { ...rule, affix: row.after } : rule;
+    if (!row) return rule;
+    return applySharedFieldPatches({ ...rule, affix: row.after }, row.fields ?? []);
   });
   const irregular_overrides: IrregularOverride[] = childGrammar.irregular_overrides.map(
     (override) => {
@@ -340,6 +476,85 @@ export function applyGrammarPullSync(
     derivation_rules,
     irregular_overrides,
   };
+}
+
+interface SharedFieldCarrier {
+  condition: ConditionClause | null;
+  infix_config?: InfixConfig;
+  circumfix_config?: CircumfixConfig;
+}
+
+/** 把 condition / infix / circumfix 子字段补丁写入规则（返回新对象） */
+function applySharedFieldPatches<T extends SharedFieldCarrier>(
+  rule: T,
+  patches: readonly GrammarSyncFieldPatch[],
+): T {
+  let next: T = rule;
+  for (const patch of patches) {
+    if (!patch.changed) continue;
+    switch (patch.field) {
+      case "condition.then_affix":
+        if (next.condition) {
+          next = { ...next, condition: { ...next.condition, then_affix: patch.after } } as T;
+        }
+        break;
+      case "condition.else_affix":
+        if (next.condition) {
+          next = { ...next, condition: { ...next.condition, else_affix: patch.after } } as T;
+        }
+        break;
+      case "infix_config.morpheme":
+        if (next.infix_config) {
+          next = {
+            ...next,
+            infix_config: { ...next.infix_config, morpheme: patch.after },
+          } as T;
+        }
+        break;
+      case "circumfix_config.prefix_part":
+        if (next.circumfix_config) {
+          next = {
+            ...next,
+            circumfix_config: { ...next.circumfix_config, prefix_part: patch.after },
+          } as T;
+        }
+        break;
+      case "circumfix_config.suffix_part":
+        if (next.circumfix_config) {
+          next = {
+            ...next,
+            circumfix_config: { ...next.circumfix_config, suffix_part: patch.after },
+          } as T;
+        }
+        break;
+      default:
+        break;
+    }
+  }
+  return next;
+}
+
+/** 屈折规则的全部子字段（含 ablaut） */
+function applyInflectionFieldPatches(
+  rule: InflectionRule,
+  patches: readonly GrammarSyncFieldPatch[],
+): InflectionRule {
+  let next = applySharedFieldPatches(rule, patches);
+  for (const patch of patches) {
+    if (!patch.changed || !next.ablaut_config) continue;
+    if (patch.field === "ablaut_config.target_vowel") {
+      next = {
+        ...next,
+        ablaut_config: { ...next.ablaut_config, target_vowel: patch.after },
+      };
+    } else if (patch.field === "ablaut_config.replacement_vowel") {
+      next = {
+        ...next,
+        ablaut_config: { ...next.ablaut_config, replacement_vowel: patch.after },
+      };
+    }
+  }
+  return next;
 }
 
 /** 计划里是否还有待应用的变更 */

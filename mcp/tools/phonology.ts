@@ -870,7 +870,23 @@ export function registerPhonologyTools(
       blacklist_patterns: z.array(z.string()).optional(),
       vowel_harmony: vowelHarmonyPatchSchema.optional(),
       tone_system: toneSystemPatchSchema.optional(),
-      stress: z.object({ position: z.literal("initial"), domain: z.enum(["word", "entry"]) }).nullable().optional(),
+      stress: z
+        .object({
+          position: z.enum([
+            "initial",
+            "ultimate",
+            "penultimate",
+            "antepenultimate",
+            "weight_sensitive",
+          ]),
+          domain: z.enum(["word", "entry"]),
+          weight_fallback: z
+            .enum(["initial", "penultimate", "antepenultimate"])
+            .optional(),
+        })
+        .passthrough()
+        .nullable()
+        .optional(),
     })
     .passthrough();
 

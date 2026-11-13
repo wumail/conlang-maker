@@ -70,6 +70,8 @@ export interface BuildCognateMatrixOptions {
 interface RootTrace {
   rootKey: string;
   broken: boolean;
+  /** 上溯途中遇到借词祖先：借词源本身即该同源组的起点 */
+  borrowed: boolean;
 }
 
 function buildLanguageIndex(
@@ -104,6 +106,11 @@ export function computeLanguageDepths(
  *
  * `parent_entry_id` 指向**父语言**中的词条，因此每一步都要切换到
  * `language.parent_id` 所在的词表继续查找。
+ *
+ * 若链条上遇到 `origin_type === "borrowed"` 的祖先节点 X，则**立即停在 X**：
+ * 借词不是本语系的遗传词根，X 及其全部子孙应共享同一个
+ * `borrowed::langX::entryX` 同源组，避免父语言借入某词后再传给多个子语言时
+ * 被错误地拆成多组（或混入捐助语的遗传组）。
  */
 function traceRoot(
   word: WordEntry,
@@ -116,22 +123,46 @@ function traceRoot(
   const seen = new Set<string>([`${languageId}::${word.entry_id}`]);
 
   for (;;) {
+    if (currentWord.etymology?.origin_type === "borrowed") {
+      return {
+        rootKey: `borrowed::${currentLanguageId}::${currentWord.entry_id}`,
+        broken: false,
+        borrowed: true,
+      };
+    }
+
     const parentEntryId = currentWord.etymology?.parent_entry_id ?? null;
     if (!parentEntryId) {
-      return { rootKey: `${currentLanguageId}::${currentWord.entry_id}`, broken: false };
+      return {
+        rootKey: `${currentLanguageId}::${currentWord.entry_id}`,
+        broken: false,
+        borrowed: false,
+      };
     }
     const parentLanguageId = languageIndex.get(currentLanguageId)?.parent_id ?? null;
     if (!parentLanguageId) {
-      return { rootKey: `${currentLanguageId}::${currentWord.entry_id}`, broken: true };
+      return {
+        rootKey: `${currentLanguageId}::${currentWord.entry_id}`,
+        broken: true,
+        borrowed: false,
+      };
     }
     const parentWord = byLanguage.get(parentLanguageId)?.get(parentEntryId);
     if (!parentWord) {
-      return { rootKey: `${currentLanguageId}::${currentWord.entry_id}`, broken: true };
+      return {
+        rootKey: `${currentLanguageId}::${currentWord.entry_id}`,
+        broken: true,
+        borrowed: false,
+      };
     }
     const key = `${parentLanguageId}::${parentEntryId}`;
     if (seen.has(key)) {
       // 数据异常成环：停在当前节点，避免死循环
-      return { rootKey: `${currentLanguageId}::${currentWord.entry_id}`, broken: true };
+      return {
+        rootKey: `${currentLanguageId}::${currentWord.entry_id}`,
+        broken: true,
+        borrowed: false,
+      };
     }
     seen.add(key);
     currentWord = parentWord;
@@ -239,7 +270,12 @@ export function buildCognateMatrix(
         const trace = traceRoot(primary, language.language_id, byLanguage, languageIndex);
         if (trace.broken) stats.brokenChainCount += 1;
         const hasParent = Boolean(primary.etymology?.parent_entry_id);
-        if (!hasParent && language.parent_id) {
+        if (trace.borrowed) {
+          // 继承自借词祖先：整条子孙链与借词源共享同一同源组
+          kind = "borrowed";
+          cognateSetId = trace.rootKey;
+          stats.borrowedCount += 1;
+        } else if (!hasParent && language.parent_id) {
           kind = "innovation";
           cognateSetId = `innovation::${language.language_id}::${primary.entry_id}`;
           stats.innovationCount += 1;

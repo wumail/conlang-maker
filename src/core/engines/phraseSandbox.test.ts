@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type {
   GrammarConfig,
+  HeadMarking,
   MorphosyntacticAlignment,
   WordOrder,
 } from "../../types";
@@ -17,6 +18,7 @@ function makeGrammar(options: {
   modifier_position?: "before_head" | "after_head";
   adposition_type?: "preposition" | "postposition";
   alignment?: MorphosyntacticAlignment;
+  head_marking?: HeadMarking;
   withCase?: boolean;
 } = {}): GrammarConfig {
   return {
@@ -60,7 +62,7 @@ function makeGrammar(options: {
       morphological_type: "agglutinative",
       synthesis_index: 2,
       fusion_index: 1,
-      head_marking: "dependent",
+      head_marking: options.head_marking ?? "dependent",
       auto_estimated: false,
     },
     affix_slots: [],
@@ -295,5 +297,188 @@ describe("planToTree", () => {
       "the",
     ]);
     expect(tree.children.some((child) => child.label === "Object: bone")).toBe(true);
+  });
+});
+
+describe("linearizeClause — number (F4.3)", () => {
+  function withNumberDimension(grammar: GrammarConfig): GrammarConfig {
+    grammar.inflection_dimensions.push({
+      dim_id: "dim_number",
+      name: "Number",
+      applies_to_pos: ["pos_noun"],
+      values: [
+        { val_id: "val_sg", name: "Singular", gloss: "SG" },
+        { val_id: "val_pl", name: "Plural", gloss: "PL" },
+      ],
+    });
+    return grammar;
+  }
+
+  test("number gloss is injected on the NP head after the case tag", () => {
+    const plan = linearizeClause(
+      { subject: { head: "dog", number: "pl" }, verb: { gloss: "sleep" } },
+      withNumberDimension(makeGrammar()),
+    );
+    const head = plan.words.find((word) => word.path === "subject");
+    expect(head?.tags).toEqual(["NOM", "PL"]);
+    expect(plan.glossLine).toBe("dog-NOM-PL sleep");
+  });
+
+  test("number gloss unknown to the grammar is kept verbatim", () => {
+    const plan = linearizeClause(
+      { subject: { head: "dog", number: "TRI" }, verb: { gloss: "sleep" } },
+      makeGrammar(),
+    );
+    expect(plan.words.find((word) => word.path === "subject")?.tags).toEqual([
+      "NOM",
+      "TRI",
+    ]);
+  });
+
+  test("adjectives covary with number and case when the dimension applies to ADJ", () => {
+    const grammar = withNumberDimension(makeGrammar());
+    grammar.parts_of_speech.push({
+      pos_id: "pos_adj",
+      name: "Adjective",
+      gloss_abbr: "adj",
+      word_pattern: "",
+      requires_definition: true,
+      requires_pronunciation: false,
+    });
+    for (const dim of grammar.inflection_dimensions) {
+      dim.applies_to_pos = [...dim.applies_to_pos, "pos_adj"];
+    }
+    const plan = linearizeClause(
+      { subject: { head: "dog", adjectives: ["big"], number: "PL" }, verb: { gloss: "sleep" } },
+      grammar,
+    );
+    const adjective = plan.words.find((word) => word.path === "subject.adj[0]");
+    expect(adjective?.tags).toEqual(["PL", "NOM"]);
+    expect(adjective?.caseTag).toBeNull();
+  });
+
+  test("adjectives stay bare when the dimensions only apply to nouns", () => {
+    const plan = linearizeClause(
+      { subject: { head: "dog", adjectives: ["big"], number: "PL" }, verb: { gloss: "sleep" } },
+      withNumberDimension(makeGrammar()),
+    );
+    expect(plan.words.find((word) => word.path === "subject.adj[0]")?.tags).toEqual([]);
+  });
+});
+
+describe("linearizeClause — polarity (F4.3)", () => {
+  test("negative polarity attaches a NEG affix rule to the verb tag chain", () => {
+    const grammar = makeGrammar();
+    grammar.inflection_rules = [
+      {
+        rule_id: "rule_neg",
+        pos_id: "pos_noun",
+        dimension_values: { dim_polarity: "val_neg" },
+        type: "suffix",
+        affix: "ul",
+        tag: "NEG",
+        match_regex: ".*",
+        disabled: false,
+        condition: null,
+      },
+    ];
+    const plan = linearizeClause(
+      { subject: { head: "dog" }, verb: { gloss: "sleep", tam: ["PST"] }, polarity: "negative" },
+      grammar,
+    );
+    const verb = plan.words.find((word) => word.path === "verb");
+    expect(verb?.tags).toEqual(["PST", "NEG"]);
+    expect(plan.glossLine).toBe("dog-NOM sleep-PST-NEG");
+    expect(plan.words.some((word) => word.role === "NEG")).toBe(false);
+  });
+
+  test("negative polarity falls back to an independent negator before the verb", () => {
+    const plan = linearizeClause(
+      { subject: { head: "dog" }, verb: { gloss: "sleep" }, polarity: "negative" },
+      makeGrammar(),
+    );
+    const negator = plan.words.find((word) => word.role === "NEG");
+    expect(negator?.gloss).toBe("NEG");
+    expect(plan.words.map((word) => word.gloss)).toEqual(["dog", "NEG", "sleep"]);
+    expect(plan.steps.some((step) => step.includes("Negative polarity"))).toBe(true);
+  });
+
+  test("affirmative clauses never inject a negative marker", () => {
+    const plan = linearizeClause(
+      { ...transitive, polarity: "affirmative" },
+      makeGrammar(),
+    );
+    expect(plan.words.some((word) => word.role === "NEG")).toBe(false);
+    expect(plan.words.find((word) => word.path === "verb")?.tags).toEqual(["PST"]);
+  });
+});
+
+describe("linearizeClause — head_marking (F4.3)", () => {
+  test("dependent keeps case on the NP heads only", () => {
+    const plan = linearizeClause(transitive, makeGrammar({ head_marking: "dependent" }));
+    expect(plan.headMarking).toBe("dependent");
+    expect(plan.words.find((word) => word.path === "subject")?.caseTag).toBe("NOM");
+    expect(plan.words.find((word) => word.path === "object")?.caseTag).toBe("ACC");
+    expect(plan.words.find((word) => word.path === "verb")?.tags).toEqual(["PST"]);
+  });
+
+  test("head moves case marking into the verb tag chain", () => {
+    const plan = linearizeClause(transitive, makeGrammar({ head_marking: "head" }));
+    expect(plan.words.find((word) => word.path === "subject")?.caseTag).toBeNull();
+    expect(plan.words.find((word) => word.path === "object")?.caseTag).toBeNull();
+    expect(plan.words.find((word) => word.path === "verb")?.tags).toEqual([
+      "PST",
+      "A:NOM",
+      "P:ACC",
+    ]);
+    expect(plan.caseTags).toEqual({ S: "NOM", A: "NOM", P: "ACC" });
+    expect(plan.glossLine).toBe("the big dog bite-PST-A:NOM-P:ACC the bone");
+  });
+
+  test("double marks both the NPs and the verb", () => {
+    const plan = linearizeClause(transitive, makeGrammar({ head_marking: "double" }));
+    expect(plan.words.find((word) => word.path === "subject")?.caseTag).toBe("NOM");
+    expect(plan.words.find((word) => word.path === "object")?.caseTag).toBe("ACC");
+    expect(plan.words.find((word) => word.path === "verb")?.tags).toEqual([
+      "PST",
+      "A:NOM",
+      "P:ACC",
+    ]);
+  });
+
+  test("none suppresses every automatic case marker without warnings", () => {
+    const plan = linearizeClause(transitive, makeGrammar({ head_marking: "none" }));
+    expect(plan.caseTags).toEqual({ S: null, A: null, P: null });
+    expect(plan.words.every((word) => word.caseTag === null)).toBe(true);
+    expect(
+      plan.words.every(
+        (word) => !word.tags.includes("NOM") && !word.tags.includes("ACC"),
+      ),
+    ).toBe(true);
+    expect(plan.warnings).toHaveLength(0);
+  });
+
+  test("possessors keep their genitive marker under head marking", () => {
+    const plan = linearizeClause(
+      {
+        subject: { head: "dog" },
+        verb: { gloss: "bite" },
+        object: { head: "bone", possessor: { head: "wolf" } },
+      },
+      makeGrammar({ head_marking: "head" }),
+    );
+    expect(plan.words.find((word) => word.role === "POSS")?.caseTag).toBe("GEN");
+    expect(plan.words.find((word) => word.path === "object")?.caseTag).toBeNull();
+  });
+
+  test("intransitive clauses index the sole S argument on the verb", () => {
+    const plan = linearizeClause(
+      { subject: { head: "dog" }, verb: { gloss: "sleep", tam: ["PRS"] } },
+      makeGrammar({ head_marking: "head", alignment: "erg_abs" }),
+    );
+    expect(plan.words.find((word) => word.path === "verb")?.tags).toEqual([
+      "PRS",
+      "S:ABS",
+    ]);
   });
 });

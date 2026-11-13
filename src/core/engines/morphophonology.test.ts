@@ -121,11 +121,60 @@ describe("applyMorphophonology", () => {
     expect(applyMorphophonology("ev+lar", [lateRaise, drop], PHONO).surface).toBe("evler");
   });
 
-  test("skips disabled and feature-mode rules", () => {
+  test("skips disabled rules and falls back to literal matching without feature expressions", () => {
     const disabled = { ...harmony, disabled: true };
     expect(applyMorphophonology("ev+lar", [disabled], PHONO).surface).toBe("evlar");
-    const featureRule = { ...harmony, feature_mode: true };
-    expect(applyMorphophonology("ev+lar", [featureRule], PHONO).surface).toBe("evlar");
+    const literalOnlyFeatureMode = { ...harmony, feature_mode: true };
+    expect(applyMorphophonology("ev+lar", [literalOnlyFeatureMode], PHONO).surface).toBe(
+      "evler",
+    );
+  });
+
+  describe("feature mode", () => {
+    const featureHarmony = rule({
+      rule_id: "feature_harmony",
+      description: "open vowel → close-mid after front vowels across the boundary",
+      feature_mode: true,
+      target: "[+vowel, +open]",
+      replacement: "[-open, +close_mid]",
+      context_before: "[+vowel, -back] C* + C*",
+    });
+
+    test("matches a bracketed feature target across the `+` boundary", () => {
+      const result = applyMorphophonology("ev+lar", [featureHarmony], PHONO);
+      expect(result.surface).toBe("evler");
+      expect(result.intermediate).toBe("ev+ler");
+      expect(result.steps).toHaveLength(1);
+      expect(result.steps[0]?.ruleId).toBe("feature_harmony");
+    });
+
+    test("does not fire when the morpheme boundary is absent", () => {
+      expect(applyMorphophonology("evlat", [featureHarmony], PHONO).surface).toBe("evlat");
+    });
+
+    test("feature contexts accept repetition markers", () => {
+      const repeat = rule({
+        rule_id: "feature_repeat",
+        feature_mode: true,
+        target: "[+vowel, +open]",
+        replacement: "[-open, +close_mid]",
+        context_before: "[+vowel, -back] C* +",
+      });
+      expect(applyMorphophonology("est+kar", [repeat], PHONO).surface).toBe("estker");
+      expect(applyMorphophonology("ust+kar", [repeat], PHONO).surface).toBe("ustkar");
+    });
+
+    test("context_*_features alone constrain a single adjacent phoneme", () => {
+      const adjacency = rule({
+        rule_id: "feature_adjacency",
+        feature_mode: true,
+        target: "[+vowel, +open]",
+        replacement: "[-open, +close_mid]",
+        context_before_features: { positive: ["vowel"], negative: ["back"] },
+      });
+      expect(applyMorphophonology("ea", [adjacency], PHONO).surface).toBe("ee");
+      expect(applyMorphophonology("ka", [adjacency], PHONO).surface).toBe("ka");
+    });
   });
 
   test("supports deletion and multi-token replacement", () => {

@@ -43,12 +43,12 @@ pub struct FontInspection {
     pub version: Option<String>,
     pub codepoints: Vec<u32>,
     pub glyphs: Vec<Vec<u32>>,
-    // NOTE: 这两个布局特性字段仅供内部检查流程使用，尚无语料/GUI 消费方。
-    // 为避免破坏 tests/golden/font_inspect_*.json 的字节级向后兼容契约（v2 §0.1 第 4 条），
-    // 命令输出层不序列化它们；特性检测仍由 FontFaceInfo 在导入流程中完整保留。
-    #[serde(skip_serializing)]
+    // NOTE: 这两个布局特性字段由 GUI（FontPanel 的 ss01 传统/现代切换）消费。
+    // 空 Vec 不输出键；非空时如实序列化。leaf 语言字体（Conlang Liga Test）含 GSUB liga
+    // 特性，tests/golden/font_inspect_lang_leaf.json 已同步包含该键（F1.2 修复时更新）。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub substitution_features: Vec<String>,
-    #[serde(skip_serializing)]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub positioning_features: Vec<String>,
     pub warning: Option<String>,
 }
@@ -884,6 +884,30 @@ mod tests {
         assert_eq!(encode_base64(b""), "");
         assert_eq!(encode_base64(b"A"), "QQ==");
         assert_eq!(encode_base64(b"hello"), "aGVsbG8=");
+    }
+
+    #[test]
+    fn inspection_serializes_non_empty_feature_lists() {
+        let mut inspection = empty_inspection("rev-1".to_string());
+        inspection.substitution_features = vec!["ss01".to_string()];
+        inspection.positioning_features = vec!["kern".to_string()];
+        let serialized = serde_json::to_string(&inspection).unwrap();
+        assert!(
+            serialized.contains("\"substitution_features\":[\"ss01\"]"),
+            "expected substitution_features in {serialized}"
+        );
+        assert!(
+            serialized.contains("\"positioning_features\":[\"kern\"]"),
+            "expected positioning_features in {serialized}"
+        );
+    }
+
+    #[test]
+    fn inspection_omits_empty_feature_lists_to_keep_golden_bytes() {
+        let inspection = empty_inspection("rev-1".to_string());
+        let serialized = serde_json::to_string(&inspection).unwrap();
+        assert!(!serialized.contains("substitution_features"));
+        assert!(!serialized.contains("positioning_features"));
     }
 
     #[test]

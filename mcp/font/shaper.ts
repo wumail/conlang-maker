@@ -1,5 +1,5 @@
 import { McpError } from "../errors";
-import { getHarfBuzz, getInternalHbFont } from "./loader";
+import { getHarfBuzz, getInternalHbFont, releaseHarfBuzzObjects } from "./loader";
 import {
   GUI_DEFAULT_LAYOUT,
   type AppliedLayoutMetadata,
@@ -129,37 +129,44 @@ export async function shapeText(
   }
 
   const buffer = new hb.Buffer();
-  buffer.setClusterLevel(hb.ClusterLevel.MONOTONE_CHARACTERS);
+  let infos: import("harfbuzzjs").GlyphInfo[] = [];
+  let positions: import("harfbuzzjs").GlyphPosition[] = [];
+  try {
+    buffer.setClusterLevel(hb.ClusterLevel.MONOTONE_CHARACTERS);
 
-  for (let idx = 0; idx < chars.length; idx++) {
-    const cp = chars[idx].codePointAt(0) ?? 0xfffd;
-    buffer.add(cp, idx);
+    for (let idx = 0; idx < chars.length; idx++) {
+      const cp = chars[idx].codePointAt(0) ?? 0xfffd;
+      buffer.add(cp, idx);
+    }
+
+    buffer.guessSegmentProperties();
+
+    if (dir === "rtl") {
+      buffer.setDirection(hb.Direction.RTL);
+    } else if (dir === "ttb") {
+      buffer.setDirection(hb.Direction.TTB);
+    } else if (dir === "btt") {
+      buffer.setDirection(hb.Direction.BTT);
+    } else {
+      buffer.setDirection(hb.Direction.LTR);
+    }
+
+    if (options?.script) {
+      buffer.setScript(options.script);
+    }
+    if (languageTag) {
+      buffer.setLanguage(languageTag);
+    }
+
+    hb.shape(hbFont, buffer, hbFeatures);
+
+    infos = buffer.getGlyphInfos();
+    positions = buffer.getGlyphPositions();
+  } finally {
+    // 无论 shaping 成功还是抛错，都必须清空并释放本次创建的 WASM buffer
+    buffer.reset();
+    releaseHarfBuzzObjects(buffer);
   }
-
-  buffer.guessSegmentProperties();
-
-  if (dir === "rtl") {
-    buffer.setDirection(hb.Direction.RTL);
-  } else if (dir === "ttb") {
-    buffer.setDirection(hb.Direction.TTB);
-  } else if (dir === "btt") {
-    buffer.setDirection(hb.Direction.BTT);
-  } else {
-    buffer.setDirection(hb.Direction.LTR);
-  }
-
-  if (options?.script) {
-    buffer.setScript(options.script);
-  }
-  if (languageTag) {
-    buffer.setLanguage(languageTag);
-  }
-
-  hb.shape(hbFont, buffer, hbFeatures);
-
-  const infos = buffer.getGlyphInfos();
-  const positions = buffer.getGlyphPositions();
-  buffer.reset();
 
   const uniqueClusters = Array.from(
     new Set(infos.map((info) => info.cluster)),

@@ -9,6 +9,7 @@ import type {
   DerivationRule,
   PhonologyConfig,
   InflectionRule,
+  MorphophonologyRule,
 } from "../../types";
 import { applyInflection } from "./morphologyEngine";
 import { generateIPA } from "./ipaGenerator";
@@ -40,11 +41,15 @@ function toInflectionRule(rule: DerivationRule): InflectionRule {
 
 /**
  * 对源词列表批量应用派生规则，返回预览
+ *
+ * `morphophonologyRules` 与屈折引擎共用同一组跨词素边界规则：派生词缀拼接后
+ * 同样执行同化 / 元音和谐等共时调整。
  */
 export function generateDerivedWords(
   sourceWords: WordEntry[],
   rule: DerivationRule,
   phonoConfig: PhonologyConfig,
+  morphophonologyRules: readonly MorphophonologyRule[] = [],
 ): DerivedWordPreview[] {
   const inflRule = toInflectionRule(rule);
   return sourceWords.map((w) => {
@@ -52,6 +57,7 @@ export function generateDerivedWords(
       w.con_word_romanized,
       inflRule,
       phonoConfig,
+      morphophonologyRules,
     );
     const { phonemic } = generateIPA(result, phonoConfig);
     return { source: w, derived: result, ipa: phonemic };

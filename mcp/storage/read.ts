@@ -1064,6 +1064,10 @@ export interface FontInspectionCompat {
   version: string | null;
   codepoints: number[];
   glyphs: number[][];
+  /** OpenType GSUB 特性标签；空时省略该键（与 Rust `skip_serializing_if = "Vec::is_empty"` 对齐，保证 golden 字节一致）。 */
+  substitution_features?: string[];
+  /** OpenType GPOS 特性标签；空时省略该键。 */
+  positioning_features?: string[];
   warning: string | null;
 }
 
@@ -1160,6 +1164,12 @@ export function inspectLanguageFontUnlocked(
       version: info.version,
       codepoints: info.codepoints,
       glyphs: info.glyphs,
+      ...(info.substitution_features.length > 0
+        ? { substitution_features: info.substitution_features }
+        : {}),
+      ...(info.positioning_features.length > 0
+        ? { positioning_features: info.positioning_features }
+        : {}),
       warning: null,
     };
   } catch (err) {

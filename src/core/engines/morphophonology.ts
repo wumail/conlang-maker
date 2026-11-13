@@ -7,17 +7,25 @@
  * 规则语境支持：
  *   - 字面量音素（`e`、`tʃ`）
  *   - `V` / `C`（任意元音 / 辅音）
+ *   - `[+vowel, -back]` 特征块（可与上述记号混写，支持 `[...] *` 重复）
  *   - `#`（词首 / 词尾）
  *   - `+`（词素边界）
  *   - `X*`（前一项零次或多次）
  */
 import type {
+  FeatureExpression,
+  FeatureReplacement,
   MorphophonologyRule,
   PhonemeInventory,
   PhonologyConfig,
 } from "../../types";
 import { tokenizePhonemes } from "./phonemeTokenizer";
 import { basePhoneme } from "./syllabifier";
+import {
+  applyFeatureReplacement,
+  matchesFeatures,
+  parseFeatureExpression,
+} from "./scaEngine";
 
 export interface MorphophonologyStep {
   ruleId: string;
@@ -72,18 +80,88 @@ function renderTokens(tokens: readonly BoundedToken[], keepBoundaries: boolean):
   return out;
 }
 
+/** 匹配单音素与特征表达式（先按原音素，再退回基音素） */
+function matchesFeatureValue(value: string, expr: FeatureExpression): boolean {
+  const base = basePhoneme(value);
+  if (matchesFeatures(base, expr)) return true;
+  return base !== value && matchesFeatures(value, expr);
+}
+
 function matchesToken(
   value: string,
   pattern: string,
   inventory: PhonemeInventory,
 ): boolean {
+  if (pattern.startsWith("[")) {
+    return matchesFeatureValue(value, parseFeatureExpression(pattern));
+  }
   if (pattern === "V") return inventory.vowels.includes(value);
   if (pattern === "C") return inventory.consonants.includes(value);
   return value === pattern || basePhoneme(value) === basePhoneme(pattern);
 }
 
+/** 按空白切分语境，`[...]` 特征块整体保留为一个记号（可带 `*`） */
 function splitPattern(pattern: string): string[] {
-  return pattern.trim().length === 0 ? [] : pattern.trim().split(/\s+/u);
+  const trimmed = pattern.trim();
+  if (trimmed.length === 0) return [];
+  return trimmed.match(/\[[^\]]*\](?:\*)?|\S+/gu) ?? [];
+}
+
+function isFeaturePattern(pattern: string): boolean {
+  return pattern.startsWith("[");
+}
+
+function featureExprToText(expr: FeatureExpression): string {
+  const parts = [
+    ...expr.positive.map((feature) => `+${feature}`),
+    ...expr.negative.map((feature) => `-${feature}`),
+  ];
+  return `[${parts.join(", ")}]`;
+}
+
+function hasConstraints(expr: FeatureExpression | null | undefined): boolean {
+  return Boolean(expr && (expr.positive.length > 0 || expr.negative.length > 0));
+}
+
+/** 目标匹配表达式：显式字段优先，其次解析 `[+vowel]` 形式的 target 字符串 */
+function resolveFeatureTarget(
+  rule: MorphophonologyRule,
+): FeatureExpression | null {
+  if (hasConstraints(rule.target_features)) return rule.target_features;
+  const raw = rule.target.trim();
+  return isFeaturePattern(raw) ? parseFeatureExpression(raw) : null;
+}
+
+/** 替换表达式：显式字段优先，其次解析 `[-back]` 形式的 replacement 字符串 */
+function resolveFeatureReplacement(
+  rule: MorphophonologyRule,
+): FeatureReplacement | null {
+  if (rule.replacement_features) return rule.replacement_features;
+  const raw = rule.replacement.trim();
+  if (!isFeaturePattern(raw)) return null;
+  const expr = parseFeatureExpression(raw);
+  return { set_features: expr.positive, remove_features: expr.negative };
+}
+
+/**
+ * 语境记号：语境字符串为空时，用单音素特征邻接（context_*_features）兜底。
+ */
+function contextPattern(
+  raw: string,
+  expr: FeatureExpression | null,
+): string[] {
+  const tokens = splitPattern(raw);
+  if (tokens.length > 0) return tokens;
+  if (!expr) return tokens;
+  if (expr.positive.length + expr.negative.length === 0) return tokens;
+  return [featureExprToText(expr)];
+}
+
+function replaceByFeatures(value: string, repl: FeatureReplacement): string {
+  const direct = applyFeatureReplacement(value, repl);
+  if (direct !== value) return direct;
+  const base = basePhoneme(value);
+  return base === value ? value : applyFeatureReplacement(base, repl);
 }
 
 /** 向后匹配语境（`endExclusive` 为「下一个待匹配 token 的下标」） */
@@ -178,7 +256,38 @@ interface RuleApplication {
   changed: boolean;
 }
 
-function applyRuleOnce(
+function applyFeatureRuleOnce(
+  tokens: readonly BoundedToken[],
+  rule: MorphophonologyRule,
+  inventory: PhonemeInventory,
+): RuleApplication {
+  const targetExpr = resolveFeatureTarget(rule);
+  const replacement = resolveFeatureReplacement(rule);
+  if (!targetExpr || !replacement) return { tokens: [...tokens], changed: false };
+
+  const beforePattern = contextPattern(rule.context_before, rule.context_before_features);
+  const afterPattern = contextPattern(rule.context_after, rule.context_after_features);
+
+  const out: BoundedToken[] = [];
+  let changed = false;
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index]!;
+    if (
+      matchesFeatureValue(token.value, targetExpr) &&
+      matchBackward(beforePattern, tokens, index, inventory) &&
+      matchForward(afterPattern, tokens, index + 1, inventory)
+    ) {
+      const next = replaceByFeatures(token.value, replacement);
+      if (next !== token.value) changed = true;
+      out.push({ value: next, boundaryBefore: token.boundaryBefore });
+      continue;
+    }
+    out.push(token);
+  }
+  return { tokens: out, changed };
+}
+
+function applyLiteralRuleOnce(
   tokens: readonly BoundedToken[],
   rule: MorphophonologyRule,
   inventory: PhonemeInventory,
@@ -186,8 +295,8 @@ function applyRuleOnce(
   const targets = splitPattern(rule.target);
   if (targets.length === 0) return { tokens: [...tokens], changed: false };
 
-  const beforePattern = splitPattern(rule.context_before);
-  const afterPattern = splitPattern(rule.context_after);
+  const beforePattern = contextPattern(rule.context_before, rule.context_before_features);
+  const afterPattern = contextPattern(rule.context_after, rule.context_after_features);
   const replacementRaw = rule.replacement.trim();
   const replacement =
     replacementRaw === "" || replacementRaw === "∅" || replacementRaw === "0"
@@ -225,6 +334,18 @@ function applyRuleOnce(
   return { tokens: out, changed };
 }
 
+function applyRuleOnce(
+  tokens: readonly BoundedToken[],
+  rule: MorphophonologyRule,
+  inventory: PhonemeInventory,
+): RuleApplication {
+  const featureTarget = resolveFeatureTarget(rule);
+  if (rule.feature_mode && featureTarget) {
+    return applyFeatureRuleOnce(tokens, rule, inventory);
+  }
+  return applyLiteralRuleOnce(tokens, rule, inventory);
+}
+
 /**
  * 应用形态音位规则。
  *
@@ -245,7 +366,6 @@ export function applyMorphophonology(
     .sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
 
   for (const rule of ordered) {
-    if (rule.feature_mode) continue; // 特征模式留待 SCA 引擎处理
     const before = renderTokens(tokens, true);
     for (let pass = 0; pass < 20; pass += 1) {
       const application = applyRuleOnce(tokens, rule, inventory);

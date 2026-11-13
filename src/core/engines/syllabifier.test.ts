@@ -115,6 +115,61 @@ describe("syllabify: multi-character phonemes", () => {
   });
 });
 
+describe("compileSyllableUnits: multi-character macros", () => {
+  test("supports braced macro names", () => {
+    const units = compileSyllableUnits("{CL}{V}", { CL: ["st", "kr"] }, inventory);
+    expect(units).toHaveLength(2);
+    expect(units[0]!.allowed.has("kr")).toBe(true);
+    expect(units[0]!.role).toBe("onset");
+    expect(units[1]!.role).toBe("nucleus");
+  });
+
+  test("prefers the longest known macro key over single characters", () => {
+    const units = compileSyllableUnits("CLV", { CL: ["st"] }, inventory);
+    expect(units).toHaveLength(2);
+    expect(units[0]!.allowed.has("st")).toBe(true);
+    expect(units[1]!.role).toBe("nucleus");
+  });
+
+  test("keeps optionality markers after a braced macro", () => {
+    const units = compileSyllableUnits("{CL}?V", { CL: ["st"] }, inventory);
+    expect(units.map((unit) => unit.optional)).toEqual([true, false]);
+  });
+
+  test("syllabifies a template built from a braced macro", () => {
+    const result = syllabify(["st", "a"], phonotactics("{CL}V", { CL: ["st"] }), inventory);
+    expect(result.valid).toBe(true);
+    expect(formatSyllables(result.syllables)).toBe("sta");
+  });
+});
+
+describe("syllabify: long vowels outside the slot inventory", () => {
+  const shortInventory: PhonemeInventory = {
+    consonants: ["p", "t", "k", "s", "n", "m", "l"],
+    vowels: ["a", "e", "i", "o", "u"],
+  };
+
+  test("falls back to the base vowel while keeping the long token heavy", () => {
+    const result = syllabify(["k", "aː"], cvc, shortInventory);
+    expect(result.valid).toBe(true);
+    expect(result.syllables[0]!.nucleus).toEqual(["aː"]);
+    expect(result.syllables[0]!.weight).toBe("heavy");
+  });
+
+  test("still splits closed syllables with long nuclei", () => {
+    const result = syllabify(["k", "aː", "n", "t", "a"], cvc, shortInventory);
+    expect(result.valid).toBe(true);
+    expect(formatSyllables(result.syllables)).toBe("kaːn.ta");
+    expect(result.syllables[0]!.weight).toBe("heavy");
+    expect(result.syllables[1]!.weight).toBe("light");
+  });
+
+  test("rejects a long vowel whose base vowel is also absent", () => {
+    const result = syllabify(["k", "yː"], cvc, shortInventory);
+    expect(result.valid).toBe(false);
+  });
+});
+
 describe("syllabify: weight and failures", () => {
   test("classifies light open syllables and heavy closed syllables", () => {
     const open = syllabify(["k", "a"], cvc, inventory);

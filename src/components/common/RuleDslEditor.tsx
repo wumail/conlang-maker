@@ -37,7 +37,9 @@ export function RuleDslEditor<T>({
   }, [open, initialText]);
 
   const result = useMemo(() => parse(text), [parse, text]);
-  const canApply = result.diagnostics.length === 0 && result.rules.length > 0;
+  // 无诊断即可应用：文本域只有空白/注释时 rules 为空，表示「清空规则集」，
+  // 不再强制要求 result.rules.length > 0（否则无法通过 DSL 清空）。
+  const canApply = result.diagnostics.length === 0;
 
   return (
     <ModalPortal open={open}>

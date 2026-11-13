@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { pushUndoEntry, type HistoryOpts } from "./undoManager";
+import { invalidateLineageLexicon } from "./lineageLexiconStore";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LexiconLoadResult,
@@ -344,6 +345,8 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           tracker.dirtyWords.delete(entryId);
         }
         syncActiveFlags(projectPath, languagePath);
+        // 落盘成功：谱系词库缓存（跨语言检索/推演的数据源）已过期
+        invalidateLineageLexicon(projectPath, languagePath);
       } catch (err) {
         if (isConflictError(err)) {
           await raiseConflict(projectPath, languagePath);
@@ -490,6 +493,8 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
       tracker.dirtyWords.set(mergedWord.entry_id, mergedWord);
       tracker.deletedWords.delete(mergedWord.entry_id);
       syncActiveFlags(projectPath, languagePath);
+      // 内存已改：立即失效谱系缓存，避免其它语言检索到修改前的词条
+      invalidateLineageLexicon(projectPath, languagePath);
 
       scheduleDebouncedWordSave(projectPath, languagePath, mergedWord.entry_id);
 
@@ -500,7 +505,11 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           languageId: languagePath,
           domain: "lexicon",
           labelKey: opts?.labelKey ?? "undo.label.lexicon.edit",
-          coalesceKey: opts?.coalesceKey ?? `lex:${mergedWord.entry_id}`,
+          // 空串表示离散/无合并动作；默认按词条合并连续输入
+          coalesceKey:
+            opts?.coalesceKey === ""
+              ? undefined
+              : (opts?.coalesceKey ?? `lex:${mergedWord.entry_id}`),
           undo: () => {
             if (prevSnapshot) {
               get().upsertWord(structuredClone(prevSnapshot), { skipHistory: true });
@@ -570,6 +579,7 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
             }
           });
           syncActiveFlags(projectPath, languagePath);
+          invalidateLineageLexicon(projectPath, languagePath);
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);
@@ -609,6 +619,8 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
         };
       });
       syncActiveFlags(projectPath, languagePath);
+      // 内存已改：立即失效谱系缓存，避免其它语言仍检索到已删除的词条
+      invalidateLineageLexicon(projectPath, languagePath);
 
       if (!opts?.skipHistory) {
         const deletedSnapshot = structuredClone(wordToDelete);
@@ -641,6 +653,7 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
             tracker.deletedWords.delete(entryId);
           }
           syncActiveFlags(projectPath, languagePath);
+          invalidateLineageLexicon(projectPath, languagePath);
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);
@@ -714,6 +727,7 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
             }
           });
           syncActiveFlags(projectPath, languagePath);
+          invalidateLineageLexicon(projectPath, languagePath);
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);

@@ -25,6 +25,7 @@ import {
   type CommandWordHit,
   type WordSearchGroup,
 } from "../../lib/commandPalette";
+import { useCommandPaletteWarmup } from "../../lib/useCommandPaletteHotkey";
 import { createDraftWord } from "../../utils/lexiconDraft";
 
 interface CommandPaletteProps {
@@ -38,7 +39,6 @@ interface ActionItem {
   kind: "language" | "route" | "create";
   run: () => void;
 }
-
 
 /** 全局命令面板：检索 / `>` 动作 / `=` 即时演算（Cmd+K） */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose }) => {
@@ -56,6 +56,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
   const setActiveWordId = useLexiconStore((s) => s.setActiveWordId);
   const upsertWord = useLexiconStore((s) => s.upsertWord);
   const cacheVersion = useLineageLexiconCacheVersion();
+  useCommandPaletteWarmup(open, projectPath, languages);
 
   const [raw, setRaw] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);

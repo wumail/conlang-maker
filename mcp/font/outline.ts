@@ -5,6 +5,7 @@
  * `src/core/engines/fontGeometryAudit`；核心审计模块保持零 WASM 依赖。
  */
 import type { MarkPairInput, PathCmd } from "../../src/core/engines/fontGeometryAudit";
+import type { GlyphAnnotation, GlyphKind } from "../../src/types";
 import { getInternalHbFont } from "./loader";
 import type { LoadedFontHandle } from "./types";
 
@@ -51,6 +52,7 @@ export function extractGlyph(
 /**
  * 由 Unicode NFD 分解推导 base + mark 对：
  * 预组合字母（如 é U+00E9）分解为 `e` + U+0301，两者都在 cmap 中才构成可测对。
+ * 仅对拉丁/组合区段有效，人造文字请改用 `groupAnnotationKinds`。
  */
 export function buildMarkPairs(
   handle: LoadedFontHandle,
@@ -78,3 +80,41 @@ export function buildMarkPairs(
 
   return { pairs, compositeGids };
 }
+
+export interface AnnotationKindSets {
+  /** codepoint → 标注声明的结构分类 */
+  kindByCodepoint: Map<number, GlyphKind>;
+  /** kind === "base" | "carrier" 的码位 */
+  baseCodepoints: number[];
+  /** kind === "vowel" | "mark" 的码位 */
+  markCodepoints: number[];
+}
+
+/**
+ * 按 `PhonologyConfig.glyph_annotations` 拆分基字 / 附标码位集合。
+ * 人造文字把字母映射在 ASCII 或 PUA 区，靠 GSUB / GPOS 组合，无法用 NFD 推断。
+ */
+export function groupAnnotationKinds(
+  annotations: readonly GlyphAnnotation[],
+): AnnotationKindSets {
+  const kindByCodepoint = new Map<number, GlyphKind>();
+  const baseCodepoints: number[] = [];
+  const markCodepoints: number[] = [];
+
+  for (const annotation of annotations) {
+    if (!annotation.kind) continue;
+    kindByCodepoint.set(annotation.codepoint, annotation.kind);
+    if (annotation.kind === "base" || annotation.kind === "carrier") {
+      baseCodepoints.push(annotation.codepoint);
+    } else if (annotation.kind === "vowel" || annotation.kind === "mark") {
+      markCodepoints.push(annotation.codepoint);
+    }
+  }
+
+  return {
+    kindByCodepoint,
+    baseCodepoints: baseCodepoints.sort((a, b) => a - b),
+    markCodepoints: markCodepoints.sort((a, b) => a - b),
+  };
+}
+

@@ -19,6 +19,7 @@ import {
   collectCorpusScaDiffs,
   CorpusScaDiffItem,
   PendingSuggestion,
+  reGlossLineUnresolvedTokens,
   resolveInflectedIpa,
 } from "../../core/workflows/autoGloss";
 import { BTN_PRIMARY, BTN_GHOST, CARD, CARD_BODY } from "../../lib/ui";
@@ -107,6 +108,29 @@ export function GlossingEditor() {
     });
     setPendingSuggestions(pending);
     setLastReport(report);
+  };
+
+  /**
+   * 新建词条后只重标当前行：其余行的手工标注必须原样保留（F1.5）。
+   */
+  const reGlossSingleLine = (targetCorpus: CorpusText, lineId: string) => {
+    const wordsList = useLexiconStore.getState().wordsList;
+    const lines = targetCorpus.glossed_lines.map((line) =>
+      line.line_id === lineId
+        ? reGlossLineUnresolvedTokens(
+            line,
+            wordsList,
+            grammarConfig,
+            phonoConfig,
+            autoGlossCacheRef.current,
+          )
+        : line,
+    );
+    upsertCorpus({
+      ...targetCorpus,
+      glossed_lines: lines,
+      metadata: { ...targetCorpus.metadata, updated_at: new Date().toISOString() },
+    });
   };
 
   const handlePreviewCorpusSCA = () => {
@@ -229,7 +253,7 @@ export function GlossingEditor() {
           <GlossLineRow
             key={line.line_id}
             line={line}
-            onLexEntryCreated={() => runAutoGloss(corpus)}
+            onLexEntryCreated={() => reGlossSingleLine(corpus, line.line_id)}
           />
         ))}
       </div>

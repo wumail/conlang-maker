@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { invoke } from "@tauri-apps/api/core";
 import { AlertTriangle, GitMerge } from "lucide-react";
-import type { GrammarConfig, GrammarLoadResult } from "../../types";
+import type { GrammarConfig, GrammarLoadResult, OperationLog } from "../../types";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { useSCAStore } from "../../store/scaStore";
 import { usePhonoStore } from "../../store/phonoStore";
+import {
+  generateOperationId,
+  recordGuiOperationId,
+} from "../../store/conflictStore";
 import {
   applyGrammarPullSync,
   planGrammarPullSync,
@@ -29,10 +33,8 @@ export function GrammarSyncModal({ open, onClose }: GrammarSyncModalProps) {
     projectPath,
   } = useWorkspaceStore();
   const grammarConfig = useGrammarStore((state) => state.config);
-  const setInflections = useGrammarStore((state) => state.setInflections);
-  const setDerivations = useGrammarStore((state) => state.setDerivations);
-  const setIrregularOverrides = useGrammarStore(
-    (state) => state.setIrregularOverrides,
+  const applyGrammarSyncPatch = useGrammarStore(
+    (state) => state.applyGrammarSyncPatch,
   );
   const scaConfig = useSCAStore((state) => state.config);
   const phonoConfig = usePhonoStore((state) => state.config);
@@ -83,6 +85,7 @@ export function GrammarSyncModal({ open, onClose }: GrammarSyncModalProps) {
       childSca: scaConfig,
       inventory: phonoConfig.phoneme_inventory,
       phonotactics: phonoConfig.phonotactics,
+      phonology: phonoConfig,
     });
   }, [parentGrammar, grammarConfig, scaConfig, phonoConfig]);
 
@@ -113,14 +116,38 @@ export function GrammarSyncModal({ open, onClose }: GrammarSyncModalProps) {
     setSelected(allSelected ? new Set() : new Set(applyIds));
   };
 
-  const handleApply = (): void => {
+  const handleApply = async (): Promise<void> => {
     if (!plan) return;
     const skipRuleIds = applyIds.filter((id) => !selected.has(id));
     const next = applyGrammarPullSync(grammarConfig, plan, { skipRuleIds });
     const count = applyIds.length - skipRuleIds.length;
-    setInflections(next.inflection_rules);
-    setDerivations(next.derivation_rules);
-    setIrregularOverrides(next.irregular_overrides);
+
+    // 先建立语法快照恢复点，再原子写入三组规则（PullSync 同款流程）
+    if (child) {
+      const opId = generateOperationId();
+      recordGuiOperationId(opId);
+      try {
+        await invoke<OperationLog>("create_snapshot", {
+          projectPath,
+          languagePath: child.path,
+          operationType: "grammar_sync",
+          sourceLanguageId: parent?.language_id ?? "",
+          targetLanguageId: child.language_id,
+          description: `Synced ${count} grammar rule(s) via sound changes`,
+          scope: "grammar",
+          origin: "gui",
+          operationId: opId,
+        });
+      } catch (error) {
+        console.warn("Failed to create snapshot before grammar sync:", error);
+      }
+    }
+
+    applyGrammarSyncPatch({
+      inflection_rules: next.inflection_rules,
+      derivation_rules: next.derivation_rules,
+      irregular_overrides: next.irregular_overrides,
+    });
     setSelected(new Set());
     setApplied(count);
   };
@@ -228,7 +255,7 @@ export function GrammarSyncModal({ open, onClose }: GrammarSyncModalProps) {
               type="button"
               className={BTN_PRIMARY}
               disabled={!plan || loading || selected.size === 0}
-              onClick={handleApply}
+              onClick={() => void handleApply()}
               data-testid="apply-grammar-sync"
             >
               <GitMerge className="w-4 h-4" />

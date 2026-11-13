@@ -5,7 +5,10 @@ import { z } from "zod";
 import {
   auditFontGeometry,
   outlineBounds,
+  resolveShapedMarkPair,
+  type GeometryIssueKind,
   type GlyphOutlineInput,
+  type MarkPairInput,
 } from "../../src/core/engines/fontGeometryAudit";
 import {
   auditFontCoverage,
@@ -22,6 +25,7 @@ import {
 import type {
   CorpusText,
   GlyphAnnotation,
+  GlyphKind,
   LanguageEntry,
   PhonologyLoadResult,
   WordEntry,
@@ -39,7 +43,12 @@ import {
   loadFontFromBytes,
   loadFontFromFile,
 } from "../font/loader";
-import { buildMarkPairs, extractGlyph, isCombiningMark } from "../font/outline";
+import {
+  buildMarkPairs,
+  extractGlyph,
+  groupAnnotationKinds,
+  isCombiningMark,
+} from "../font/outline";
 import { shapeText } from "../font/shaper";
 import { resolveFontFeatures } from "../../src/core/engines/fontLayout";
 import {
@@ -1388,6 +1397,28 @@ async function runSingleLanguageFontAudit(params: {
   };
 }
 
+/** 读取当前语言生效的 glyph_annotations（继承自祖先时取 effective_config） */
+function loadEffectiveGlyphAnnotations(
+  projectDir: string,
+  conlangFilePath: string,
+  language: LanguageEntry,
+): GlyphAnnotation[] {
+  const load = readPhonologyUnlocked(projectDir, conlangFilePath, language);
+  return (load.effective_config ?? load.config).glyph_annotations ?? [];
+}
+
+/** 由标注解析字形的结构分类（同一 GID 的多个码位取第一个有标注的） */
+function resolveAnnotatedKind(
+  codepoints: readonly number[],
+  kindByCodepoint: ReadonlyMap<number, GlyphKind>,
+): GlyphKind | undefined {
+  for (const codepoint of codepoints) {
+    const kind = kindByCodepoint.get(codepoint);
+    if (kind) return kind;
+  }
+  return undefined;
+}
+
 function collectSubtreeLanguages(
   allLanguages: readonly LanguageEntry[],
   rootId: string,
@@ -2183,11 +2214,31 @@ export function registerAuditTools(
       let handle: LoadedFontHandle;
       let fontName: string;
       let languageId: string | null = null;
+      let annotations: GlyphAnnotation[] = [];
+
       if (args.font_path?.trim()) {
         const fontPath = assertPathAllowed(args.font_path.trim(), config);
         handle = await loadFontFromFile(fontPath);
         fontName = path.basename(fontPath);
         languageId = (args.language ?? args.language_id) || null;
+        if (languageId) {
+          try {
+            const resolvedLang = resolveLanguage(family, languageId, {
+              workspace: ws.config,
+              revision: ws.revision,
+            });
+            annotations = loadEffectiveGlyphAnnotations(
+              family.project_dir,
+              family.conlang_file_path,
+              resolvedLang.language,
+            );
+          } catch (error) {
+            console.warn(
+              `[conlang-mcp] font_audit_geometry could not read glyph annotations for "${languageId}":`,
+              error,
+            );
+          }
+        }
       } else {
         const resolvedLang = resolveLanguage(family, pickLanguageArg(args), {
           workspace: ws.config,
@@ -2209,6 +2260,11 @@ export function registerAuditTools(
         handle = await loadFontFromBytes(resolvedFont.bytes, resolvedFont.file_name);
         fontName = resolvedFont.file_name;
         languageId = lang.language_id;
+        annotations = loadEffectiveGlyphAnnotations(
+          family.project_dir,
+          family.conlang_file_path,
+          lang,
+        );
       }
 
       const limit = args.glyph_limit ?? 400;
@@ -2218,19 +2274,26 @@ export function registerAuditTools(
           glyph.gid !== 0 &&
           (args.include_unmapped === true || glyph.mapped_codepoints.length > 0),
       );
-      const { pairs, compositeGids } = buildMarkPairs(handle);
+      const annotationKinds = groupAnnotationKinds(annotations);
       const selected = candidates.slice(0, limit);
       const selectedGids = new Set(selected.map((glyph) => glyph.gid));
 
       const glyphs: GlyphOutlineInput[] = selected.map((glyph) => {
         const extracted = extractGlyph(handle, glyph.gid);
+        const glyphKind = resolveAnnotatedKind(
+          glyph.mapped_codepoints,
+          annotationKinds.kindByCodepoint,
+        );
         return {
           gid: glyph.gid,
           name: extracted.name,
           codepoints: glyph.mapped_codepoints,
           advanceWidth: extracted.advanceWidth,
           commands: extracted.commands,
-          isMark: glyph.mapped_codepoints.every((cp) => isCombiningMark(cp)),
+          isMark:
+            glyphKind === undefined &&
+            glyph.mapped_codepoints.every((cp) => isCombiningMark(cp)),
+          ...(glyphKind ? { glyphKind } : {}),
         };
       });
 
@@ -2246,13 +2309,53 @@ export function registerAuditTools(
         if (bounds.maxY > 0) metricsOverrides.xHeight = bounds.maxY;
       }
 
+      const { pairs: nfdPairs, compositeGids } = buildMarkPairs(handle);
+      const annotationPairs: MarkPairInput[] = [];
+      const annotationPairBudget = Math.min(
+        annotationKinds.baseCodepoints.length *
+          annotationKinds.markCodepoints.length,
+        120,
+      );
+      if (annotationPairBudget > 0) {
+        const layoutOpts = buildLayoutOptions({});
+        let shapedPairs = 0;
+        outer: for (const baseCp of annotationKinds.baseCodepoints) {
+          const baseGid = handle.nominalGlyph(baseCp);
+          if (!baseGid) continue;
+          for (const markCp of annotationKinds.markCodepoints) {
+            if (shapedPairs >= annotationPairBudget) break outer;
+            const markGid = handle.nominalGlyph(markCp);
+            if (!markGid || markGid === baseGid) continue;
+            shapedPairs += 1;
+            const shaped = await shapeText(
+              handle,
+              `${String.fromCodePoint(baseCp)}${String.fromCodePoint(markCp)}`,
+              layoutOpts,
+            );
+            const pair = resolveShapedMarkPair(
+              baseGid,
+              markGid,
+              shaped.glyphs.map((g) => ({
+                gid: g.gid,
+                xAdvance: g.x_advance,
+                xOffset: g.x_offset,
+                yOffset: g.y_offset,
+              })),
+            );
+            if (pair) annotationPairs.push(pair);
+          }
+        }
+      }
+
+      const markPairs = [...nfdPairs, ...annotationPairs].filter(
+        (pair) => selectedGids.has(pair.baseGid) && selectedGids.has(pair.markGid),
+      );
+
       const result = auditFontGeometry({
         glyphs,
         upm: handle.upem,
         metrics: metricsOverrides,
-        markPairs: pairs.filter(
-          (pair) => selectedGids.has(pair.baseGid) && selectedGids.has(pair.markGid),
-        ),
+        markPairs,
         scanlineCount: args.scanlines ?? 40,
         tolerances: {
           ascender: args.ascender_tolerance ?? 0.03,
@@ -2268,6 +2371,33 @@ export function registerAuditTools(
         : result.rows;
       const maxRows = args.max_rows ?? 200;
 
+      const collectOutliers = (
+        kinds: readonly GeometryIssueKind[],
+      ): {
+        gid: number;
+        glyph_name: string | null;
+        glyph_kind: GlyphKind;
+        codepoints: string[];
+        advance_width: number;
+        issues: { kind: GeometryIssueKind; value: number; threshold: number }[];
+      }[] =>
+        result.rows
+          .filter((row) => row.issues.some((issue) => kinds.includes(issue.kind)))
+          .map((row) => ({
+            gid: row.gid,
+            glyph_name: row.name,
+            glyph_kind: row.glyphKind,
+            codepoints: row.codepoints.map(formatCodepoint),
+            advance_width: row.advanceWidth,
+            issues: row.issues
+              .filter((issue) => kinds.includes(issue.kind))
+              .map((issue) => ({
+                kind: issue.kind,
+                value: issue.value,
+                threshold: issue.threshold,
+              })),
+          }));
+
       return {
         family_id: family.family_id,
         language_id: languageId,
@@ -2278,9 +2408,28 @@ export function registerAuditTools(
           glyph_count: handle.glyphCount,
         },
         metrics: result.metrics,
+        width_stats: {
+          base_advance_ratio: result.widthStats.baseAdvanceRatio,
+          mark_advance_ratio: result.widthStats.markAdvanceRatio,
+          lsb: result.widthStats.lsb,
+          rsb: result.widthStats.rsb,
+        },
+        baseline_outliers: collectOutliers([
+          "ascender_misaligned",
+          "baseline_drift",
+        ]),
+        optical_gap_outliers: collectOutliers([
+          "mark_gap_too_large",
+          "mark_gap_too_small",
+        ]),
+        stem_weight_outliers: collectOutliers([
+          "stem_too_thin",
+          "weight_uneven",
+        ]),
         summary: {
           ...result.summary,
-          mark_pairs: pairs.length,
+          mark_pairs: markPairs.length,
+          annotation_pairs: annotationPairs.length,
           composite_glyphs: compositeGids.size,
           audited_glyphs: glyphs.length,
           returned_rows: Math.min(filtered.length, maxRows),

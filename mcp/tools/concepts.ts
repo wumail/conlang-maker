@@ -138,7 +138,7 @@ export function registerConceptTools(
     title: "Upsert or Delete Workspace Concepts",
     description:
       "Create/update custom concepts in workspace.conlang (matched by concept_id), or delete them by id. Core library concepts are read-only and cannot be modified.",
-    toolsets: ["core"],
+    toolsets: ["core", "write"],
     access: "write",
     inputSchema: {
       ...familyInputFields,

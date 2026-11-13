@@ -23,6 +23,7 @@ import type {
   DerivationRule,
   GrammarConfig,
   InflectionDimension,
+  MorphophonologyRule,
   WordEntry,
 } from "../../src/types";
 import { assertWriteAllowed, type McpConfig } from "../config";
@@ -121,6 +122,45 @@ const ablautConfigSchema = z
   .object({
     target_vowel: z.string(),
     replacement_vowel: z.string(),
+  })
+  .passthrough();
+
+const featureExpressionSchema = z
+  .object({
+    positive: z.array(z.string()),
+    negative: z.array(z.string()),
+  })
+  .passthrough();
+
+const featureReplacementSchema = z
+  .object({
+    set_features: z.array(z.string()),
+    remove_features: z.array(z.string()),
+  })
+  .passthrough();
+
+const morphophonologyRuleSchema = z
+  .object({
+    rule_id: z.string().optional(),
+    description: z.string().optional(),
+    disabled: z.boolean().optional(),
+    priority: z.number().optional(),
+    target: z.string(),
+    replacement: z.string(),
+    context_before: z.string().optional(),
+    context_after: z.string().optional(),
+    feature_mode: z.boolean().optional(),
+    target_features: featureExpressionSchema.nullable().optional(),
+    replacement_features: featureReplacementSchema.nullable().optional(),
+    context_before_features: featureExpressionSchema.nullable().optional(),
+    context_after_features: featureExpressionSchema.nullable().optional(),
+  })
+  .passthrough();
+
+const caseDimBindingSchema = z
+  .object({
+    dim_id: z.string(),
+    val_id: z.string(),
   })
   .passthrough();
 
@@ -331,6 +371,10 @@ function resolveWordAndPos(
 const npInputSchema: z.ZodType<NPNode> = z.lazy(() =>
   z.object({
     head: z.string(),
+    number: z
+      .string()
+      .optional()
+      .describe("Number dimension gloss such as SG or PL, injected on the NP head"),
     determiner: z.string().optional(),
     numeral: z.string().optional(),
     adjectives: z.array(z.string()).optional(),
@@ -354,6 +398,10 @@ const clauseInputSchema: z.ZodType<ClauseNode> = z.object({
   }),
   object: npInputSchema.optional(),
   obliques: z.array(ppInputSchema).optional(),
+  polarity: z
+    .enum(["affirmative", "negative"])
+    .optional()
+    .describe("Clause polarity; negative attaches a NEG affix or an independent negator"),
 });
 
 export function registerGrammarSandboxTools(
@@ -529,6 +577,7 @@ export function registerGrammarSandboxTools(
             target.word,
             rule,
             snapshot.phono.config,
+            snapshot.gram.config.morphophonology_rules ?? [],
           );
           const ipa = generateIPA(inf.result, snapshot.phono.config, { stem_start: inf.stem_start });
           return {
@@ -874,6 +923,7 @@ export function registerGrammarSandboxTools(
           matchingWords,
           rule,
           snapshot.phono.config,
+          snapshot.gram.config.morphophonology_rules ?? [],
         );
         for (const item of derivedList) {
           previews.push({
@@ -996,7 +1046,7 @@ export function registerGrammarSandboxTools(
       clause: clauseInputSchema
         .optional()
         .describe(
-          "Recursive clause tree; each NP carries its own determiner/numeral/adjectives/possessor and nested PP. Case affixes are assigned from grammar.syntax.alignment.",
+          "Recursive clause tree; each NP carries its own determiner/numeral/number/adjectives/possessor and nested PP, and the clause may set polarity. Case affixes follow grammar.syntax.alignment and grammar.typology.head_marking.",
         ),
     },
     handler: async (args) => {
@@ -1101,6 +1151,7 @@ export function registerGrammarSandboxTools(
         phrase: phrase
           ? {
               alignment: phrase.alignment,
+              head_marking: phrase.headMarking,
               case_tags: phrase.caseTags,
               words: phrase.words,
               steps: phrase.steps,
@@ -1138,6 +1189,22 @@ export function registerGrammarSandboxTools(
             .optional(),
           modifier_position: z.enum(["before_head", "after_head"]).optional(),
           adposition_type: z.enum(["preposition", "postposition"]).optional(),
+          alignment: z
+            .enum(["nom_acc", "erg_abs", "tripartite"])
+            .optional()
+            .describe("Morphosyntactic alignment used by the phrase sandbox"),
+          case_gloss_map: z
+            .object({
+              nom: caseDimBindingSchema.optional(),
+              acc: caseDimBindingSchema.optional(),
+              erg: caseDimBindingSchema.optional(),
+              abs: caseDimBindingSchema.optional(),
+              gen: caseDimBindingSchema.optional(),
+            })
+            .optional()
+            .describe(
+              "Explicit case role -> inflection dimension value binding (partial map allowed; merged with the existing bindings)",
+            ),
         })
         .passthrough()
         .optional(),
@@ -1163,6 +1230,10 @@ export function registerGrammarSandboxTools(
       affix_slots: z.array(affixSlotInputSchema).optional(),
       conjugation_classes: z.array(conjugationClassInputSchema).optional(),
       irregular_overrides: z.array(irregularOverrideInputSchema).optional(),
+      morphophonology_rules: z
+        .array(morphophonologyRuleSchema)
+        .optional()
+        .describe("Synchronic morphophonology rules applied across morpheme boundaries"),
     },
     handler: async (args) => {
       assertWriteAllowed(config, "gram_update");
@@ -1183,7 +1254,8 @@ export function registerGrammarSandboxTools(
         args.grammar_manual !== undefined ||
         args.affix_slots !== undefined ||
         args.conjugation_classes !== undefined ||
-        args.irregular_overrides !== undefined;
+        args.irregular_overrides !== undefined ||
+        args.morphophonology_rules !== undefined;
 
       if (!hasAnySection) {
         throw new McpError(
@@ -1240,11 +1312,23 @@ export function registerGrammarSandboxTools(
           // 1. syntax
           if (args.syntax !== undefined) {
             const rawSyn = isRecord(rawDiskObj.syntax) ? rawDiskObj.syntax : {};
-            nextObj.syntax = {
+            const mergedSyntax: Record<string, unknown> = {
               ...currentCfg.syntax,
               ...rawSyn,
               ...args.syntax,
             };
+            if (args.syntax.case_gloss_map !== undefined) {
+              const prevMap = isRecord(rawSyn.case_gloss_map)
+                ? rawSyn.case_gloss_map
+                : isRecord(currentCfg.syntax.case_gloss_map)
+                  ? currentCfg.syntax.case_gloss_map
+                  : {};
+              mergedSyntax.case_gloss_map = {
+                ...prevMap,
+                ...args.syntax.case_gloss_map,
+              };
+            }
+            nextObj.syntax = mergedSyntax;
           } else if (!isRecord(nextObj.syntax)) {
             nextObj.syntax = currentCfg.syntax;
           }
@@ -1547,6 +1631,70 @@ export function registerGrammarSandboxTools(
             });
           } else if (!Array.isArray(nextObj.irregular_overrides)) {
             nextObj.irregular_overrides = currentCfg.irregular_overrides;
+          }
+
+          // 11. morphophonology_rules (preserve unknown by rule_id)
+          if (args.morphophonology_rules !== undefined) {
+            const rawMpById = indexRawArrayByKey(
+              rawDiskObj.morphophonology_rules,
+              "rule_id",
+            );
+            nextObj.morphophonology_rules = args.morphophonology_rules.map((rule) => {
+              const ruleId = rule.rule_id?.trim() || newPrefixedId("mp");
+              const prevRaw = rawMpById.get(ruleId) ?? {};
+              return {
+                ...prevRaw,
+                ...rule,
+                rule_id: ruleId,
+                description:
+                  rule.description ??
+                  (typeof prevRaw.description === "string"
+                    ? prevRaw.description
+                    : ""),
+                disabled: rule.disabled ?? Boolean(prevRaw.disabled),
+                priority:
+                  rule.priority ??
+                  (typeof prevRaw.priority === "number" ? prevRaw.priority : 0),
+                target: rule.target,
+                replacement: rule.replacement,
+                context_before:
+                  rule.context_before ??
+                  (typeof prevRaw.context_before === "string"
+                    ? prevRaw.context_before
+                    : ""),
+                context_after:
+                  rule.context_after ??
+                  (typeof prevRaw.context_after === "string"
+                    ? prevRaw.context_after
+                    : ""),
+                feature_mode: rule.feature_mode ?? Boolean(prevRaw.feature_mode),
+                target_features:
+                  rule.target_features !== undefined
+                    ? rule.target_features
+                    : ((prevRaw.target_features as MorphophonologyRule["target_features"]) ??
+                      null),
+                replacement_features:
+                  rule.replacement_features !== undefined
+                    ? rule.replacement_features
+                    : ((prevRaw.replacement_features as MorphophonologyRule["replacement_features"]) ??
+                      null),
+                context_before_features:
+                  rule.context_before_features !== undefined
+                    ? rule.context_before_features
+                    : ((prevRaw.context_before_features as MorphophonologyRule["context_before_features"]) ??
+                      null),
+                context_after_features:
+                  rule.context_after_features !== undefined
+                    ? rule.context_after_features
+                    : ((prevRaw.context_after_features as MorphophonologyRule["context_after_features"]) ??
+                      null),
+              };
+            });
+          } else if (
+            nextObj.morphophonology_rules === undefined &&
+            currentCfg.morphophonology_rules !== undefined
+          ) {
+            nextObj.morphophonology_rules = currentCfg.morphophonology_rules;
           }
 
           const diff = computeStructuralDiff(rawDiskObj, nextObj);

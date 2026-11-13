@@ -13,7 +13,7 @@ import {
   SyntaxConfig,
 } from "../../types";
 import { applyAllophony, romanizationToPhonemes } from "./ipaGenerator";
-import { applyInflection } from "./morphologyEngine";
+import { applyInflection, applyInflectionTypologyAware } from "./morphologyEngine";
 
 export interface SandboxResult {
   original: string;
@@ -46,6 +46,7 @@ const applyInflections = (
   posId: string,
   rules: InflectionRule[],
   phonoConfig: PhonologyConfig,
+  grammarConfig: GrammarConfig,
 ): { result: string; appliedTags: string[] } => {
   let word = conWord;
   const appliedTags: string[] = [];
@@ -63,7 +64,23 @@ const applyInflections = (
     }
     if (!rule) continue;
 
-    const { result, applied } = applyInflection(word, rule, phonoConfig);
+    // 类型学感知入口优先：自动携带 grammarConfig.morphophonology_rules
+    const typologyAware = applyInflectionTypologyAware(
+      word,
+      "",
+      posId,
+      rule.dimension_values,
+      grammarConfig,
+      phonoConfig,
+    );
+    const { result, applied } = typologyAware.applied
+      ? typologyAware
+      : applyInflection(
+          word,
+          rule,
+          phonoConfig,
+          grammarConfig.morphophonology_rules ?? [],
+        );
     if (applied) {
       word = result;
       appliedTags.push(tag);
@@ -212,6 +229,7 @@ export const processSandboxText = (
       posId,
       rules,
       phonology,
+      grammarConfig,
     );
     conlangWord = result;
 

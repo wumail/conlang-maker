@@ -14,6 +14,7 @@ import { useGrammarStore } from "./grammarStore";
 import { useSCAStore } from "./scaStore";
 import { useCorpusStore } from "./corpusStore";
 import { invalidateLineageLexicon } from "./lineageLexiconStore";
+import { clearHistory } from "./undoManager";
 import {
   computeJsonDiffSummary,
   generateOperationId,
@@ -289,6 +290,8 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
 
     clearWorkspace: () => {
       invalidateLineageLexicon();
+      // 关闭工作区：撤销栈中的所有前像都指向已关闭的项目，必须清空防止误回放
+      clearHistory();
       set({
         projectPath: "",
         conlangFilePath: "",
@@ -318,8 +321,10 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
           languages,
         };
         const projectPath = deriveProjectPath(conlangFilePath);
-        if (previousProjectPath && previousProjectPath !== projectPath) {
-          invalidateLineageLexicon(previousProjectPath);
+        if (previousProjectPath !== projectPath) {
+          if (previousProjectPath) invalidateLineageLexicon(previousProjectPath);
+          // 切换项目：旧项目的撤销前像不可用于新项目，清空全局撤销/重做栈
+          clearHistory();
         }
         const prevState = get();
         const sameWorkspace = prevState.conlangFilePath === conlangFilePath;

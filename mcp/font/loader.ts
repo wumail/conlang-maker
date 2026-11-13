@@ -19,6 +19,31 @@ export async function getHarfBuzz(): Promise<HbModule> {
   return await hbPromise;
 }
 
+/** HarfBuzz WASM 对象的显式释放接口（运行时存在 destroy 时才可强制回收） */
+interface DisposableHbObject {
+  destroy?: () => void;
+}
+
+/**
+ * 立即释放 HarfBuzz WASM 对象。
+ *
+ * harfbuzzjs 1.6.x 的 `Blob` / `Face` / `Font` / `Buffer` 只注册了
+ * `FinalizationRegistry` 回调，WASM 堆要等 GC 后才回收；一旦运行环境提供
+ * `destroy()`，这里就把它提前回收，避免长时间运行的 MCP 进程堆膨胀。
+ */
+export function releaseHarfBuzzObjects(...objects: readonly unknown[]): void {
+  for (const object of objects) {
+    if (!object || typeof object !== "object") continue;
+    const destroy = (object as DisposableHbObject).destroy;
+    if (typeof destroy !== "function") continue;
+    try {
+      destroy.call(object);
+    } catch (error) {
+      console.warn("[conlang-mcp] Failed to release a HarfBuzz object:", error);
+    }
+  }
+}
+
 export function isValidFontMagicBytes(bytes: Uint8Array): boolean {
   if (bytes.length < 4) return false;
   const b0 = bytes[0];
@@ -158,81 +183,91 @@ export async function loadFontFromBytes(
 
   const hb = await getHarfBuzz();
   const hbBlob = new hb.Blob(new Uint8Array(buf));
-  const hbFace = new hb.Face(hbBlob, 0);
+  const created: unknown[] = [hbBlob];
 
-  // Verify outline & cmap tables exist just like Rust validate_font_bytes
-  const cmapTable = hbFace.referenceTable("cmap");
-  const glyfTable = hbFace.referenceTable("glyf");
-  const cffTable = hbFace.referenceTable("CFF ");
-  const cff2Table = hbFace.referenceTable("CFF2");
-  const glyphCount = readGlyphCountFromMaxp(hbFace);
+  try {
+    const hbFace = new hb.Face(hbBlob, 0);
+    created.push(hbFace);
 
-  const hasOutline =
-    Boolean(glyfTable && glyfTable.byteLength > 0) ||
-    Boolean(cffTable && cffTable.byteLength > 0) ||
-    Boolean(cff2Table && cff2Table.byteLength > 0);
+    // Verify outline & cmap tables exist just like Rust validate_font_bytes
+    const cmapTable = hbFace.referenceTable("cmap");
+    const glyfTable = hbFace.referenceTable("glyf");
+    const cffTable = hbFace.referenceTable("CFF ");
+    const cff2Table = hbFace.referenceTable("CFF2");
+    const glyphCount = readGlyphCountFromMaxp(hbFace);
 
-  if (
-    glyphCount === 0 ||
-    !cmapTable ||
-    cmapTable.byteLength === 0 ||
-    !hasOutline
-  ) {
-    throw new McpError(
-      "VALIDATION",
-      `Font "${fileName}" is missing a readable cmap or glyph outline table.`,
-    );
+    const hasOutline =
+      Boolean(glyfTable && glyfTable.byteLength > 0) ||
+      Boolean(cffTable && cffTable.byteLength > 0) ||
+      Boolean(cff2Table && cff2Table.byteLength > 0);
+
+    if (
+      glyphCount === 0 ||
+      !cmapTable ||
+      cmapTable.byteLength === 0 ||
+      !hasOutline
+    ) {
+      throw new McpError(
+        "VALIDATION",
+        `Font "${fileName}" is missing a readable cmap or glyph outline table.`,
+      );
+    }
+
+    const rawUnicodes = hbFace.collectUnicodes();
+    const unicodeList = Array.from(rawUnicodes).sort((a, b) => a - b);
+    if (unicodeList.length === 0) {
+      throw new McpError(
+        "VALIDATION",
+        `Font "${fileName}" has an empty Unicode character map (cmap).`,
+      );
+    }
+
+    const hbFont = new hb.Font(hbFace);
+    created.push(hbFont);
+    const unicodes = new Set<number>(unicodeList);
+    const cmapRanges = compressCmapRanges(unicodeList);
+    const hasGlyphNames = detectGlyphNamesAvailable(hbFace, hbFont, glyphCount);
+
+    const gsubFeatures = uniqueSorted(hbFace.getTableFeatureTags("GSUB"));
+    const gposFeatures = uniqueSorted(hbFace.getTableFeatureTags("GPOS"));
+    const gsubScripts = uniqueSorted(hbFace.getTableScriptTags("GSUB"));
+    const gposScripts = uniqueSorted(hbFace.getTableScriptTags("GPOS"));
+
+    const handle: LoadedFontHandle & {
+      _hbBlob: import("harfbuzzjs").Blob;
+      _hbFace: import("harfbuzzjs").Face;
+      _hbFont: import("harfbuzzjs").Font;
+    } = {
+      sha256,
+      fileName,
+      byteLength: buf.byteLength,
+      familyName: readFaceName(hbFace, 16) ?? readFaceName(hbFace, 1),
+      subfamilyName: readFaceName(hbFace, 17) ?? readFaceName(hbFace, 2),
+      version: readFaceName(hbFace, 5),
+      upem: hbFace.upem,
+      glyphCount,
+      hasGlyphNames,
+      unicodes,
+      unicodeList,
+      cmapRanges,
+      gsubFeatures,
+      gposFeatures,
+      gsubScripts,
+      gposScripts,
+      glyphName: (gid: number): string => hbFont.glyphName(gid),
+      nominalGlyph: (cp: number): number | undefined => hbFont.nominalGlyph(cp),
+      _hbBlob: hbBlob,
+      _hbFace: hbFace,
+      _hbFont: hbFont,
+    };
+
+    fontCache.set(sha256, handle);
+    return handle;
+  } catch (error) {
+    // 校验失败：在抛出前释放已经创建的 WASM 句柄，避免每次导入失败都泄漏堆内存
+    releaseHarfBuzzObjects(...created);
+    throw error;
   }
-
-  const rawUnicodes = hbFace.collectUnicodes();
-  const unicodeList = Array.from(rawUnicodes).sort((a, b) => a - b);
-  if (unicodeList.length === 0) {
-    throw new McpError(
-      "VALIDATION",
-      `Font "${fileName}" has an empty Unicode character map (cmap).`,
-    );
-  }
-
-  const hbFont = new hb.Font(hbFace);
-  const unicodes = new Set<number>(unicodeList);
-  const cmapRanges = compressCmapRanges(unicodeList);
-  const hasGlyphNames = detectGlyphNamesAvailable(hbFace, hbFont, glyphCount);
-
-  const gsubFeatures = uniqueSorted(hbFace.getTableFeatureTags("GSUB"));
-  const gposFeatures = uniqueSorted(hbFace.getTableFeatureTags("GPOS"));
-  const gsubScripts = uniqueSorted(hbFace.getTableScriptTags("GSUB"));
-  const gposScripts = uniqueSorted(hbFace.getTableScriptTags("GPOS"));
-
-  const handle: LoadedFontHandle & {
-    _hbBlob: import("harfbuzzjs").Blob;
-    _hbFace: import("harfbuzzjs").Face;
-    _hbFont: import("harfbuzzjs").Font;
-  } = {
-    sha256,
-    fileName,
-    byteLength: buf.byteLength,
-    familyName: readFaceName(hbFace, 16) ?? readFaceName(hbFace, 1),
-    subfamilyName: readFaceName(hbFace, 17) ?? readFaceName(hbFace, 2),
-    version: readFaceName(hbFace, 5),
-    upem: hbFace.upem,
-    glyphCount,
-    hasGlyphNames,
-    unicodes,
-    unicodeList,
-    cmapRanges,
-    gsubFeatures,
-    gposFeatures,
-    gsubScripts,
-    gposScripts,
-    glyphName: (gid: number): string => hbFont.glyphName(gid),
-    nominalGlyph: (cp: number): number | undefined => hbFont.nominalGlyph(cp),
-    _hbBlob: hbBlob,
-    _hbFace: hbFace,
-    _hbFont: hbFont,
-  };
-
-  fontCache.set(sha256, handle);
-  return handle;
 }
 
 export function getInternalHbFont(
@@ -307,6 +342,8 @@ export interface FontFaceInfoCompat {
   version: string | null;
   codepoints: number[];
   glyphs: number[][];
+  substitution_features: string[];
+  positioning_features: string[];
 }
 
 interface TaggedTable {
@@ -372,7 +409,47 @@ export function inspectFontBytesCompat(data: Uint8Array): FontFaceInfoCompat {
     version,
     codepoints: mapped.codepoints,
     glyphs: mapped.glyphs,
+    substitution_features: readLayoutFeaturesCompat(data, tables, "GSUB", readU16),
+    positioning_features: readLayoutFeaturesCompat(data, tables, "GPOS", readU16),
   };
+}
+
+/** 镜像 Rust `font_info.rs::read_layout_features`：从 GSUB/GPOS FeatureList 收集 4 字节特性标签（去重升序）。 */
+function readLayoutFeaturesCompat(
+  data: Uint8Array,
+  tables: TaggedTable[],
+  tag: string,
+  readU16: (off: number) => number,
+): string[] {
+  const table = tables.find((t) => t.tag === tag);
+  if (!table) return [];
+  if (table.length < 10) {
+    throw new Error("OpenType layout header is truncated");
+  }
+  const featureOffset = readU16(table.offset + 6);
+  if (featureOffset === 0) return [];
+  const start = table.offset + featureOffset;
+  const end = table.offset + table.length;
+  if (start + 2 > end) {
+    throw new Error("OpenType feature list is outside its table");
+  }
+  const count = readU16(start);
+  if (start + 2 + count * 6 > end) {
+    throw new Error("OpenType feature records are truncated");
+  }
+  const features = new Set<string>();
+  for (let index = 0; index < count; index++) {
+    const position = start + 2 + index * 6;
+    features.add(
+      String.fromCharCode(
+        data[position],
+        data[position + 1],
+        data[position + 2],
+        data[position + 3],
+      ),
+    );
+  }
+  return Array.from(features).sort();
 }
 
 function finishMapCompat(

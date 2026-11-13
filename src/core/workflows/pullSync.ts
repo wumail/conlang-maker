@@ -1,5 +1,5 @@
-import { SCARuleSet, WordEntry } from "../../types";
-import { applySoundChanges } from "../engines/scaEngine";
+import { SCARuleSet, PhonologyConfig, WordEntry } from "../../types";
+import { applySoundChanges, type SCAProsodyContext } from "../engines/scaEngine";
 import {
   getWordComparableDigest,
   getWordEvolution,
@@ -15,6 +15,8 @@ export interface PullSyncInput {
   childWords: WordEntry[];
   scaRuleSets: SCARuleSet[];
   macros: Record<string, string[]>;
+  /** 父语言音系：提供重音/音节切分所需的超音段上下文 */
+  parentPhono?: PhonologyConfig;
 }
 
 export interface LegacyPullSyncInput {
@@ -24,6 +26,7 @@ export interface LegacyPullSyncInput {
   childWords: WordEntry[];
   scaRuleSets: SCARuleSet[];
   macros: Record<string, string[]>;
+  parentPhono?: PhonologyConfig;
 }
 
 export interface PullSyncConflict {
@@ -45,7 +48,14 @@ export function computePullSync(
     "parentLanguageId" in input ? input.parentLanguageId : input.parentLangId;
   const childLanguageId =
     "childLanguageId" in input ? input.childLanguageId : input.activeLanguageId;
-  const { parentWords, childWords, scaRuleSets, macros } = input;
+  const { parentWords, childWords, scaRuleSets, macros, parentPhono } = input;
+  const prosodyContext: SCAProsodyContext | undefined = parentPhono
+    ? {
+        phonotactics: parentPhono.phonotactics,
+        inventory: parentPhono.phoneme_inventory,
+        stress: parentPhono.phonotactics.stress ?? null,
+      }
+    : undefined;
 
   const childByParentId = new Map<string, WordEntry[]>();
   const childById = new Map(childWords.map((word) => [word.entry_id, word]));
@@ -65,6 +75,8 @@ export function computePullSync(
       parentWord.con_word_romanized,
       scaRuleSets,
       macros,
+      [],
+      prosodyContext,
     );
     const appliedRuleIds = Array.from(
       new Set(changelog.map((step) => step.rule_id)),

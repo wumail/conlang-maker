@@ -38,6 +38,7 @@ export const InflectionTest: React.FC = () => {
         testWord,
         rule,
         phonoConfig,
+        config.morphophonology_rules ?? [],
       );
       const { phonemic } = generateIPA(result, phonoConfig, { stem_start });
 

@@ -1,11 +1,15 @@
 /**
- * fontGeometryAudit.ts — 字形几何与排版度量审计（T3.1）
+ * fontGeometryAudit.ts — 字形几何与排版度量审计（T3.1 / F3.2 / F3.3）
  *
  * 100% 纯计算：不 import HarfBuzz / DOM / Node，只接收已离散化的字形轮廓。
  * 1. 上缘与主干底边相对字体度量带的偏差（上缘偏低 / 基线悬空）；
  * 2. 附标高度带内的真实右侧光学净距 `opticalGapX` 及其离散度；
- * 3. 40 条水平/垂直扫描线的笔画弦长 Q1，估算字重均匀度。
+ * 3. 40 条水平/垂直扫描线的笔画弦长 Q1，估算字重均匀度；
+ * 4. 人造文字：单字内部离群附标子轮廓（同一字形内的分离连通块）净距；
+ * 5. 横向宽度占比与左右边距（LSB / RSB）的分布一致性统计。
  */
+import type { GlyphKind } from "../../types";
+
 export interface PathCmd {
   type: string;
   values: number[];
@@ -19,6 +23,12 @@ export interface GlyphOutlineInput {
   commands: PathCmd[];
   /** 组合字形（预组合重音字母）标记，用于区分附标本体 */
   isMark?: boolean;
+  /**
+   * 来自 `PhonologyConfig.glyph_annotations` 的结构分类。
+   * 人造文字的 base / carrier / vowel / mark / punctuation 无法从 Unicode
+   * 组合区段推断，必须由标注显式给出。
+   */
+  glyphKind?: GlyphKind;
 }
 
 export interface FontMetricsInput {
@@ -34,6 +44,49 @@ export interface MarkPairInput {
   compositeGid: number;
   baseGid: number;
   markGid: number;
+  /**
+   * GPOS 定位结果：附标原点相对基字原点的水平位移
+   * （等于 `base.x_advance + mark.x_offset`）。
+   */
+  xOffset?: number;
+  /** GPOS 定位结果：附标原点相对基字原点的垂直位移（`mark.y_offset`）。 */
+  yOffset?: number;
+}
+
+/** `hb.shape` 输出的单字形度量（供 GPOS / GSUB 配对使用） */
+export interface ShapedGlyphMetrics {
+  gid: number;
+  xAdvance: number;
+  xOffset: number;
+  yOffset: number;
+}
+
+/**
+ * 从 `hb.shape` 的输出推导 base + mark 的排版关系：
+ * - 单个连字字形（GSUB 替换）→ 组合字形 GID；
+ * - 两个字形（GPOS 定位）→ 附标相对基字原点的位移。
+ */
+export function resolveShapedMarkPair(
+  baseGid: number,
+  markGid: number,
+  shaped: readonly ShapedGlyphMetrics[],
+): MarkPairInput | null {
+  if (shaped.length === 1) {
+    const ligature = shaped[0]!;
+    if (ligature.gid === 0) return null;
+    return { compositeGid: ligature.gid, baseGid, markGid };
+  }
+  if (shaped.length !== 2) return null;
+  const base = shaped[0]!;
+  const mark = shaped[1]!;
+  if (base.gid === 0 || mark.gid === 0) return null;
+  return {
+    compositeGid: base.gid,
+    baseGid: base.gid,
+    markGid: mark.gid,
+    xOffset: base.xAdvance + mark.xOffset,
+    yOffset: mark.yOffset,
+  };
 }
 
 export type GeometryIssueKind =
@@ -56,6 +109,8 @@ export interface GlyphAuditRow {
   gid: number;
   name: string | null;
   codepoints: number[];
+  /** 解析后的字形结构分类（标注优先，其次 isMark 回退） */
+  glyphKind: GlyphKind;
   advanceWidth: number;
   yMax: number;
   yMin: number;
@@ -71,7 +126,7 @@ export interface GlyphAuditRow {
   barQ1: number | null;
   /** 全部弦长离散系数 */
   weightCv: number | null;
-  /** 附标高度带内的最小右侧净距 */
+  /** 附标高度带内的最小右侧净距（外部附标对或单字内部附标块） */
   opticalGapX: number | null;
   issues: GeometryIssue[];
 }
@@ -108,6 +163,25 @@ export interface OpticalGapStats {
   stdDev: number;
 }
 
+export interface DistributionStats {
+  count: number;
+  min: number;
+  max: number;
+  mean: number;
+  stdDev: number;
+}
+
+export interface WidthConsistencyStats {
+  /** base / carrier：`(inkMaxX - inkMinX) / advanceWidth` */
+  baseAdvanceRatio: DistributionStats | null;
+  /** vowel / mark：`(inkMaxX - inkMinX) / advanceWidth` */
+  markAdvanceRatio: DistributionStats | null;
+  /** 左墨迹边距占 upm 的比例（仅 base / carrier） */
+  lsb: DistributionStats | null;
+  /** 右墨迹边距占 upm 的比例（仅 base / carrier） */
+  rsb: DistributionStats | null;
+}
+
 export interface FontGeometryAuditResult {
   metrics: FontMetricsInput;
   rows: GlyphAuditRow[];
@@ -121,6 +195,7 @@ export interface FontGeometryAuditResult {
     issueCounts: Record<GeometryIssueKind, number>;
     opticalGap: OpticalGapStats | null;
   };
+  widthStats: WidthConsistencyStats;
 }
 
 export interface GeometryAuditOptions {
@@ -136,6 +211,19 @@ export interface GeometryAuditOptions {
 interface Point {
   x: number;
   y: number;
+}
+
+export interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
+
+/** 由若干闭合子路径聚成的连通墨迹块 */
+export interface InkComponent {
+  bounds: Bounds;
+  subpaths: Point[][];
 }
 
 const BEZIER_STEPS = 16;
@@ -275,12 +363,21 @@ function stdDev(values: readonly number[]): number {
   return Math.sqrt(mean(values.map((value) => (value - avg) ** 2)));
 }
 
-function boundsOf(subpaths: readonly Point[][]): {
-  minX: number;
-  maxX: number;
-  minY: number;
-  maxY: number;
-} {
+/** 构造分布统计；空集合返回 null */
+export function distributionStats(
+  values: readonly number[],
+): DistributionStats | null {
+  if (values.length === 0) return null;
+  return {
+    count: values.length,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    mean: mean(values),
+    stdDev: stdDev(values),
+  };
+}
+
+function boundsOf(subpaths: readonly Point[][]): Bounds {
   const points = subpaths.flat();
   if (points.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   return {
@@ -301,17 +398,78 @@ export function outlineBounds(commands: readonly PathCmd[]): {
   return boundsOf(outlineToSubpaths(commands));
 }
 
+function boxesOverlap(a: Bounds, b: Bounds): boolean {
+  return (
+    a.minX <= b.maxX &&
+    b.minX <= a.maxX &&
+    a.minY <= b.maxY &&
+    b.minY <= a.maxY
+  );
+}
+
+/**
+ * 按外接矩形重叠 / 包含关系把闭合子路径聚为连通墨迹块。
+ * 字母 O 的内外两圈互相包含，属于同一主干块；而基线主干与
+ * 右上角分离的附标轮廓会得到两个互不重叠的块。
+ */
+export function clusterInkComponents(
+  subpaths: readonly Point[][],
+): InkComponent[] {
+  const components: InkComponent[] = subpaths.map((subpath) => ({
+    bounds: boundsOf([subpath]),
+    subpaths: [[...subpath]],
+  }));
+
+  let merged = true;
+  while (merged) {
+    merged = false;
+    outer: for (let i = 0; i < components.length; i += 1) {
+      for (let j = i + 1; j < components.length; j += 1) {
+        const left = components[i]!;
+        const right = components[j]!;
+        if (!boxesOverlap(left.bounds, right.bounds)) continue;
+        const combined = [...left.subpaths, ...right.subpaths];
+        components[i] = { bounds: boundsOf(combined), subpaths: combined };
+        components.splice(j, 1);
+        merged = true;
+        break outer;
+      }
+    }
+  }
+  return components;
+}
+
+function isMarkLikeGlyph(glyph: GlyphOutlineInput): boolean {
+  if (glyph.glyphKind === "mark" || glyph.glyphKind === "vowel") return true;
+  if (glyph.glyphKind !== undefined) return false;
+  return glyph.isMark === true;
+}
+
+function isPunctuationGlyph(glyph: GlyphOutlineInput): boolean {
+  return glyph.glyphKind === "punctuation";
+}
+
+export function resolvedGlyphKind(glyph: GlyphOutlineInput): GlyphKind {
+  if (glyph.glyphKind) return glyph.glyphKind;
+  return glyph.isMark === true ? "mark" : "base";
+}
+
 /** 从字形集合推断缺失的字体度量（capHeight / xHeight / ascender / descender） */
 export function inferFontMetrics(
   glyphs: readonly GlyphOutlineInput[],
   upm: number,
   overrides: Partial<Omit<FontMetricsInput, "upm">> = {},
 ): FontMetricsInput {
-  const tops = glyphs
-    .filter((glyph) => !glyph.isMark)
-    .map((glyph) => boundsOf(outlineToSubpaths(glyph.commands)))
-    .filter((bounds) => bounds.maxY > bounds.minY)
-    .map((bounds) => bounds.maxY)
+  const inked = glyphs
+    .map((glyph) => ({ glyph, bounds: boundsOf(outlineToSubpaths(glyph.commands)) }))
+    .filter((item) => item.bounds.maxY > item.bounds.minY);
+  // 标点与独立附标会污染上缘中位数；只有当字体里没有可参照的基字时才回退
+  const reference = inked.filter(
+    (item) => !isMarkLikeGlyph(item.glyph) && !isPunctuationGlyph(item.glyph),
+  );
+  const pool = reference.length > 0 ? reference : inked;
+  const tops = pool
+    .map((item) => item.bounds.maxY)
     .sort((a, b) => a - b);
 
   return {
@@ -329,6 +487,96 @@ function topDeviation(yMax: number, metrics: FontMetricsInput): number {
   );
   if (bands.length === 0) return 0;
   return Math.min(...bands.map((band) => Math.abs(yMax - band)));
+}
+
+/**
+ * 附标块左缘与基字块右缘之间的最小水平光学净距。
+ * `dx` / `dy` 为 GPOS 定位后附标的位移。
+ */
+function lateralGap(
+  baseSubpaths: readonly Point[][],
+  baseBounds: Bounds,
+  markSubpaths: readonly Point[][],
+  markBounds: Bounds,
+  dx: number,
+  dy: number,
+): number | null {
+  const bandHeight = markBounds.maxY - markBounds.minY;
+  if (bandHeight <= 0) return null;
+
+  const shiftedMinY = markBounds.minY + dy;
+  if (shiftedMinY >= baseBounds.maxY) {
+    // 附标整体位于基字上缘之上时，有意义的净距是纵向悬空高度
+    return shiftedMinY - baseBounds.maxY;
+  }
+
+  let best: number | null = null;
+  for (let i = 1; i <= 5; i += 1) {
+    const y = shiftedMinY + (bandHeight * i) / 6;
+    const baseHits = horizontalHits(baseSubpaths, y);
+    const markHits = horizontalHits(markSubpaths, y - dy);
+    if (baseHits.length === 0 || markHits.length === 0) continue;
+    const gap = Math.min(...markHits) + dx - Math.max(...baseHits);
+    if (best === null || gap < best) best = gap;
+  }
+  return best;
+}
+
+/**
+ * 单字内部离群附标子轮廓检测：主块右缘到右侧次级小块左缘的净距。
+ * 适用于把 base 与附标画在同一个字形轮廓内的音节文字 / 元音附标文字。
+ */
+function internalMarkGap(
+  glyph: GlyphOutlineInput,
+  subpaths: readonly Point[][],
+  bounds: Bounds,
+): number | null {
+  if (subpaths.length < 2) return null;
+  if (isMarkLikeGlyph(glyph) || isPunctuationGlyph(glyph)) return null;
+
+  const components = clusterInkComponents(subpaths);
+  if (components.length < 2) return null;
+
+  let main = components[0]!;
+  let mainArea = 0;
+  for (const component of components) {
+    const area =
+      (component.bounds.maxX - component.bounds.minX) *
+      (component.bounds.maxY - component.bounds.minY);
+    if (area > mainArea) {
+      main = component;
+      mainArea = area;
+    }
+  }
+
+  const mainWidth = main.bounds.maxX - main.bounds.minX;
+  const mainHeight = main.bounds.maxY - main.bounds.minY;
+  if (mainWidth <= 0 || mainHeight <= 0 || bounds.maxX <= bounds.minX) {
+    return null;
+  }
+  const advanceWidth = glyph.advanceWidth;
+
+  let best: number | null = null;
+  for (const component of components) {
+    if (component === main) continue;
+    const width = component.bounds.maxX - component.bounds.minX;
+    const height = component.bounds.maxY - component.bounds.minY;
+    if (width <= 0 || height <= 0) continue;
+    if (advanceWidth > 0 && width >= 0.45 * advanceWidth) continue;
+    if (height >= 0.65 * mainHeight) continue;
+    if (component.bounds.minX < main.bounds.minX + 0.4 * mainWidth) continue;
+    const gap = lateralGap(
+      main.subpaths,
+      main.bounds,
+      component.subpaths,
+      component.bounds,
+      0,
+      0,
+    );
+    if (gap === null) continue;
+    if (best === null || gap < best) best = gap;
+  }
+  return best;
 }
 
 export function auditFontGeometry(
@@ -353,15 +601,22 @@ export function auditFontGeometry(
     const shallow = item.bottoms.filter((bottom) => bottom >= deepCut);
     return shallow.length > 0 ? Math.min(...shallow) : item.bounds.minY;
   });
+  const isBaselineReference = (item: (typeof prepared)[number]): boolean =>
+    !isMarkLikeGlyph(item.glyph) && !isPunctuationGlyph(item.glyph);
+
   const baseMains = prepared
-    .map((item, index) => (item.glyph.isMark ? null : mains[index]!))
+    .map((item, index) => (isBaselineReference(item) ? mains[index]! : null))
     .filter((value): value is number => value !== null);
-  const medianMainYMin = median(baseMains);
+  const medianMainYMin =
+    baseMains.length > 0 ? median(baseMains) : median(mains);
+  const inkedTops = prepared
+    .filter((item) => item.bounds.maxY > 0)
+    .filter(isBaselineReference)
+    .map((item) => item.bounds.maxY);
   const medianYMax = median(
-    prepared
-      .filter((item) => !item.glyph.isMark)
-      .map((item) => item.bounds.maxY)
-      .filter((value) => value > 0),
+    inkedTops.length > 0
+      ? inkedTops
+      : prepared.map((item) => item.bounds.maxY).filter((value) => value > 0),
   );
 
   const perGlyph = new Map<
@@ -401,29 +656,41 @@ export function auditFontGeometry(
       .filter((value): value is number => value !== null && value > 0),
   );
 
-  const gapByComposite = new Map<number, number>();
+  const preparedGids = new Set(prepared.map((item) => item.glyph.gid));
+  /** 目标行 gid → 最小净距（同一附标在多个基字上取最小值，绝不互相覆盖） */
+  const gapByTargetGid = new Map<number, number>();
   for (const pair of options.markPairs ?? []) {
     const base = prepared.find((item) => item.glyph.gid === pair.baseGid);
     const mark = prepared.find((item) => item.glyph.gid === pair.markGid);
     if (!base || !mark || mark.subpaths.length === 0) continue;
-    const markBounds = mark.bounds;
-    const bandHeight = markBounds.maxY - markBounds.minY;
-    if (bandHeight <= 0) continue;
-    let best: number | null = null;
-    // 附标整体位于基字上缘之上时，有意义的净距是纵向悬空高度
-    if (markBounds.minY >= base.bounds.maxY) {
-      best = markBounds.minY - base.bounds.maxY;
-    } else {
-      for (let i = 1; i <= 5; i += 1) {
-        const y = markBounds.minY + (bandHeight * i) / 6;
-        const baseHits = horizontalHits(base.subpaths, y);
-        const markHits = horizontalHits(mark.subpaths, y);
-        if (baseHits.length === 0 || markHits.length === 0) continue;
-        const gap = Math.min(...markHits) - Math.max(...baseHits);
-        if (best === null || gap < best) best = gap;
-      }
+    const best = lateralGap(
+      base.subpaths,
+      base.bounds,
+      mark.subpaths,
+      mark.bounds,
+      pair.xOffset ?? 0,
+      pair.yOffset ?? 0,
+    );
+    if (best === null) continue;
+    const hasRealComposite =
+      pair.compositeGid !== pair.baseGid &&
+      pair.compositeGid !== pair.markGid &&
+      preparedGids.has(pair.compositeGid);
+    const target = hasRealComposite ? pair.compositeGid : pair.markGid;
+    const previous = gapByTargetGid.get(target);
+    if (previous === undefined || best < previous) {
+      gapByTargetGid.set(target, best);
     }
-    if (best !== null) gapByComposite.set(pair.markGid, best);
+  }
+
+  /** 单字内部离群附标块净距（GSUB 未参与、base + mark 画在同一轮廓内） */
+  const internalGapByGid = new Map<number, number>();
+  for (const item of prepared) {
+    const gap = internalMarkGap(item.glyph, item.subpaths, item.bounds);
+    if (gap === null) continue;
+    const previous = gapByTargetGid.get(item.glyph.gid);
+    if (previous !== undefined) continue;
+    internalGapByGid.set(item.glyph.gid, gap);
   }
 
   const rows: GlyphAuditRow[] = prepared.map((item, index) => {
@@ -432,7 +699,7 @@ export function auditFontGeometry(
     const issues: GeometryIssue[] = [];
     const hasInk = item.subpaths.length > 0;
 
-    if (!glyph.isMark && hasInk) {
+    if (isBaselineReference(item) && hasInk) {
       const topGap = topDeviation(bounds.maxY, metrics) / options.upm;
       if (topGap > tolerances.ascender) {
         issues.push({
@@ -453,7 +720,8 @@ export function auditFontGeometry(
       }
     }
 
-    const opticalGapX = gapByComposite.get(glyph.gid) ?? null;
+    const opticalGapX =
+      gapByTargetGid.get(glyph.gid) ?? internalGapByGid.get(glyph.gid) ?? null;
     if (opticalGapX !== null) {
       const ratio = opticalGapX / options.upm;
       if (ratio > tolerances.markGapMax) {
@@ -494,6 +762,7 @@ export function auditFontGeometry(
       gid: glyph.gid,
       name: glyph.name ?? null,
       codepoints: glyph.codepoints ?? [],
+      glyphKind: resolvedGlyphKind(glyph),
       advanceWidth: glyph.advanceWidth,
       yMax: bounds.maxY,
       yMin: bounds.minY,
@@ -536,6 +805,30 @@ export function auditFontGeometry(
           stdDev: stdDev(gaps),
         };
 
+  const baseRatios: number[] = [];
+  const markRatios: number[] = [];
+  const lsbRatios: number[] = [];
+  const rsbRatios: number[] = [];
+  for (const row of rows) {
+    if (row.inkMaxX <= row.inkMinX) continue;
+    if (row.glyphKind === "punctuation") continue;
+    const inkWidth = row.inkMaxX - row.inkMinX;
+    if (row.glyphKind === "vowel" || row.glyphKind === "mark") {
+      if (row.advanceWidth > 0) markRatios.push(inkWidth / row.advanceWidth);
+    } else {
+      if (row.advanceWidth > 0) baseRatios.push(inkWidth / row.advanceWidth);
+      lsbRatios.push(row.leftSideBearing / options.upm);
+      rsbRatios.push(row.rightSideBearing / options.upm);
+    }
+  }
+
+  const widthStats: WidthConsistencyStats = {
+    baseAdvanceRatio: distributionStats(baseRatios),
+    markAdvanceRatio: distributionStats(markRatios),
+    lsb: distributionStats(lsbRatios),
+    rsb: distributionStats(rsbRatios),
+  };
+
   return {
     metrics,
     rows,
@@ -549,6 +842,6 @@ export function auditFontGeometry(
       issueCounts,
       opticalGap: gapStats,
     },
+    widthStats,
   };
 }
-

@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
   auditFontGeometry,
+  clusterInkComponents,
   inferFontMetrics,
   outlineToSubpaths,
   quantile,
+  resolveShapedMarkPair,
   type GlyphOutlineInput,
   type PathCmd,
 } from "./fontGeometryAudit";
@@ -221,5 +223,244 @@ describe("auditFontGeometry", () => {
     });
     expect(result.rows[0]?.issues).toHaveLength(0);
     expect(result.summary.analyzedCount).toBe(1);
+  });
+});
+
+describe("gapByComposite key collision", () => {
+  test("aggregates the minimum gap per target row instead of overwriting it", () => {
+    const baseNarrow = glyph(1, rect(0, 0, 500, 700));
+    const baseWide = glyph(2, rect(0, 0, 600, 700), { advanceWidth: 700 });
+    const mark = glyph(3, rect(520, 300, 600, 400), { isMark: true });
+    const result = auditFontGeometry({
+      glyphs: [baseNarrow, baseWide, mark],
+      upm: UPM,
+      metrics: METRICS,
+      markPairs: [
+        { compositeGid: 90, baseGid: 1, markGid: 3 },
+        { compositeGid: 91, baseGid: 2, markGid: 3 },
+      ],
+    });
+    const markRow = result.rows.find((row) => row.gid === 3)!;
+    // 350px 宽的窄基字净距 +20，宽基字净距 -80：必须保留更小的 -80
+    expect(markRow.opticalGapX).toBe(-80);
+    expect(markRow.issues.map((issue) => issue.kind)).toContain("mark_gap_too_small");
+    // 组合字形不在审计集合内时，测量结果落在附标本体上，且只计一次
+    expect(result.summary.opticalGap?.count).toBe(1);
+  });
+
+  test("attributes the gap to the composite glyph when that GID is audited", () => {
+    const base = glyph(1, rect(0, 0, 500, 700));
+    const mark = glyph(2, rect(520, 300, 600, 400), { isMark: true });
+    const composite = glyph(90, rect(0, 0, 600, 700), {
+      codepoints: [0x00e9],
+      advanceWidth: 600,
+    });
+    const result = auditFontGeometry({
+      glyphs: [base, mark, composite],
+      upm: UPM,
+      metrics: METRICS,
+      markPairs: [{ compositeGid: 90, baseGid: 1, markGid: 2 }],
+    });
+    const compositeRow = result.rows.find((row) => row.gid === 90)!;
+    expect(compositeRow.opticalGapX).toBe(20);
+    expect(result.rows.find((row) => row.gid === 2)?.opticalGapX).toBeNull();
+  });
+
+  test("applies GPOS offsets to the shaped mark before measuring", () => {
+    const base = glyph(1, rect(0, 0, 500, 700));
+    const mark = glyph(2, rect(0, 300, 80, 400), { isMark: true });
+    const result = auditFontGeometry({
+      glyphs: [base, mark],
+      upm: UPM,
+      metrics: METRICS,
+      markPairs: [
+        { compositeGid: 90, baseGid: 1, markGid: 2, xOffset: 520, yOffset: 0 },
+      ],
+    });
+    expect(result.rows.find((row) => row.gid === 2)?.opticalGapX).toBe(20);
+  });
+});
+
+describe("single-glyph internal mark blocks", () => {
+  test("clusters nested contours into one component", () => {
+    const donut = [...rect(0, 0, 400, 700), ...rect(100, 150, 300, 550)];
+    const components = clusterInkComponents(outlineToSubpaths(donut));
+    expect(components).toHaveLength(1);
+  });
+
+  test("measures the clearance between a trunk and a detached right-side mark", () => {
+    const inked = glyph(1, [...rect(0, 0, 400, 700), ...rect(420, 500, 500, 640)], {
+      advanceWidth: 600,
+    });
+    const result = auditFontGeometry({
+      glyphs: [inked],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    const row = result.rows[0]!;
+    expect(row.opticalGapX).toBe(20);
+    expect(row.issues.map((issue) => issue.kind)).not.toContain("mark_gap_too_large");
+  });
+
+  test("flags a detached mark drawn too far to the right", () => {
+    const inked = glyph(1, [...rect(0, 0, 400, 700), ...rect(560, 500, 620, 640)], {
+      advanceWidth: 700,
+    });
+    const result = auditFontGeometry({
+      glyphs: [inked],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    const row = result.rows[0]!;
+    expect(row.opticalGapX).toBe(160);
+    expect(row.issues.map((issue) => issue.kind)).toContain("mark_gap_too_large");
+  });
+
+  test("ignores inner rings and punctuation glyphs", () => {
+    const donut = glyph(1, [...rect(0, 0, 400, 700), ...rect(100, 150, 300, 550)]);
+    const punct = glyph(2, [...rect(0, 0, 120, 700), ...rect(0, 600, 120, 700)], {
+      glyphKind: "punctuation",
+      advanceWidth: 400,
+    });
+    const result = auditFontGeometry({
+      glyphs: [donut, punct],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    expect(result.rows.every((row) => row.opticalGapX === null)).toBe(true);
+  });
+});
+
+describe("annotation-driven classification", () => {
+  test("excludes punctuation and marks from baseline and top statistics", () => {
+    const result = auditFontGeometry({
+      glyphs: [
+        glyph(1, rect(0, 0, 400, 700)),
+        glyph(2, rect(0, 0, 400, 700), { glyphKind: "carrier" }),
+        glyph(3, rect(0, 0, 80, 950), { glyphKind: "punctuation", advanceWidth: 400 }),
+        glyph(4, rect(200, 750, 300, 800), { glyphKind: "mark" }),
+      ],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    expect(result.summary.medianYMax).toBe(700);
+    const punctRow = result.rows.find((row) => row.gid === 3)!;
+    expect(punctRow.glyphKind).toBe("punctuation");
+    expect(punctRow.issues.map((issue) => issue.kind)).not.toContain("ascender_misaligned");
+    expect(punctRow.issues.map((issue) => issue.kind)).not.toContain("baseline_drift");
+    const markRow = result.rows.find((row) => row.gid === 4)!;
+    expect(markRow.issues.map((issue) => issue.kind)).not.toContain("ascender_misaligned");
+  });
+
+  test("treats annotated vowels as marks for the width statistics", () => {
+    const result = auditFontGeometry({
+      glyphs: [
+        glyph(1, rect(0, 0, 400, 700), { glyphKind: "base" }),
+        glyph(2, rect(100, 0, 500, 700), { glyphKind: "carrier" }),
+        glyph(3, rect(300, 900, 400, 1000), { glyphKind: "vowel", advanceWidth: 400 }),
+      ],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    const vowelRow = result.rows.find((row) => row.gid === 3)!;
+    expect(vowelRow.opticalGapX).toBeNull();
+    expect(result.widthStats.baseAdvanceRatio?.count).toBe(2);
+    expect(result.widthStats.markAdvanceRatio?.count).toBe(1);
+    expect(result.widthStats.markAdvanceRatio?.mean).toBeCloseTo(0.25, 6);
+  });
+});
+
+describe("widthStats", () => {
+  test("reports advance ratios and side bearings per class", () => {
+    const result = auditFontGeometry({
+      glyphs: [
+        glyph(1, rect(100, 0, 500, 500), { glyphKind: "base", advanceWidth: 600 }),
+        glyph(2, rect(50, 0, 450, 500), { glyphKind: "carrier", advanceWidth: 600 }),
+        glyph(3, rect(300, 900, 400, 1000), { glyphKind: "mark", advanceWidth: 400 }),
+        glyph(4, rect(310, 900, 410, 1000), { glyphKind: "vowel", advanceWidth: 400 }),
+        glyph(5, rect(0, 0, 300, 200), { glyphKind: "punctuation", advanceWidth: 500 }),
+        glyph(6, [], { glyphKind: "base", advanceWidth: 0 }),
+      ],
+      upm: UPM,
+      metrics: METRICS,
+    });
+
+    const base = result.widthStats.baseAdvanceRatio!;
+    expect(base.count).toBe(2);
+    expect(base.min).toBeCloseTo(2 / 3, 6);
+    expect(base.max).toBeCloseTo(2 / 3, 6);
+    expect(base.mean).toBeCloseTo(2 / 3, 6);
+    expect(base.stdDev).toBeCloseTo(0, 6);
+
+    const mark = result.widthStats.markAdvanceRatio!;
+    expect(mark.count).toBe(2);
+    expect(mark.mean).toBeCloseTo(0.25, 6);
+    expect(mark.stdDev).toBeCloseTo(0, 6);
+
+    const lsb = result.widthStats.lsb!;
+    expect(lsb.count).toBe(2);
+    expect(lsb.min).toBeCloseTo(0.05, 6);
+    expect(lsb.max).toBeCloseTo(0.1, 6);
+    expect(lsb.mean).toBeCloseTo(0.075, 6);
+    expect(lsb.stdDev).toBeCloseTo(0.025, 6);
+
+    const rsb = result.widthStats.rsb!;
+    expect(rsb.count).toBe(2);
+    expect(rsb.min).toBeCloseTo(0.1, 6);
+    expect(rsb.max).toBeCloseTo(0.15, 6);
+    expect(rsb.mean).toBeCloseTo(0.125, 6);
+    expect(rsb.stdDev).toBeCloseTo(0.025, 6);
+  });
+
+  test("returns null distributions when no glyph of a class has ink", () => {
+    const result = auditFontGeometry({
+      glyphs: [glyph(1, rect(0, 0, 400, 700), { glyphKind: "base" })],
+      upm: UPM,
+      metrics: METRICS,
+    });
+    expect(result.widthStats.markAdvanceRatio).toBeNull();
+    expect(result.widthStats.baseAdvanceRatio?.count).toBe(1);
+  });
+});
+
+describe("resolveShapedMarkPair", () => {
+  test("derives a ligature composite from a single shaped glyph", () => {
+    expect(
+      resolveShapedMarkPair(11, 22, [
+        { gid: 77, xAdvance: 620, xOffset: 0, yOffset: 0 },
+      ]),
+    ).toEqual({ compositeGid: 77, baseGid: 11, markGid: 22 });
+  });
+
+  test("derives GPOS offsets from a two-glyph run", () => {
+    expect(
+      resolveShapedMarkPair(11, 22, [
+        { gid: 11, xAdvance: 500, xOffset: 0, yOffset: 0 },
+        { gid: 22, xAdvance: 0, xOffset: 40, yOffset: 120 },
+      ]),
+    ).toEqual({
+      compositeGid: 11,
+      baseGid: 11,
+      markGid: 22,
+      xOffset: 540,
+      yOffset: 120,
+    });
+  });
+
+  test("rejects notdef and multi-glyph runs", () => {
+    expect(resolveShapedMarkPair(11, 22, [])).toBeNull();
+    expect(
+      resolveShapedMarkPair(11, 22, [
+        { gid: 0, xAdvance: 500, xOffset: 0, yOffset: 0 },
+        { gid: 22, xAdvance: 0, xOffset: 0, yOffset: 0 },
+      ]),
+    ).toBeNull();
+    expect(
+      resolveShapedMarkPair(11, 22, [
+        { gid: 11, xAdvance: 500, xOffset: 0, yOffset: 0 },
+        { gid: 22, xAdvance: 0, xOffset: 0, yOffset: 0 },
+        { gid: 22, xAdvance: 0, xOffset: 0, yOffset: 0 },
+      ]),
+    ).toBeNull();
   });
 });

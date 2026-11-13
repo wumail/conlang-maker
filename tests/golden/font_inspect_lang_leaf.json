@@ -33,6 +33,9 @@
   "present": true,
   "resolved_revision": "46c9a4c0932d937f",
   "revision": "46c9a4c0932d937f",
+  "substitution_features": [
+    "liga"
+  ],
   "version": "Version 1.0",
   "warning": null
 }

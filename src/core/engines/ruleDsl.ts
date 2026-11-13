@@ -55,14 +55,24 @@ function splitRuleId(raw: string): { body: string; ruleId: string | null } {
 /**
  * 抽掉 `#` 后说明文字（保留正文）。
  *
- * 语境里的 `#` 是词界标记（如 ` / # _ #`），因此从右往左找「尾部不含 `_` / `/` 且非空」
- * 的 `#` 作为说明分隔符；找不到就整行当作规则正文。
+ * 语境里的 `#` 是词界标记（如 ` / # _ #`），只有紧邻 `_`（忽略空格）的 `#` 才是词界符；
+ * 其余「前带空白的 `#`」一律视为说明注释的起点——说明文字里允许出现 `_`、`/`
+ * （如 `# voiced_stop`、`# C/V`），不得被误判为规则正文。
  */
+function isBoundaryHash(raw: string, index: number): boolean {
+  const before = raw.slice(0, index).trimEnd();
+  const after = raw.slice(index + 1).trimStart();
+  return before.endsWith("_") || after.startsWith("_");
+}
+
 function splitDescription(raw: string): { body: string; description: string } {
   for (let index = raw.length - 1; index >= 0; index -= 1) {
     if (raw[index] !== "#") continue;
+    // 说明分隔符必须前带空白，避免切断 `a#b` 这类正文
+    if (index > 0 && !/\s/.test(raw[index - 1] ?? "")) continue;
     const tail = raw.slice(index + 1).trim();
-    if (!tail || tail.includes("_") || tail.includes("/")) continue;
+    if (!tail) continue;
+    if (isBoundaryHash(raw, index)) continue;
     return { body: raw.slice(0, index).trim(), description: tail };
   }
   return { body: raw.trim(), description: "" };

@@ -5,6 +5,7 @@
  * 输出按相关度排序的命中项，供 `CommandPalette` 渲染与键盘选择。
  */
 import type { WordEntry } from "../types";
+import { getLineageLexicon, loadLineageLexicon } from "../store/lineageLexiconStore";
 
 export interface CommandWordHit {
   entryId: string;
@@ -129,6 +130,27 @@ export function searchWords(input: WordSearchInput): CommandWordHit[] {
 }
 
 export type PaletteMode = "search" | "actions" | "calc";
+
+/**
+ * 面板预热：把尚未进入谱系缓存的语言词库在后台拉入缓存，
+ * 使用户从未手动打开过的子语言词条也能被秒搜。
+ * 已缓存的语言直接跳过（加载器内部也自带并发去重）。
+ * @returns 本次实际发起的加载请求数
+ */
+export function warmLineageLexiconCache(
+  projectPath: string,
+  languagePaths: readonly string[],
+): number {
+  if (!projectPath) return 0;
+  let started = 0;
+  for (const languagePath of new Set(languagePaths)) {
+    if (!languagePath) continue;
+    if (getLineageLexicon(projectPath, languagePath)) continue;
+    void loadLineageLexicon(projectPath, languagePath);
+    started += 1;
+  }
+  return started;
+}
 
 /** 解析前缀模式：`>` 动作、`=` 即时演算，其余为检索 */
 export function parsePaletteMode(raw: string): { mode: PaletteMode; body: string } {

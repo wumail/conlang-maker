@@ -14,7 +14,11 @@ import {
   type QCRuleKey,
   runQualityCheck,
 } from "../../src/core/engines/qualityCheck";
-import { buildMacrosFromInventory, applySoundChanges } from "../../src/core/engines/scaEngine";
+import {
+  buildMacrosFromInventory,
+  applySoundChanges,
+  type SCAProsodyContext,
+} from "../../src/core/engines/scaEngine";
 import { computeStatistics } from "../../src/core/engines/statistics";
 import {
   getWordEvolution,
@@ -156,6 +160,15 @@ function buildEffectiveScaMacros(
     ...(fallbackPhono?.phonotactics.macros ?? {}),
     ...primaryPhono.phonotactics.macros,
   });
+}
+
+/** 超音段上下文：让 +stressed / +open_syllable 等伪特征在音变中生效 */
+function prosodyContextOf(phono: PhonologyConfig): SCAProsodyContext {
+  return {
+    phonotactics: phono.phonotactics,
+    inventory: phono.phoneme_inventory,
+    stress: phono.phonotactics.stress ?? null,
+  };
 }
 
 interface IndexedBucketWord {
@@ -1535,6 +1548,7 @@ export function registerLexiconTools(
             childWords: childLex.words,
             scaRuleSets: childSca.config.rule_sets,
             macros,
+            parentPhono: parentPhono.config,
           });
 
           const filterIds =
@@ -1705,6 +1719,8 @@ export function registerLexiconTools(
                     parentWord.con_word_romanized,
                     childSca.config.rule_sets,
                     macros,
+                    [],
+                    prosodyContextOf(childPhono.config),
                   );
                   const evolvedRom = result.trim();
                   if (!evolvedRom || evolvedRom === "new_word") {
@@ -2011,6 +2027,8 @@ export function registerLexiconTools(
                       srcWord.con_word_romanized,
                       targetSca.config.rule_sets,
                       macros,
+                      [],
+                      prosodyContextOf(targetPhono.config),
                     );
                     adaptedRomanized = scaOut.result.trim();
                     appliedRuleIds = Array.from(

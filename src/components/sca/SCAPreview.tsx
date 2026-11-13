@@ -81,14 +81,26 @@ export function SCAPreview() {
     grammarConfig.inflection_rules.forEach((rule, index) => {
       if (!rule.sca_mutable) return;
       rows.push(
-        ...patchInflectionRuleWithSca(rule, index, scaConfig.rule_sets, macros).rows,
+        ...patchInflectionRuleWithSca(
+          rule,
+          index,
+          scaConfig.rule_sets,
+          macros,
+          prosodyContext,
+        ).rows,
       );
     });
 
     grammarConfig.derivation_rules.forEach((rule, index) => {
       if (!rule.sca_mutable) return;
       rows.push(
-        ...patchDerivationRuleWithSca(rule, index, scaConfig.rule_sets, macros).rows,
+        ...patchDerivationRuleWithSca(
+          rule,
+          index,
+          scaConfig.rule_sets,
+          macros,
+          prosodyContext,
+        ).rows,
       );
     });
 
@@ -100,6 +112,7 @@ export function SCAPreview() {
     grammarConfig.derivation_rules,
     scaConfig.rule_sets,
     macros,
+    prosodyContext,
   ]);
 
   // 任一输入源变化即重置「已应用」提示
@@ -112,13 +125,20 @@ export function SCAPreview() {
     grammarConfig.derivation_rules,
     scaConfig.rule_sets,
     macros,
+    prosodyContext,
   ]);
 
   const handleBatchApply = () => {
     const wordResults = new Map(
       wordsList.map((word) => [
         word.entry_id,
-        applySoundChanges(word.con_word_romanized, scaConfig.rule_sets, macros),
+        applySoundChanges(
+          word.con_word_romanized,
+          scaConfig.rule_sets,
+          macros,
+          [],
+          prosodyContext,
+        ),
       ]),
     );
     for (const word of wordsList) {
@@ -130,7 +150,13 @@ export function SCAPreview() {
     setInflections(
       grammarConfig.inflection_rules.map((rule, index) => {
         if (!rule.sca_mutable) return rule;
-        const patched = patchInflectionRuleWithSca(rule, index, scaConfig.rule_sets, macros);
+        const patched = patchInflectionRuleWithSca(
+          rule,
+          index,
+          scaConfig.rule_sets,
+          macros,
+          prosodyContext,
+        );
         return patched.changed ? patched.nextRule : rule;
       }),
     );
@@ -138,7 +164,13 @@ export function SCAPreview() {
     setDerivations(
       grammarConfig.derivation_rules.map((rule, index) => {
         if (!rule.sca_mutable) return rule;
-        const patched = patchDerivationRuleWithSca(rule, index, scaConfig.rule_sets, macros);
+        const patched = patchDerivationRuleWithSca(
+          rule,
+          index,
+          scaConfig.rule_sets,
+          macros,
+          prosodyContext,
+        );
         return patched.changed ? patched.nextRule : rule;
       }),
     );

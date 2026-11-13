@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { WordEntry } from "../../types";
 import {
   applyConceptMigration,
+  candidateKey,
   extractConceptTagValue,
   scanConceptTags,
   slugifyConceptId,
@@ -71,10 +72,14 @@ describe("scanConceptTags", () => {
     expect(plan.resolved[0]?.label).toBe("水");
   });
 
-  test("falls back to Swadesh numbering for numeric tags", () => {
+  test("numeric tags are only guessed by Swadesh index and need confirmation", () => {
     // Swadesh-100 第 1 项是 "I"，第 11 项是 "one"
     const plan = scanConceptTags([word("w1", ["概念1"]), word("w2", ["概念11"])]);
-    expect(plan.resolved.map((item) => item.conceptId)).toEqual(["i", "one"]);
+    expect(plan.resolved).toHaveLength(0);
+    expect(plan.needsConfirm).toHaveLength(2);
+    expect(plan.needsConfirm.map((item) => item.conceptId)).toEqual(["i", "one"]);
+    expect(plan.needsConfirm.every((item) => item.status === "needs_confirm")).toBe(true);
+    expect(plan.hasWork).toBe(false);
   });
 
   test("marks already-bound entries as no-op for idempotency", () => {
@@ -121,6 +126,26 @@ describe("scanConceptTags", () => {
 });
 
 describe("applyConceptMigration", () => {
+  test("never auto-binds numeric guesses without explicit confirmation", () => {
+    const words = [word("w1", ["概念1"]), word("w2", ["概念:水"])];
+    const plan = scanConceptTags(words);
+    const result = applyConceptMigration(words, plan);
+    expect(result.changedEntries).toBe(1);
+    expect(result.words[0]?.senses[0]?.concept_id).toBeUndefined();
+    expect(result.words[1]?.senses[0]?.concept_id).toBe("water");
+  });
+
+  test("binds a numeric guess once the user ticks that row", () => {
+    const words = [word("w1", ["概念1"])];
+    const plan = scanConceptTags(words);
+    const guess = plan.needsConfirm[0]!;
+    const result = applyConceptMigration(words, plan, {
+      applyKeys: new Set([candidateKey(guess)]),
+    });
+    expect(result.changedEntries).toBe(1);
+    expect(result.words[0]?.senses[0]?.concept_id).toBe("i");
+  });
+
   test("binds concept_id on the first sense and keeps other fields intact", () => {
     const words = [word("w1", ["概念:水"], { romanized: "sui" })];
     const plan = scanConceptTags(words);

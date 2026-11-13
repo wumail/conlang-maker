@@ -1,9 +1,16 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { invoke } from "@tauri-apps/api/core";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useSCAStore } from "../../store/scaStore";
+import { useWorkspaceStore } from "../../store/workspaceStore";
+import type { SCARuleSet, ScaLoadResult } from "../../types";
 import { generateIPATraced } from "../../utils/ipaGenerator";
-import { buildMacrosFromInventory, applySoundChanges } from "../../utils/scaEngine";
+import {
+  buildMacrosFromInventory,
+  applySoundChanges,
+  type SCAProsodyContext,
+} from "../../utils/scaEngine";
 import { tokenizePhonemes } from "../../core/engines/phonemeTokenizer";
 import { formatSyllables, syllabify } from "../../core/engines/syllabifier";
 import { BADGE } from "../../lib/ui";
@@ -14,6 +21,22 @@ interface CommandCalcPreviewProps {
 }
 
 const PROSODY = /[ˈˌ.\u002D\u2010-\u2015\s/[\]]/g;
+
+/** 直接子语言的音变规则（最多取前 3 个，避免面板打开时 IPC 过载） */
+const MAX_CHILD_PREVIEWS = 3;
+
+interface ChildScaConfig {
+  languageId: string;
+  name: string;
+  ruleSets: SCARuleSet[];
+}
+
+interface ChildDerivation {
+  languageId: string;
+  name: string;
+  result: string;
+  steps: number;
+}
 
 interface CalcRow {
   labelKey: string;
@@ -26,6 +49,49 @@ export const CommandCalcPreview: React.FC<CommandCalcPreviewProps> = ({ word }) 
   const { t } = useTranslation();
   const phonoConfig = usePhonoStore((s) => s.config);
   const scaConfig = useSCAStore((s) => s.config);
+  const projectPath = useWorkspaceStore((s) => s.projectPath);
+  const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
+  const languages = useWorkspaceStore((s) => s.config.languages);
+  const [childConfigs, setChildConfigs] = useState<ChildScaConfig[]>([]);
+
+  // 父 → 子音变推演：异步读取直接子语言的 sca.json（只读，不触碰 SCA Store）
+  useEffect(() => {
+    const children = languages
+      .filter((language) => language.parent_id === activeLanguageId)
+      .slice(0, MAX_CHILD_PREVIEWS);
+    setChildConfigs([]);
+    if (!projectPath || children.length === 0) return;
+    let cancelled = false;
+    void Promise.all(
+      children.map(async (child): Promise<ChildScaConfig | null> => {
+        try {
+          const loaded = await invoke<ScaLoadResult>("load_sca_with_revision", {
+            projectPath,
+            languagePath: child.path,
+          });
+          return {
+            languageId: child.language_id,
+            name: child.name,
+            ruleSets: loaded.config.rule_sets ?? [],
+          };
+        } catch (err) {
+          console.warn(`Failed to load child sound-change rules: ${err}`);
+          return null;
+        }
+      }),
+    ).then((loaded) => {
+      if (cancelled) return;
+      setChildConfigs(
+        loaded.filter(
+          (item): item is ChildScaConfig =>
+            item !== null && item.ruleSets.length > 0,
+        ),
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectPath, activeLanguageId, languages]);
 
   const calc = useMemo(() => {
     const trimmed = word.trim();
@@ -44,7 +110,34 @@ export const CommandCalcPreview: React.FC<CommandCalcPreviewProps> = ({ word }) 
       phonoConfig.phoneme_inventory.vowels,
       phonoConfig.phonotactics.macros,
     );
-    const sca = applySoundChanges(trimmed, scaConfig.rule_sets, macros);
+    // 超音段伪特征需要音节/重音上下文，缺失会导致「重读音节」类规则失效
+    const prosodyContext: SCAProsodyContext = {
+      phonotactics: phonoConfig.phonotactics,
+      inventory: phonoConfig.phoneme_inventory,
+      stress: phonoConfig.phonotactics.stress ?? null,
+    };
+    const sca = applySoundChanges(
+      trimmed,
+      scaConfig.rule_sets,
+      macros,
+      allPhonemes,
+      prosodyContext,
+    );
+    const childDerivations: ChildDerivation[] = childConfigs.map((child) => {
+      const derived = applySoundChanges(
+        trimmed,
+        child.ruleSets,
+        macros,
+        allPhonemes,
+        prosodyContext,
+      );
+      return {
+        languageId: child.languageId,
+        name: child.name,
+        result: derived.result,
+        steps: derived.changelog.length,
+      };
+    });
 
     return {
       tokens,
@@ -52,9 +145,10 @@ export const CommandCalcPreview: React.FC<CommandCalcPreviewProps> = ({ word }) 
       surface: traced.surface,
       syllabification,
       sca,
+      childDerivations,
       hasScaRules: scaConfig.rule_sets.some((ruleSet) => ruleSet.rules.length > 0),
     };
-  }, [word, phonoConfig, scaConfig]);
+  }, [word, phonoConfig, scaConfig, childConfigs]);
 
   if (!calc) {
     return (
@@ -106,19 +200,38 @@ export const CommandCalcPreview: React.FC<CommandCalcPreviewProps> = ({ word }) 
         <ScriptPreview text={word.trim()} className="text-xl leading-tight" />
       </div>
 
-      {calc.hasScaRules && (
+      {(calc.childDerivations.length > 0 || calc.hasScaRules) && (
         <div className="rounded border border-base-300 bg-base-200/40 px-2 py-1">
           <div className="text-[10px] uppercase tracking-wide text-base-content/50">
             {t("commandPalette.calcSca")}
           </div>
-          <div className="font-mono text-sm">
-            {word.trim()} → <span className="text-primary">{calc.sca.result}</span>
-            {calc.sca.changelog.length > 0 && (
-              <span className="ml-2 text-xs text-base-content/50">
-                {t("commandPalette.calcScaSteps", { count: calc.sca.changelog.length })}
-              </span>
-            )}
-          </div>
+          {calc.childDerivations.length > 0 ? (
+            <div className="space-y-0.5">
+              {calc.childDerivations.map((child) => (
+                <div key={child.languageId} className="font-mono text-sm">
+                  <span className={`${BADGE} badge-xs badge-ghost mr-1`}>
+                    {child.name}
+                  </span>
+                  {word.trim()} →{" "}
+                  <span className="text-primary">{child.result}</span>
+                  {child.steps > 0 && (
+                    <span className="ml-2 text-xs text-base-content/50">
+                      {t("commandPalette.calcScaSteps", { count: child.steps })}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="font-mono text-sm">
+              {word.trim()} → <span className="text-primary">{calc.sca.result}</span>
+              {calc.sca.changelog.length > 0 && (
+                <span className="ml-2 text-xs text-base-content/50">
+                  {t("commandPalette.calcScaSteps", { count: calc.sca.changelog.length })}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

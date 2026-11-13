@@ -459,6 +459,7 @@ export function applyAgglutinativeChain(
       current,
       slotRule,
       phonoConfig,
+      grammarConfig.morphophonology_rules ?? [],
     );
     if (applied) {
       stemStart += stem_start ?? 0;
@@ -515,7 +516,12 @@ export function applyFusionalInflection(
   );
 
   if (exactRule) {
-    const result = applyInflection(word, exactRule, phonoConfig);
+    const result = applyInflection(
+      word,
+      exactRule,
+      phonoConfig,
+      grammarConfig.morphophonology_rules ?? [],
+    );
     return { ...result, log: `fusional: ${result.log}` };
   }
 
@@ -549,7 +555,12 @@ export function applyInflectionTypologyAware(
         ),
       );
       if (rule) {
-        return applyInflection(word, rule, phonoConfig);
+        return applyInflection(
+          word,
+          rule,
+          phonoConfig,
+          grammarConfig.morphophonology_rules ?? [],
+        );
       }
       return {
         result: word,
@@ -598,7 +609,12 @@ export function applyInflectionTypologyAware(
           ),
       );
       if (rule) {
-        return applyInflection(word, rule, phonoConfig);
+        return applyInflection(
+          word,
+          rule,
+          phonoConfig,
+          grammarConfig.morphophonology_rules ?? [],
+        );
       }
       return { result: word, applied: false, log: "no matching rule" };
     }

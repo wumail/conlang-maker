@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { SCARuleSet, WordEntry } from "../../types";
+import type { PhonologyConfig, SCARuleSet, WordEntry } from "../../types";
 import { getWordSyncDigest } from "../engines/wordLifecycle";
 import { computePullSync } from "./pullSync";
 
@@ -254,5 +254,77 @@ describe("computePullSync workflow (T1.5)", () => {
     const plan = computePullSync({ parentLanguageId: "lang_parent", childLanguageId: "lang_child", parentWords: [parent], childWords: [child], scaRuleSets: intervocalicVoicing, macros });
     expect(plan.pending).toEqual([]);
     expect(plan.conflicts).toEqual([{ parentEntryId: "source", childEntryId: "source" }]);
+  });
+
+  test("weight-sensitive stress reaches the sound change applier via parentPhono", () => {
+    const stressedPhono: PhonologyConfig = {
+      language_id: "lang_parent",
+      phoneme_inventory: {
+        consonants: ["k", "g", "t", "n", "l"],
+        vowels: ["a", "ɑ", "i", "u"],
+      },
+      romanization_maps: [],
+      allophony_rules: [],
+      phonotactics: {
+        macros: { V: ["a", "ɑ", "i", "u"], C: ["k", "g", "t", "n", "l"] },
+        syllable_structure: "(C)V(C)",
+        blacklist_patterns: [],
+        vowel_harmony: { enabled: false, group_a: [], group_b: [] },
+        tone_system: { enabled: false, tones: [] },
+        stress: {
+          position: "weight_sensitive",
+          domain: "word",
+          weight_fallback: "penultimate",
+        },
+      },
+    };
+
+    const stressBacking: SCARuleSet[] = [
+      {
+        ruleset_id: "rs_stress",
+        name: "Stressed a backing",
+        order: 1,
+        rules: [
+          {
+            rule_id: "a_to_alpha_when_stressed",
+            description: "a > ɑ / [+stress]",
+            target: "",
+            replacement: "",
+            context_before: "",
+            context_after: "",
+            exceptions: [],
+            feature_mode: true,
+            target_features: { positive: ["vowel", "stressed"], negative: [] },
+            replacement_features: { set_features: ["back"], remove_features: ["front"] },
+            context_before_features: null,
+            context_after_features: null,
+          },
+        ],
+      },
+    ];
+
+    const parent = makeWord("w_stress", "lang_parent", "aka", "water");
+
+    const withProsody = computePullSync({
+      parentLanguageId: "lang_parent",
+      childLanguageId: "lang_child",
+      parentWords: [parent],
+      childWords: [],
+      scaRuleSets: stressBacking,
+      macros: {},
+      parentPhono: stressedPhono,
+    });
+    // penultimate fallback stresses the first syllable → a → ɑ
+    expect(withProsody.pending[0]?.word.con_word_romanized).toBe("ɑka");
+
+    const withoutProsody = computePullSync({
+      parentLanguageId: "lang_parent",
+      childLanguageId: "lang_child",
+      parentWords: [parent],
+      childWords: [],
+      scaRuleSets: stressBacking,
+      macros: {},
+    });
+    expect(withoutProsody.pending[0]?.word.con_word_romanized).toBe("aka");
   });
 });

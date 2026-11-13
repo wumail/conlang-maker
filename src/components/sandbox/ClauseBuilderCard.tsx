@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { AlertTriangle, GitBranch, ListTree } from "lucide-react";
 import type {
   ClauseNode,
-  PhraseTreeNode,
+  ClausePolarity,
   NPNode,
 } from "../../core/engines/phraseSandbox";
 import { linearizeClause, planToTree } from "../../core/engines/phraseSandbox";
@@ -12,34 +11,18 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { processSandboxText } from "../../utils/sandbox";
 import { NPBuilderRow } from "./NPBuilderRow";
+import { SandboxResultCard } from "./SandboxResultCard";
 import { BADGE, BTN_GHOST, INPUT_MONO, SELECT } from "../../lib/ui";
 import type { MorphosyntacticAlignment } from "../../types";
 
-const TreeNode: React.FC<{ node: PhraseTreeNode; depth?: number }> = ({
-  node,
-  depth = 0,
-}) => (
-  <li className="font-mono text-xs">
-    <span className={depth === 0 ? "text-primary" : "text-base-content/80"}>
-      {node.label}
-    </span>
-    {node.children.length > 0 && (
-      <ul className="ml-4 border-l border-base-300 pl-2 space-y-0.5">
-        {node.children.map((child, index) => (
-          <TreeNode key={`${child.label}:${index}`} node={child} depth={depth + 1} />
-        ))}
-      </ul>
-    )}
-  </li>
-);
-
 const DEFAULT_CLAUSE: ClauseNode = {
-  subject: { head: "dog", determiner: "the", adjectives: ["big"] },
+  subject: { head: "dog", determiner: "the", adjectives: ["big"], number: "SG" },
   verb: { gloss: "bite", tam: ["PST"] },
-  object: { head: "bone", determiner: "the" },
+  object: { head: "bone", determiner: "the", number: "SG" },
+  polarity: "affirmative",
 };
 
-/** 结构化句法台：主语 NP / 动词 TAM / 宾语 NP / 斜格 PP */
+/** 结构化句法台：主语 NP / 动词 TAM / 宾语 NP / 斜格 PP / 极性 */
 export function ClauseBuilderCard() {
   const { t } = useTranslation();
   const wordsMap = useLexiconStore((state) => state.wordsMap);
@@ -106,6 +89,25 @@ export function ClauseBuilderCard() {
             <option value="tripartite">{t("grammar.alignTripartite")}</option>
           </select>
         </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-[10px] uppercase tracking-wide text-base-content/50">
+            {t("sandbox.clause.polarity")}
+          </span>
+          <select
+            className={`${SELECT} w-36`}
+            value={clause.polarity ?? "affirmative"}
+            onChange={(event) =>
+              setClause((prev) => ({
+                ...prev,
+                polarity: event.target.value as ClausePolarity,
+              }))
+            }
+            data-testid="clause-polarity"
+          >
+            <option value="affirmative">{t("sandbox.clause.affirmative")}</option>
+            <option value="negative">{t("sandbox.clause.negative")}</option>
+          </select>
+        </label>
         <div className="flex flex-wrap items-center gap-1.5 pb-1">
           <span className={`${BADGE} badge-ghost`}>{grammarConfig.syntax.word_order}</span>
           <span className={`${BADGE} badge-ghost`}>
@@ -127,6 +129,7 @@ export function ClauseBuilderCard() {
           value={clause.subject}
           onChange={(next) => patchNP("subject", next)}
           showPossessor
+          showNumber
         />
         {hasObject && clause.object && (
           <NPBuilderRow
@@ -135,6 +138,7 @@ export function ClauseBuilderCard() {
             onChange={(next) => patchNP("object", next)}
             showPossessor
             showPP
+            showNumber
           />
         )}
       </div>
@@ -198,80 +202,11 @@ export function ClauseBuilderCard() {
       </div>
 
       {rendered && (
-        <div className="rounded-lg border border-base-200 bg-base-200/50 p-3 space-y-3">
-          <div className="overflow-x-auto">
-            <table className="border-collapse">
-              <tbody>
-                <tr>
-                  {rendered.tokens.map((token, index) => (
-                    <td
-                      key={`s:${index}`}
-                      className="pr-5 pb-0.5 font-mono font-bold text-primary text-lg whitespace-nowrap"
-                    >
-                      {token.conlang}
-                    </td>
-                  ))}
-                </tr>
-                <tr>
-                  {rendered.tokens.map((_token, index) => {
-                    const word = rendered.plan.words[index];
-                    return (
-                      <td
-                        key={`g:${index}`}
-                        className="pr-5 pb-0.5 font-mono text-xs text-base-content/70 whitespace-nowrap"
-                      >
-                        {word?.gloss}
-                        {word && word.tags.length > 0 && (
-                          <span className="text-purple-600">-{word.tags.join("-")}</span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-                <tr>
-                  {rendered.tokens.map((token, index) => (
-                    <td
-                      key={`i:${index}`}
-                      className="pr-5 font-mono text-xs text-success whitespace-nowrap"
-                    >
-                      {token.ipa}
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          {rendered.plan.warnings.map((warning) => (
-            <p key={warning} className="text-xs text-warning flex items-center gap-1.5">
-              <AlertTriangle className="w-3.5 h-3.5" />
-              {warning}
-            </p>
-          ))}
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <h4 className="text-xs font-semibold text-base-content/70 mb-1 flex items-center gap-1.5">
-                <GitBranch className="w-3.5 h-3.5" />
-                {t("sandbox.clause.steps")}
-              </h4>
-              <ol className="list-decimal list-inside text-[11px] text-base-content/60 space-y-0.5 font-mono">
-                {rendered.plan.steps.map((step) => (
-                  <li key={step}>{step}</li>
-                ))}
-              </ol>
-            </div>
-            <div>
-              <h4 className="text-xs font-semibold text-base-content/70 mb-1 flex items-center gap-1.5">
-                <ListTree className="w-3.5 h-3.5" />
-                {t("sandbox.clause.tree")}
-              </h4>
-              <ul className="space-y-0.5">
-                <TreeNode node={rendered.tree} />
-              </ul>
-            </div>
-          </div>
-        </div>
+        <SandboxResultCard
+          plan={rendered.plan}
+          tokens={rendered.tokens}
+          tree={rendered.tree}
+        />
       )}
     </div>
   );

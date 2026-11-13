@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { GrammarConfig, PhonologyConfig, WordEntry } from "../../types";
+import type { GlossedLine, GrammarConfig, PhonologyConfig, WordEntry } from "../../types";
 import {
   applySuggestionToLines,
   autoGloss,
   AutoGlossCache,
+  reGlossLineUnresolvedTokens,
   resolveEntryIpa,
 } from "./autoGloss";
 
@@ -253,5 +254,82 @@ describe("autoGloss workflow (T1.6)", () => {
     const decomposed = autoGloss({ originalText: "kākanasi".normalize("NFD"), words, grammar: compiled, phono: stressed });
     expect(decomposed.report.unresolved).toBe(0);
     expect(decomposed.lines[0]?.tokens[0]?.ipa).toBe("/kaːˈkanasi/");
+  });
+
+  test("re-glossing one line keeps manual annotations and never rewrites other lines (F1.5)", () => {
+    const manualLine: GlossedLine = {
+      line_id: "line_1",
+      original: "Kana",
+      translation: "hand translated",
+      tokens: [
+        {
+          token_id: "tok_manual",
+          surface_form: "Kana",
+          morpheme_break: "ka-na",
+          gloss_labels: "CUSTOM.GLOSS",
+          linked_entry_id: "e_kana",
+          ipa: "/ˈkana/",
+        },
+      ],
+    };
+    const newWordLine: GlossedLine = {
+      line_id: "line_2",
+      original: "Kana sani",
+      translation: "",
+      tokens: [
+        {
+          token_id: "tok_keep",
+          surface_form: "Kana",
+          morpheme_break: "kana",
+          gloss_labels: "KEEP.ME",
+          linked_entry_id: "e_kana",
+          ipa: "/kana/",
+        },
+        {
+          token_id: "tok_new",
+          surface_form: "sani",
+          morpheme_break: "sani",
+          gloss_labels: "",
+          linked_entry_id: "",
+          ipa: "",
+        },
+      ],
+    };
+
+    const newEntry: WordEntry = {
+      entry_id: "e_sani",
+      language_id: "lang_root",
+      con_word_romanized: "sani",
+      phonetic_ipa: "",
+      phonetic_override: false,
+      senses: [
+        { sense_id: "s9", pos_id: "pos_n", gloss: "song", definitions: [], examples: [] },
+      ],
+      etymology: {
+        origin_type: "a_priori",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+      },
+      metadata: { tags: [], created_at: "", updated_at: "" },
+    };
+    const withNewWord = [...words, newEntry];
+
+    const untouched = reGlossLineUnresolvedTokens(manualLine, withNewWord, grammar, phono);
+    expect(untouched.tokens).toEqual(manualLine.tokens);
+    expect(untouched.translation).toBe("hand translated");
+
+    const refreshed = reGlossLineUnresolvedTokens(newWordLine, withNewWord, grammar, phono);
+    expect(refreshed.tokens[0]).toEqual(newWordLine.tokens[0]);
+    expect(refreshed.tokens[1]).toMatchObject({
+      token_id: "tok_new",
+      surface_form: "sani",
+      morpheme_break: "sani",
+      gloss_labels: "song",
+      linked_entry_id: "e_sani",
+      ipa: "/sani/",
+    });
+    expect(refreshed.original).toBe("Kana sani");
   });
 });

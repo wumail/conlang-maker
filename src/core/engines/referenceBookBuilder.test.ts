@@ -10,8 +10,11 @@ import {
   buildReferenceBookTypst,
   escapeHtml,
   escapeTypst,
+  textToFontText,
+  wordToFontText,
   type ReferenceBookOptions,
 } from "./referenceBookBuilder";
+import { buildFontInputIndex } from "./fontInput";
 
 function word(id: string, form: string, gloss: string, ipa = ""): WordEntry {
   return {
@@ -305,8 +308,161 @@ describe("buildReferenceBookHtml", () => {
   });
 });
 
-describe("buildReferenceBookTypst", () => {
-  test("emits headings, tables and escaped content", () => {
+describe("buildReferenceBookHtml: native script rendering", () => {
+  const fontInputPhono: PhonologyConfig = {
+    ...phono,
+    font_features: ["ss01=1"],
+    font_input: {
+      phonemes: { k: "K", a: "A", s: "S", t: "T" },
+      vowels: ["a"],
+      multigraphs: [],
+      separator: "",
+    },
+  };
+
+  function nativeWord(): WordEntry {
+    return {
+      ...word("w1", "kasa", "house", "kasa"),
+      phonetic_override: true,
+      phonetic_ipa: "kasa",
+    };
+  }
+
+  test("injects font-feature-settings into the .conlang rule", () => {
+    const html = buildReferenceBookHtml(options({ phono: fontInputPhono }));
+    expect(html).toMatch(/\.conlang\s*\{[^}]*font-feature-settings:[^}]*"ss01" 1/);
+    expect(html).toMatch(/\.conlang\s*\{[^}]*"liga" 1/);
+  });
+
+  test("selects the font format from the MIME type or file name", () => {
+    const ttf = buildReferenceBookHtml(
+      options({ fontBase64: "AAABAAE=", fontMime: "font/ttf" }),
+    );
+    expect(ttf).toContain('format("truetype")');
+
+    const otf = buildReferenceBookHtml(
+      options({ fontBase64: "AAABAAE=", fontMime: "font/otf" }),
+    );
+    expect(otf).toContain('format("opentype")');
+    expect(otf).toContain("data:font/otf;base64,AAABAAE=");
+
+    const byName = buildReferenceBookHtml(
+      options({ fontBase64: "AAABAAE=", fontMime: "font/ttf", fontFileName: "Script.OTF" }),
+    );
+    expect(byName).toContain('format("opentype")');
+  });
+
+  test("converts lexical headwords and free text through the font input index", () => {
+    const entry = nativeWord();
+    const index = buildFontInputIndex([entry], grammar, fontInputPhono);
+    expect(wordToFontText(entry, fontInputPhono, index)).toBe("KASA");
+    expect(textToFontText("kasa", fontInputPhono, index)).toBe("KASA");
+    expect(textToFontText("kasa", phono, null)).toBe("");
+
+    const html = buildReferenceBookHtml(
+      options({
+        phono: fontInputPhono,
+        words: [entry],
+        fontBase64: "AAABAAE=",
+        fontMime: "font/ttf",
+      }),
+    );
+    expect(html).toContain('<span class="conlang native-headword">KASA</span>');
+  });
+
+  test("writes both the native headword and the romanized headword", () => {
+    const html = buildReferenceBookHtml(options({ words: [word("w1", "kasa", "house")] }));
+    expect(html).toContain('<span class="conlang native-headword">kasa</span> <span class="headword">kasa</span>');
+  });
+
+  test("renders a native corpus line above the romanized transcription", () => {
+    const html = buildReferenceBookHtml(
+      options({
+        phono: fontInputPhono,
+        words: [nativeWord()],
+        fontBase64: "AAABAAE=",
+        fontMime: "font/ttf",
+      }),
+    );
+    const corpus = html.slice(html.indexOf('id="corpus"'), html.indexOf('id="dictionary"'));
+    expect(corpus).toContain('<div class="conlang native-line">KASA  TA</div>');
+    expect(corpus).toContain('<div class="romanized">kasa  ta</div>');
+  });
+
+  test("covers every sense, concept label and etymology in the reverse index", () => {
+    const multiSense: WordEntry = {
+      ...word("w9", "mira", "sea"),
+      senses: [
+        {
+          sense_id: "s_sea",
+          pos_id: "pos_noun",
+          gloss: "sea",
+          definitions: [],
+          examples: [],
+          concept_id: "custom_sea",
+        },
+        {
+          sense_id: "s_ocean",
+          pos_id: "pos_noun",
+          gloss: "ocean",
+          definitions: [],
+          examples: [],
+        },
+      ],
+    };
+    const html = buildReferenceBookHtml(
+      options({
+        words: [multiSense],
+        concepts: [
+          {
+            concept_id: "custom_sea",
+            gloss_en: "sea",
+            gloss_zh: "海",
+            semantic_field: "nature",
+          },
+        ],
+      }),
+    );
+    const reverse = html.slice(html.indexOf('id="reverse"'));
+    expect(reverse).toContain(">sea<");
+    expect(reverse).toContain(">ocean<");
+    expect(reverse).toContain(">海<");
+    expect(html).toContain('class="concept"');
+  });
+
+  test("adds compound etymology and the first example to a dictionary entry", () => {
+    const head = word("w1", "kasa", "house");
+    const modifier = word("w2", "sata", "stone");
+    const compound: WordEntry = {
+      ...word("w3", "kasata", "stone house"),
+      etymology: {
+        origin_type: "derived",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+        components: [
+          { entry_id: "w2", relation: "modifier" },
+          { entry_id: "w1", relation: "head" },
+        ],
+      },
+      senses: [
+        {
+          sense_id: "s_compound",
+          pos_id: "pos_noun",
+          gloss: "stone house",
+          definitions: [],
+          examples: ["kasa sata tami"],
+        },
+      ],
+    };
+    const html = buildReferenceBookHtml(options({ words: [head, modifier, compound] }));
+    expect(html).toContain('<div class="etym">&lt; sata + kasa</div>');
+    expect(html).toContain('<div class="example">‘kasa sata tami’</div>');
+  });
+});
+
+describe("buildReferenceBookTypst", () => {  test("emits headings, tables and escaped content", () => {
     const typst = buildReferenceBookTypst(
       options({ words: [word("w1", "ka#sa", "hash # gloss")] }),
     );

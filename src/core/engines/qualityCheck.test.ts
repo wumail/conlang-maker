@@ -246,6 +246,53 @@ describe("runQualityCheck: vowelHarmonyViolation", () => {
     const off = phonologyWith("(C)V(C)", { vowel_harmony: { ...harmony, enabled: false } });
     expect(runQualityCheck([word("w1", "take")], off, grammar, only("vowelHarmonyViolation"))).toHaveLength(0);
   });
+
+  test("skips whole-word checking for compounds built from two checked roots", () => {
+    const phono = phonologyWith("(C)V(C)", { vowel_harmony: harmony });
+    const rootA = word("root_a", "tako");
+    const rootB = word("root_b", "tiki");
+    const compound = word("compound", "takotiki", {
+      etymology: {
+        origin_type: "derived",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+        components: [
+          { entry_id: "root_a", relation: "root" },
+          { entry_id: "root_b", relation: "head" },
+        ],
+      },
+    });
+    const issues = runQualityCheck(
+      [rootA, rootB, compound],
+      phono,
+      grammar,
+      only("vowelHarmonyViolation"),
+    );
+    expect(issues.filter((issue) => issue.entry_id === "compound")).toEqual([]);
+  });
+
+  test("still flags a monomorphemic word and compounds with unknown components", () => {
+    const phono = phonologyWith("(C)V(C)", { vowel_harmony: harmony });
+    expect(runQualityCheck([word("w1", "taki")], phono, grammar, only("vowelHarmonyViolation"))).toHaveLength(1);
+
+    const orphan = word("orphan", "takotiki", {
+      etymology: {
+        origin_type: "derived",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+        components: [
+          { entry_id: "ghost_a", relation: "root" },
+          { entry_id: "ghost_b", relation: "root" },
+        ],
+      },
+    });
+    const issues = runQualityCheck([orphan], phono, grammar, only("vowelHarmonyViolation"));
+    expect(issues.map((issue) => issue.entry_id)).toEqual(["orphan"]);
+  });
 });
 
 describe("runQualityCheck: homophonyClash", () => {
@@ -278,6 +325,25 @@ describe("runQualityCheck: homophonyClash", () => {
     const phono = phonologyWith("(C)V(C)", {});
     const entries = [word("w1", "taka"), word("w1", "taka")];
     expect(runQualityCheck(entries, phono, grammar, only("homophonyClash"))).toHaveLength(0);
+  });
+
+  test("reports each clashing entry once even with several senses of the same POS", () => {
+    const phono = phonologyWith("(C)V(C)", {}, [
+      { input: "c", output: "k" },
+      { input: "k", output: "k" },
+      { input: "a", output: "a" },
+    ]);
+    const first = word("w1", "caka");
+    first.senses.push({
+      sense_id: "sense_extra",
+      pos_id: "noun",
+      gloss: "second gloss",
+      definitions: [],
+      examples: [],
+    });
+    const issues = runQualityCheck([first, word("w2", "kaka")], phono, grammar, only("homophonyClash"));
+    expect(issues).toHaveLength(2);
+    expect(new Set(issues.map((issue) => issue.entry_id)).size).toBe(2);
   });
 });
 

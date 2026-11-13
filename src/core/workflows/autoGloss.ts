@@ -4,6 +4,7 @@ import {
   GlossToken,
   GrammarConfig,
   InflectionRule,
+  MorphophonologyRule,
   PhonologyConfig,
   SCARuleSet,
   WordEntry,
@@ -122,6 +123,7 @@ function defaultCreateTokenId(): string {
 function buildTransformCacheSignature(
   wordsList: WordEntry[],
   rules: InflectionRule[],
+  morphophonologyRules: readonly MorphophonologyRule[] = [],
 ): string {
   const wordSig = wordsList
     .map(
@@ -137,7 +139,13 @@ function buildTransformCacheSignature(
         )}`,
     )
     .join("|");
-  return `${wordSig}##${ruleSig}`;
+  const morphoSig = morphophonologyRules
+    .map(
+      (r) =>
+        `${r.rule_id}:${r.disabled}:${r.priority}:${r.feature_mode}:${r.target}:${r.replacement}:${r.context_before}:${r.context_after}`,
+    )
+    .join("|");
+  return `${wordSig}##${ruleSig}##${morphoSig}`;
 }
 
 function buildRuleLabel(
@@ -425,6 +433,7 @@ export function buildTransformativeIndex(
   rules: InflectionRule[],
   valueGlossMap: Map<string, string>,
   phonoConfig: PhonologyConfig,
+  morphophonologyRules: readonly MorphophonologyRule[] = [],
 ): Map<string, ParsedInflection[]> {
   const index = new Map<string, ParsedInflection[]>();
 
@@ -434,7 +443,12 @@ export function buildTransformativeIndex(
 
     for (const rule of rules) {
       if (!matchesPos(rule, entry)) continue;
-      const { result, applied, stem_start } = applyInflection(stem, rule, phonoConfig);
+      const { result, applied, stem_start } = applyInflection(
+        stem,
+        rule,
+        phonoConfig,
+        morphophonologyRules,
+      );
       if (!applied) continue;
 
       const form = normalizeToken(result);
@@ -501,6 +515,7 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
   const transformSignature = buildTransformCacheSignature(
     wordsList,
     nonConcatRules,
+    grammarConfig.morphophonology_rules ?? [],
   );
   let transformativeIndex = cache?.transformIndex;
   if (!transformativeIndex || cache?.transformSignature !== transformSignature) {
@@ -509,6 +524,7 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
       nonConcatRules,
       valueGlossMap,
       phonoConfig,
+      grammarConfig.morphophonology_rules ?? [],
     );
     if (cache) {
       cache.transformSignature = transformSignature;
@@ -676,6 +692,48 @@ export function resolveInflectedIpa(
 ): string {
   const generated = generateIPA(normalizeToken(surfaceForm), config, { stem_start: stemStart });
   return generated.phonemic;
+}
+
+/**
+ * 只重标一行里「尚未解析」的 token（F1.5）。
+ *
+ * 已经绑定词条且带非空标注（且不是 `?`）的 token 原样保留，避免新建词条时
+ * 把整篇手工标注推倒重算。
+ */
+export function reGlossLineUnresolvedTokens(
+  line: GlossedLine,
+  words: WordEntry[],
+  grammarConfig: GrammarConfig,
+  phonoConfig: PhonologyConfig,
+  cache?: AutoGlossCache,
+): GlossedLine {
+  const tokens = line.tokens.map((token) => {
+    const labels = (token.gloss_labels ?? "").trim();
+    const bound = Boolean(token.linked_entry_id) && labels !== "" && labels !== "?";
+    if (bound) return token;
+    const surface = (token.surface_form ?? "").trim();
+    if (!surface) return token;
+
+    const reglossed = autoGloss({
+      originalText: surface,
+      words,
+      grammar: grammarConfig,
+      phono: phonoConfig,
+      cache,
+      createLineId: () => line.line_id,
+      createTokenId: () => token.token_id,
+    });
+    const candidate = reglossed.lines[0]?.tokens[0];
+    if (!candidate?.linked_entry_id || !candidate.gloss_labels) return token;
+    return {
+      ...token,
+      morpheme_break: candidate.morpheme_break,
+      gloss_labels: candidate.gloss_labels,
+      linked_entry_id: candidate.linked_entry_id,
+      ipa: candidate.ipa,
+    };
+  });
+  return { ...line, tokens };
 }
 
 function makeContextSnippet(text: string, start: number, end: number): string {

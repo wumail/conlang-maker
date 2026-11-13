@@ -1,16 +1,18 @@
 /**
- * phraseSandbox.ts — 递归短语树与格对齐句法台（T3.3）
+ * phraseSandbox.ts — 递归短语树与格对齐句法台（T3.3 / F4.3）
  *
- * 三阶段线性化：
+ * 四阶段线性化：
  *   1. 论元格对齐分配（nom_acc / erg_abs / tripartite）
- *   2. 核心与依附成分的一致关系传播（格标记只落在 NP 中心语）
- *   3. 递归语序展开（NP 修饰语 + PP 嵌套）并交给上层渲染形态音位
+ *   2. 中心语标记类型（head_marking）决定格标记落在名词、动词还是双标
+ *   3. 核心与依附成分的一致关系传播（数 / 格的形容词协变）
+ *   4. 递归语序展开（NP 修饰语 + PP 嵌套）并交给上层渲染形态音位
  *
  * 与旧 `sandbox.reorderBySyntax` 的关键差别：每个 NPNode 独立持有自己的
  * 限定词、数词、形容词与属格领属者，不再把所有 Mod 串绑到宾语上。
  */
 import type {
   GrammarConfig,
+  HeadMarking,
   InflectionDimension,
   MorphosyntacticAlignment,
 } from "../../types";
@@ -19,9 +21,13 @@ export type Alignment = MorphosyntacticAlignment;
 export type CaseRole = "nom" | "acc" | "erg" | "abs" | "gen";
 export type ArgumentRole = "S" | "A" | "P";
 
+export type ClausePolarity = "affirmative" | "negative";
+
 export interface NPNode {
   /** 词条释义（查找键） */
   head: string;
+  /** 数范畴的维度值 gloss（如 SG / PL），由语法维度解析后注入中心语标签链 */
+  number?: string;
   determiner?: string;
   numeral?: string;
   adjectives?: string[];
@@ -48,6 +54,8 @@ export interface ClauseNode {
   verb: VerbNode;
   object?: NPNode;
   obliques?: PPNode[];
+  /** 极性；缺省视为 affirmative */
+  polarity?: ClausePolarity;
 }
 
 export type PhraseRole =
@@ -59,7 +67,8 @@ export type PhraseRole =
   | "DET"
   | "NUM"
   | "ADJ"
-  | "POSS";
+  | "POSS"
+  | "NEG";
 
 export interface PhraseWord {
   gloss: string;
@@ -74,6 +83,8 @@ export interface PhraseWord {
 
 export interface PhrasePlan {
   alignment: Alignment;
+  /** 中心语标记类型；决定格标记落点 */
+  headMarking: HeadMarking;
   caseTags: Record<ArgumentRole, string | null>;
   /** 最终线性顺序 */
   words: PhraseWord[];
@@ -134,6 +145,63 @@ function isCaseDimension(dim: InflectionDimension): boolean {
   );
 }
 
+const NUMBER_GLOSS_HINTS = ["SG", "PL", "DU", "SING", "PLUR", "DUAL"];
+
+/** 维度名或维度值暗示「数」范畴 */
+function isNumberDimension(dim: InflectionDimension): boolean {
+  if (dim.name.toLowerCase().includes("number") || dim.name.includes("数")) {
+    return true;
+  }
+  return dim.values.some((value) =>
+    NUMBER_GLOSS_HINTS.includes((value.gloss || "").trim().toUpperCase()),
+  );
+}
+
+/**
+ * 把 NPNode.number 解析为语法中的数维度值。
+ * 未在语法中登记时按原样注入 gloss，便于作者先写句后补范式。
+ */
+export function resolveNumberDimensionValue(
+  grammar: GrammarConfig,
+  number: string | undefined,
+): { dimId: string; gloss: string } | null {
+  const wanted = number?.trim();
+  if (!wanted) return null;
+  const upper = wanted.toUpperCase();
+  for (const dim of grammar.inflection_dimensions) {
+    if (!isNumberDimension(dim)) continue;
+    const value = dim.values.find(
+      (item) =>
+        (item.gloss || item.name).trim().toUpperCase() === upper ||
+        item.val_id.trim().toUpperCase() === upper ||
+        item.name.trim().toUpperCase() === upper,
+    );
+    if (value) return { dimId: dim.dim_id, gloss: (value.gloss || value.name).trim() };
+  }
+  return { dimId: "", gloss: wanted };
+}
+
+/** 形容词词性的 pos_id（形容词协变的前置条件） */
+function findAdjectivePosId(grammar: GrammarConfig): string | null {
+  const pos = grammar.parts_of_speech.find((item) => {
+    const abbr = item.gloss_abbr.trim().toLowerCase();
+    const name = item.name.toLowerCase();
+    return abbr === "adj" || name.includes("adjective") || item.name.includes("形容词");
+  });
+  return pos?.pos_id ?? null;
+}
+
+/** 维度是否作用于给定词性（用于格 / 数的形容词协变） */
+function dimensionAppliesTo(
+  grammar: GrammarConfig,
+  dimId: string | null,
+  posId: string | null,
+): boolean {
+  if (!dimId || !posId) return false;
+  const dim = grammar.inflection_dimensions.find((item) => item.dim_id === dimId);
+  return dim ? dim.applies_to_pos.includes(posId) : false;
+}
+
 /** 按对齐类型把 S/A/P 映射到具体格角色 */
 export function assignCaseRoles(
   alignment: Alignment,
@@ -149,12 +217,46 @@ export function assignCaseRoles(
   return argument === "P" ? "acc" : "nom";
 }
 
+interface NegativeMarker {
+  kind: "affix" | "particle";
+  tag: string;
+}
+
+/**
+ * 查找否定标记：优先动词词缀规则（tag = NEG），其次极性维度的 NEG 值，
+ * 都没有时退化为独立否定小词。
+ */
+export function resolveNegativeMarker(grammar: GrammarConfig): NegativeMarker {
+  const rule = grammar.inflection_rules.find(
+    (item) => !item.disabled && item.tag.trim().toUpperCase() === "NEG",
+  );
+  if (rule) return { kind: "affix", tag: rule.tag.trim().toUpperCase() };
+
+  for (const dim of grammar.inflection_dimensions) {
+    const name = dim.name.toLowerCase();
+    if (!name.includes("polarity") && !name.includes("negat") && !dim.name.includes("极性")) {
+      continue;
+    }
+    const value = dim.values.find(
+      (item) => (item.gloss || item.name).trim().toUpperCase() === "NEG",
+    );
+    if (value) {
+      return { kind: "affix", tag: (value.gloss || value.name).trim().toUpperCase() };
+    }
+  }
+  return { kind: "particle", tag: "NEG" };
+}
+
 interface LinearizeContext {
   beforeHead: boolean;
   preposition: boolean;
   caseTags: Record<ArgumentRole, string | null>;
   /** 属格标记（用于递归领属者） */
   genTag: string | null;
+  genDimId: string | null;
+  headMarking: HeadMarking;
+  grammar: GrammarConfig;
+  adjPosId: string | null;
 }
 
 function linearizeNP(
@@ -163,8 +265,26 @@ function linearizeNP(
   path: string,
   argument: ArgumentRole | null,
   caseTag: string | null,
+  caseDimId: string | null,
   isPossessor = false,
 ): PhraseWord[] {
+  const { grammar, adjPosId } = context;
+  const number = resolveNumberDimensionValue(grammar, np.number);
+  // 中心语标记只搬移论元格；属格是名词内部的依附标记，head 模式下仍留在领属者上
+  const marksCaseOnHead =
+    context.headMarking === "dependent" ||
+    context.headMarking === "double" ||
+    (isPossessor && context.headMarking === "head");
+
+  // 形容词协变：语法里同维度也作用于形容词词性时，格 / 数同步落到修饰语上
+  const modifierTags: string[] = [];
+  if (number && dimensionAppliesTo(grammar, number.dimId, adjPosId)) {
+    modifierTags.push(number.gloss);
+  }
+  if (marksCaseOnHead && caseTag && dimensionAppliesTo(grammar, caseDimId, adjPosId)) {
+    modifierTags.push(caseTag);
+  }
+
   const modifiers: PhraseWord[] = [];
   if (np.determiner) {
     modifiers.push({
@@ -192,7 +312,7 @@ function linearizeNP(
       role: "ADJ",
       argument,
       caseTag: null,
-      tags: [],
+      tags: [...modifierTags],
       path: `${path}.adj[${index}]`,
     });
   });
@@ -204,16 +324,21 @@ function linearizeNP(
         `${path}.possessor`,
         argument,
         context.genTag,
+        context.genDimId,
         true,
       )
     : [];
+
+  const headTags: string[] = [];
+  if (marksCaseOnHead && caseTag) headTags.push(caseTag);
+  if (number) headTags.push(number.gloss);
 
   const head: PhraseWord = {
     gloss: np.head,
     role: isPossessor ? "POSS" : (argument ?? "P"),
     argument,
-    caseTag,
-    tags: caseTag ? [caseTag] : [],
+    caseTag: marksCaseOnHead ? caseTag : null,
+    tags: headTags,
     path,
   };
 
@@ -237,7 +362,14 @@ function linearizePP(
     tags: [],
     path: `${path}.adp`,
   };
-  const objectWords = linearizeNP(pp.object, context, `${path}.object`, null, null);
+  const objectWords = linearizeNP(
+    pp.object,
+    context,
+    `${path}.object`,
+    null,
+    null,
+    null,
+  );
   return context.preposition
     ? [adposition, ...objectWords]
     : [...objectWords, adposition];
@@ -249,34 +381,49 @@ export function linearizeClause(
   grammar: GrammarConfig,
 ): PhrasePlan {
   const alignment = grammar.syntax.alignment ?? "nom_acc";
+  const headMarking: HeadMarking = grammar.typology?.head_marking ?? "dependent";
   const transitive = clause.object !== undefined;
   const warnings: string[] = [];
   const steps: string[] = [];
 
   const roles: ArgumentRole[] = transitive ? ["S", "A", "P"] : ["S"];
   const caseTags: Record<ArgumentRole, string | null> = { S: null, A: null, P: null };
-  for (const role of roles) {
-    const caseRole = assignCaseRoles(alignment, role);
-    const resolved = resolveCaseDimensionValue(grammar, caseRole);
-    caseTags[role] = resolved?.gloss ?? null;
-    if (resolved) {
-      steps.push(
-        `${role} → ${caseRole.toUpperCase()} (${resolved.dimId}/${resolved.valId} = ${resolved.gloss})`,
+  const caseDims: Record<ArgumentRole, string | null> = { S: null, A: null, P: null };
+
+  if (headMarking === "none") {
+    steps.push(
+      "Head marking none: case affixes suppressed, word order and adpositions carry the roles",
+    );
+  } else {
+    for (const role of roles) {
+      const caseRole = assignCaseRoles(alignment, role);
+      const resolved = resolveCaseDimensionValue(grammar, caseRole);
+      caseTags[role] = resolved?.gloss ?? null;
+      caseDims[role] = resolved?.dimId ?? null;
+      if (resolved) {
+        steps.push(
+          `${role} → ${caseRole.toUpperCase()} (${resolved.dimId}/${resolved.valId} = ${resolved.gloss})`,
+        );
+      }
+    }
+    const missing = roles.filter((role) => caseTags[role] === null);
+    if (missing.length > 0) {
+      warnings.push(
+        `No case dimension value found for ${missing.join(", ")}; those arguments stay unmarked.`,
       );
     }
   }
-  const missing = roles.filter((role) => caseTags[role] === null);
-  if (missing.length > 0) {
-    warnings.push(
-      `No case dimension value found for ${missing.join(", ")}; those arguments stay unmarked.`,
-    );
-  }
 
+  const gen = resolveCaseDimensionValue(grammar, "gen");
   const context: LinearizeContext = {
     beforeHead: grammar.syntax.modifier_position === "before_head",
     preposition: grammar.syntax.adposition_type === "preposition",
     caseTags,
-    genTag: resolveCaseDimensionValue(grammar, "gen")?.gloss ?? null,
+    genTag: gen?.gloss ?? null,
+    genDimId: gen?.dimId ?? null,
+    headMarking,
+    grammar,
+    adjPosId: findAdjectivePosId(grammar),
   };
 
   const subjectRole: ArgumentRole = transitive ? "A" : "S";
@@ -286,22 +433,58 @@ export function linearizeClause(
     "subject",
     subjectRole,
     caseTags[subjectRole],
+    caseDims[subjectRole],
   );
 
   const objectWords = clause.object
-    ? linearizeNP(clause.object, context, "object", "P", caseTags.P)
+    ? linearizeNP(clause.object, context, "object", "P", caseTags.P, caseDims.P)
     : [];
 
-  const verbWords: PhraseWord[] = [
-    {
-      gloss: clause.verb.gloss,
-      role: "V",
-      argument: null,
-      caseTag: null,
-      tags: clause.verb.tam ?? [],
-      path: "verb",
-    },
-  ];
+  const verbTags: string[] = [...(clause.verb.tam ?? [])];
+
+  // 中心语标记：论元格标记汇入动词标签链（head / double）
+  if (headMarking === "head" || headMarking === "double") {
+    const indexedRoles: ArgumentRole[] = transitive ? ["A", "P"] : ["S"];
+    for (const role of indexedRoles) {
+      const tag = caseTags[role];
+      if (!tag) continue;
+      verbTags.push(`${role}:${tag}`);
+      steps.push(`Head marking: verb indexes ${role} → ${role}:${tag}`);
+    }
+    if (headMarking === "double") {
+      steps.push("Head marking double: case appears on both NPs and the verb");
+    }
+  }
+
+  // 极性：否定句自动挂接 NEG 词缀，或退化为独立否定小词
+  let negator: PhraseWord | null = null;
+  if (clause.polarity === "negative") {
+    const marker = resolveNegativeMarker(grammar);
+    if (marker.kind === "affix") {
+      verbTags.push(marker.tag);
+      steps.push(`Negative polarity: verb suffix/affix ${marker.tag}`);
+    } else {
+      negator = {
+        gloss: marker.tag,
+        role: "NEG",
+        argument: null,
+        caseTag: null,
+        tags: [],
+        path: "neg",
+      };
+      steps.push(`Negative polarity: independent negator ${marker.tag} before the verb`);
+    }
+  }
+
+  const verbWord: PhraseWord = {
+    gloss: clause.verb.gloss,
+    role: "V",
+    argument: null,
+    caseTag: null,
+    tags: verbTags,
+    path: "verb",
+  };
+  const verbWords: PhraseWord[] = negator ? [negator, verbWord] : [verbWord];
 
   const groups: Record<"S" | "V" | "O", PhraseWord[]> = {
     S: subjectWords,
@@ -334,6 +517,7 @@ export function linearizeClause(
 
   return {
     alignment,
+    headMarking,
     caseTags,
     words,
     glossLine: words
@@ -354,18 +538,21 @@ export interface PhraseTreeNode {
 /** 把计划还原为嵌套树（供 UI 展示结构） */
 export function planToTree(clause: ClauseNode, plan: PhrasePlan): PhraseTreeNode {
   const byPath = new Map(plan.words.map((word) => [word.path, word]));
+  const label = (word: PhraseWord | undefined): string => {
+    if (!word) return "";
+    return word.tags.length > 0
+      ? `${word.gloss}-${word.tags.join("-")}`
+      : word.gloss;
+  };
   const npChildren = (np: NPNode, path: string): PhraseTreeNode[] => {
     const children: PhraseTreeNode[] = [];
     const head = byPath.get(path);
     if (head) {
-      children.push({
-        label: `${head.gloss}${head.caseTag ? `-${head.caseTag}` : ""}`,
-        children: [],
-      });
+      children.push({ label: label(head), children: [] });
     }
     (np.adjectives ?? []).forEach((_adjective, index) => {
       const word = byPath.get(`${path}.adj[${index}]`);
-      if (word) children.push({ label: word.gloss, children: [] });
+      if (word) children.push({ label: label(word), children: [] });
     });
     if (np.determiner) {
       const word = byPath.get(`${path}.det`);
@@ -378,7 +565,7 @@ export function planToTree(clause: ClauseNode, plan: PhrasePlan): PhraseTreeNode
     if (np.possessor) {
       const possessor = byPath.get(`${path}.possessor`);
       children.push({
-        label: `POSS ${possessor?.gloss ?? np.possessor.head}`,
+        label: `POSS ${label(possessor) || np.possessor.head}`,
         children: [],
       });
     }
@@ -388,6 +575,9 @@ export function planToTree(clause: ClauseNode, plan: PhrasePlan): PhraseTreeNode
     }
     return children;
   };
+
+  const verbWord = byPath.get("verb");
+  const negatorWord = byPath.get("neg");
 
   return {
     label: `Clause (${plan.alignment})`,
@@ -404,9 +594,13 @@ export function planToTree(clause: ClauseNode, plan: PhrasePlan): PhraseTreeNode
             },
           ]
         : []),
+      ...(negatorWord ? [{ label: "Negator", children: [{ label: label(negatorWord), children: [] }] }] : []),
       {
         label: `Verb: ${clause.verb.gloss}`,
-        children: (clause.verb.tam ?? []).map((tag) => ({ label: tag, children: [] })),
+        children: (verbWord?.tags ?? clause.verb.tam ?? []).map((tag) => ({
+          label: tag,
+          children: [],
+        })),
       },
     ],
   };

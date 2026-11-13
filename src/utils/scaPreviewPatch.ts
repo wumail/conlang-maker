@@ -5,7 +5,7 @@
  * 纯函数：不接触 Store / React。
  */
 import type { DerivationRule, InflectionRule, SCARuleSet } from "../types";
-import { applySoundChanges } from "./scaEngine";
+import { applySoundChanges, type SCAProsodyContext } from "./scaEngine";
 
 export interface ScaPreviewRow {
   key: string;
@@ -32,6 +32,7 @@ function patchRuleWithSca<T>(
   fields: FieldPatch<T>[],
   ruleSets: SCARuleSet[],
   macros: Record<string, string[]>,
+  prosodyContext?: SCAProsodyContext,
 ): { changed: boolean; nextRule: T; rows: ScaPreviewRow[] } {
   const rows: ScaPreviewRow[] = [];
   let changed = false;
@@ -40,7 +41,7 @@ function patchRuleWithSca<T>(
   for (const patch of fields) {
     const source = patch.get(nextRule) ?? "";
     if (!source.trim()) continue;
-    const result = applySoundChanges(source, ruleSets, macros).result;
+    const result = applySoundChanges(source, ruleSets, macros, [], prosodyContext).result;
     if (result === source) continue;
     nextRule = patch.set(nextRule, result);
     changed = true;
@@ -102,6 +103,7 @@ export function patchInflectionRuleWithSca(
   ruleIndex: number,
   ruleSets: SCARuleSet[],
   macros: Record<string, string[]>,
+  prosodyContext?: SCAProsodyContext,
 ): { changed: boolean; nextRule: InflectionRule; rows: ScaPreviewRow[] } {
   const fields: FieldPatch<InflectionRule>[] = [
     { field: "affix", get: (r) => r.affix, set: (r, v) => ({ ...r, affix: v }) },
@@ -141,6 +143,7 @@ export function patchInflectionRuleWithSca(
     fields,
     ruleSets,
     macros,
+    prosodyContext,
   );
 }
 
@@ -150,6 +153,7 @@ export function patchDerivationRuleWithSca(
   ruleIndex: number,
   ruleSets: SCARuleSet[],
   macros: Record<string, string[]>,
+  prosodyContext?: SCAProsodyContext,
 ): { changed: boolean; nextRule: DerivationRule; rows: ScaPreviewRow[] } {
   const fields: FieldPatch<DerivationRule>[] = [
     { field: "affix", get: (r) => r.affix, set: (r, v) => ({ ...r, affix: v }) },
@@ -179,5 +183,6 @@ export function patchDerivationRuleWithSca(
     fields,
     ruleSets,
     macros,
+    prosodyContext,
   );
 }

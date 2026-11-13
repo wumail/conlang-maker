@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Copy, Trash2, X } from "lucide-react";
+import { Trash2 } from "lucide-react";
 import type { GlyphAnnotation, GlyphKind } from "../../types";
 import { formatCodepoint } from "../../utils/unicodeBlocks";
-import { BTN_GHOST_SQ } from "../../lib/ui";
+import { GlyphPopoverHeader, GlyphZoomPreview } from "./GlyphZoomPreview";
 import {
   asKind,
   EMPTY_SET_SYMBOL,
@@ -46,6 +46,7 @@ export const GlyphAnnotationPopover: React.FC<GlyphAnnotationPopoverProps> = ({
   const [label, setLabel] = useState(info.label);
   const [kind, setKind] = useState<GlyphKind>(info.kind);
   const [phonemes, setPhonemes] = useState<string[]>(info.phonemes);
+  const [zoomOpen, setZoomOpen] = useState(false);
 
   const joinedPhonemes = info.phonemes.join("\0");
   useEffect(() => {
@@ -111,54 +112,23 @@ export const GlyphAnnotationPopover: React.FC<GlyphAnnotationPopoverProps> = ({
         });
       }}
     >
-      <div className="flex items-center justify-between gap-2 pb-2 border-b border-base-200">
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-9 h-9 rounded-lg border border-base-300 bg-base-200/60 flex items-center justify-center shrink-0">
-            <span className="conlang-script text-2xl leading-none">
-              {glyphText(info.codepoint)}
-            </span>
-          </div>
-          <div className="min-w-0 flex flex-col gap-0.5">
-            <div className="flex items-center gap-1">
-              <span
-                className="font-mono text-[11px] text-base-content/70 truncate select-all"
-                data-testid="glyph-encoding-readonly"
-              >
-                {formattedCodes}
-              </span>
-              <button
-                type="button"
-                className={`${BTN_GHOST_SQ} h-5 w-5 min-h-0 text-base-content/60 hover:text-base-content`}
-                onClick={onCopy}
-                title={copied ? t("writing.copied") : t("writing.copyGlyph")}
-              >
-                <Copy className="w-3 h-3" />
-              </button>
-              {copied && (
-                <span className="text-[10px] text-success whitespace-nowrap">
-                  {t("writing.copied")}
-                </span>
-              )}
-            </div>
-            {previewComposition && (
-              <span
-                className="font-mono text-[11px] font-semibold text-primary leading-tight"
-                data-testid="glyph-composition-preview"
-              >
-                {previewComposition}
-              </span>
-            )}
-          </div>
-        </div>
-        <button
-          type="button"
-          className={`${BTN_GHOST_SQ} h-6 w-6 min-h-0 shrink-0`}
-          onClick={onClose}
-          aria-label={t("common.close")}
-        >
-          <X className="w-3.5 h-3.5" />
-        </button>
-      </div>
+      <GlyphPopoverHeader
+        codepoint={info.codepoint}
+        formattedCodes={formattedCodes}
+        previewComposition={previewComposition}
+        copied={copied}
+        onCopy={onCopy}
+        onClose={onClose}
+        onZoom={() => setZoomOpen(true)}
+      />
+
+      {zoomOpen && (
+        <GlyphZoomPreview
+          char={glyphText(info.codepoint)}
+          codepoint={info.codepoint}
+          onClose={() => setZoomOpen(false)}
+        />
+      )}
 
       <div className="grid grid-cols-[6.25rem_minmax(0,1fr)] gap-2 items-start">
         <label className="flex flex-col gap-1 min-w-0">

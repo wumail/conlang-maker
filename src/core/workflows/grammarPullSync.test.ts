@@ -294,4 +294,66 @@ describe("applyGrammarPullSync", () => {
     const next = applyGrammarPullSync(child, plan);
     expect(next.inflection_rules).toHaveLength(0);
   });
+
+  test("evolves and applies every affix subfield (condition / infix / circumfix)", () => {
+    const circumfixRule = rule("r_circ", "CIRC", "ler", {
+      type: "circumfix",
+      condition: {
+        type: "ends_with_phoneme_class",
+        class: "vowel",
+        then_affix: "lar",
+        else_affix: "tar",
+      },
+      circumfix_config: { prefix_part: "ka", suffix_part: "la" },
+    });
+    const infixRule = rule("r_inf", "INF", "", {
+      type: "infix",
+      infix_config: { position_regex: "^", morpheme: "an" },
+    });
+    const parent = grammar([circumfixRule, infixRule]);
+    const child = grammar([circumfixRule, infixRule]);
+
+    const plan = planGrammarPullSync({
+      parentGrammar: parent,
+      childGrammar: child,
+      childSca: SCA,
+    });
+
+    const circumfixRow = plan.inflection.find((row) => row.ruleId === "r_circ");
+    // affix 本身没有变化，但子字段变化同样必须触发 apply
+    expect(circumfixRow?.before).toBe("ler");
+    expect(circumfixRow?.after).toBe("ler");
+    expect(circumfixRow?.status).toBe("apply");
+    expect(circumfixRow?.fields).toEqual(
+      expect.arrayContaining([
+        { field: "condition.then_affix", before: "lar", after: "ler", changed: true },
+        { field: "condition.else_affix", before: "tar", after: "ter", changed: true },
+        { field: "circumfix_config.prefix_part", before: "ka", after: "ke", changed: true },
+        { field: "circumfix_config.suffix_part", before: "la", after: "le", changed: true },
+      ]),
+    );
+
+    const infixRow = plan.inflection.find((row) => row.ruleId === "r_inf");
+    expect(infixRow?.status).toBe("apply");
+    expect(infixRow?.fields).toEqual([
+      { field: "infix_config.morpheme", before: "an", after: "en", changed: true },
+    ]);
+
+    const next = applyGrammarPullSync(child, plan);
+    const nextCircumfix = next.inflection_rules.find((item) => item.rule_id === "r_circ");
+    expect(nextCircumfix?.condition).toMatchObject({
+      then_affix: "ler",
+      else_affix: "ter",
+    });
+    expect(nextCircumfix?.circumfix_config).toEqual({
+      prefix_part: "ke",
+      suffix_part: "le",
+    });
+    const nextInfix = next.inflection_rules.find((item) => item.rule_id === "r_inf");
+    expect(nextInfix?.infix_config?.morpheme).toBe("en");
+
+    // 入参未被就地修改
+    expect(child.inflection_rules[0]?.circumfix_config?.prefix_part).toBe("ka");
+    expect(child.inflection_rules[1]?.infix_config?.morpheme).toBe("an");
+  });
 });

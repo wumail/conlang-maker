@@ -15,20 +15,19 @@ import {
   recordGuiOperationId,
 } from "../../store/conflictStore";
 import { buildMacrosFromInventory } from "../../utils/scaEngine";
-import { BADGE, BTN_PRIMARY } from "../../lib/ui";
+import { BTN_PRIMARY } from "../../lib/ui";
 import type {
   LexiconLoadResult,
   MigrationStats,
   OperationLog,
-  WordEntry,
+  PhonologyLoadResult,
 } from "../../types";
 import { computePullSync, isValidWordEntry } from "../../core";
 import { GrammarSyncLauncher } from "./GrammarSyncModal";
-
-interface PendingSyncWord {
-  word: WordEntry;
-  mode: "add" | "update";
-}
+import {
+  PullSyncPendingList,
+  type PendingSyncWord,
+} from "./PullSyncPendingList";
 
 export function PullSync() {
   const { t } = useTranslation();
@@ -91,6 +90,14 @@ export function PullSync() {
           languagePath: parentLang.path,
         },
       );
+      // 父语言音系用于构造超音段上下文（重音/音节），失败时退化为无 prosody
+      const parentPhono = await invoke<PhonologyLoadResult>("load_phonology", {
+        projectPath,
+        languagePath: parentLang.path,
+      }).catch((error: unknown) => {
+        console.warn(`Failed to load parent phonology: ${error}`);
+        return null;
+      });
       const validParentWords = parentLoaded.words.filter(isValidWordEntry);
 
       const { pending, conflicts } = computePullSync({
@@ -100,6 +107,7 @@ export function PullSync() {
         childWords: wordsList,
         scaRuleSets: scaConfig.rule_sets,
         macros,
+        ...(parentPhono ? { parentPhono: parentPhono.config } : {}),
       });
 
       setPendingSyncWords(pending);
@@ -256,44 +264,14 @@ export function PullSync() {
         </div>
       )}
 
-      {pendingSyncWords.length > 0 && (
-        <div className="space-y-2">
-          {addCount > 0 && (
-            <p className="text-sm">
-              {t("tree.newWordsAvailable", { count: addCount })}
-            </p>
-          )}
-          {updateCount > 0 && (
-            <p className="text-sm">
-              {t("tree.updatedWordsAvailable", { count: updateCount })}
-            </p>
-          )}
-          {conflictCount > 0 && (
-            <p className="text-xs text-warning">
-              {t("tree.syncConflicts", { count: conflictCount })}
-            </p>
-          )}
-          <div className="max-h-40 overflow-y-auto space-y-1">
-            {pendingSyncWords.slice(0, 20).map((item) => (
-              <span key={item.word.entry_id} className={`${BADGE} mr-1`}>
-                {item.word.con_word_romanized}
-              </span>
-            ))}
-            {pendingSyncWords.length > 20 && (
-              <span className="text-xs text-base-content/50">
-                +{pendingSyncWords.length - 20} {t("common.more")}
-              </span>
-            )}
-          </div>
-          <button className={BTN_PRIMARY} onClick={() => void handlePullAll()}>
-            {t("tree.pullAndEvolve")}
-          </button>
-        </div>
-      )}
-
-      {pendingSyncWords.length === 0 && !loading && (
-        <p className="text-xs text-base-content/50">{t("tree.upToDate")}</p>
-      )}
+      <PullSyncPendingList
+        pendingSyncWords={pendingSyncWords}
+        addCount={addCount}
+        updateCount={updateCount}
+        conflictCount={conflictCount}
+        loading={loading}
+        onPullAll={() => void handlePullAll()}
+      />
     </div>
   );
 }

@@ -10,7 +10,8 @@ import { CORE_CONCEPTS, getCoreConcept } from "../../data/core_concepts";
 import { SWADESH_100 } from "../engines/wordGenerator";
 
 export type ConceptTagStatus =
-  | "resolved" // 可迁移
+  | "resolved" // 语义精确命中，可自动迁移
+  | "needs_confirm" // 纯数字序号猜测，需用户核对后才能绑定
   | "already-applied" // 已绑定同一概念，无需变更
   | "conflict" // 已有不同 concept_id 或多个标签互斥
   | "unresolved"; // 无法解析，建议新建自定义概念
@@ -31,9 +32,16 @@ export interface ConceptTagCandidate {
   conflictWith?: string;
 }
 
+/** 候选行的稳定键（entryId + 原始标签），用于 UI 勾选与定向应用 */
+export function candidateKey(candidate: ConceptTagCandidate): string {
+  return `${candidate.entryId}::${candidate.tag}`;
+}
+
 export interface ConceptMigrationPlan {
   candidates: ConceptTagCandidate[];
   resolved: ConceptTagCandidate[];
+  /** 纯数字序号猜测：默认不勾选，需用户核对后显式确认 */
+  needsConfirm: ConceptTagCandidate[];
   conflicts: ConceptTagCandidate[];
   unresolved: ConceptTagCandidate[];
   alreadyApplied: ConceptTagCandidate[];
@@ -46,6 +54,11 @@ export interface ConceptMigrationPlan {
 export interface ApplyConceptMigrationOptions {
   /** 迁移后从 tags 中移除对应标签（默认 false，保留原标签便于回溯） */
   stripTags?: boolean;
+  /**
+   * 本次显式勾选的候选键（`candidateKey`）。提供时只有集合内的候选会被应用，
+   * 未列出的 `needs_confirm` 猜测项永不自动绑定。
+   */
+  applyKeys?: ReadonlySet<string>;
 }
 
 export interface ConceptMigrationResult {
@@ -77,31 +90,42 @@ function normalizeKey(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** 按 concept_id / 英文释义 / 中文释义 / Swadesh 序号解析概念 */
+interface ResolvedConcept {
+  concept: ConceptDefinition | null;
+  /** 是否由 Swadesh 序号猜测得到（纯数字标签），需人工核对 */
+  guessedByIndex: boolean;
+}
+
+/**
+ * 按 concept_id / 英文释义 / 中文释义解析概念。
+ *
+ * 纯数字标签（`概念071`）只做 Swadesh 序号**猜测**，标记 `guessedByIndex`，
+ * 绝不会被静默当作精确匹配；只有 `概念:水` / `concept:water` 这类语义标签
+ * 才算精确命中。
+ */
 function resolveConcept(
   rawValue: string,
   customConcepts: readonly ConceptDefinition[],
-): ConceptDefinition | null {
+): ResolvedConcept {
   const key = normalizeKey(rawValue);
-  if (!key) return null;
+  if (!key) return { concept: null, guessedByIndex: false };
 
-  // 纯数字：按 Swadesh-100 的 1-based 序号解析
   if (/^\d+$/.test(key)) {
     const index = Number(key) - 1;
     const gloss = SWADESH_100[index];
-    if (!gloss) return null;
-    return findByGloss(gloss, customConcepts);
+    if (!gloss) return { concept: null, guessedByIndex: true };
+    return { concept: findByGloss(gloss, customConcepts), guessedByIndex: true };
   }
 
   const direct = getCoreConcept(key);
-  if (direct) return direct;
+  if (direct) return { concept: direct, guessedByIndex: false };
 
   const customDirect = customConcepts.find(
     (concept) => normalizeKey(concept.concept_id) === key,
   );
-  if (customDirect) return customDirect;
+  if (customDirect) return { concept: customDirect, guessedByIndex: false };
 
-  return findByGloss(key, customConcepts);
+  return { concept: findByGloss(key, customConcepts), guessedByIndex: false };
 }
 
 function findByGloss(
@@ -139,11 +163,22 @@ export function scanConceptTags(
     if (tags.length === 0) continue;
 
     // 一个词条内所有概念标签必须指向同一概念，否则视为冲突
-    const perEntry: { tag: string; rawValue: string; concept: ConceptDefinition | null }[] = [];
+    const perEntry: {
+      tag: string;
+      rawValue: string;
+      concept: ConceptDefinition | null;
+      guessedByIndex: boolean;
+    }[] = [];
     for (const tag of tags) {
       const rawValue = extractConceptTagValue(tag);
       if (rawValue === null) continue;
-      perEntry.push({ tag, rawValue, concept: resolveConcept(rawValue, customConcepts) });
+      const resolved = resolveConcept(rawValue, customConcepts);
+      perEntry.push({
+        tag,
+        rawValue,
+        concept: resolved.concept,
+        guessedByIndex: resolved.guessedByIndex,
+      });
     }
     if (perEntry.length === 0) continue;
 
@@ -169,6 +204,9 @@ export function scanConceptTags(
         status = "unresolved";
       } else if (existing === conceptId) {
         status = "already-applied";
+      } else if (item.guessedByIndex) {
+        // 纯数字标签只是按 Swadesh 序号猜测，禁止静默自动绑定
+        status = "needs_confirm";
       } else {
         status = "resolved";
       }
@@ -205,6 +243,7 @@ export function scanConceptTags(
   return {
     candidates,
     resolved: pick("resolved"),
+    needsConfirm: pick("needs_confirm"),
     conflicts: pick("conflict"),
     unresolved: pick("unresolved"),
     alreadyApplied: pick("already-applied"),
@@ -235,8 +274,10 @@ export function slugifyConceptId(value: string): string {
 /**
  * 落地迁移计划（纯函数，返回新的词条数组）。
  *
- * - 只处理 `resolved` 与 `unresolved`（后者绑定到 `suggestedConcepts` 里的新 ID）；
- * - `conflict` / `already-applied` 一律不动，保证幂等与不覆盖用户数据；
+ * - 只处理 `resolved`、显式勾选的 `needs_confirm` 与 `unresolved`
+ *   （后者绑定到 `suggestedConcepts` 里的新 ID）；
+ * - 未勾选的 `needs_confirm` 猜测项、`conflict` / `already-applied` 一律不动，
+ *   保证幂等与不覆盖用户数据；
  * - `stripTags` 为真时移除已成功迁移的标签。
  */
 export function applyConceptMigration(
@@ -244,12 +285,23 @@ export function applyConceptMigration(
   plan: ConceptMigrationPlan,
   options: ApplyConceptMigrationOptions = {},
 ): ConceptMigrationResult {
-  const { stripTags = false } = options;
+  const { stripTags = false, applyKeys } = options;
+  const allowed = (candidate: ConceptTagCandidate) =>
+    !applyKeys || applyKeys.has(candidateKey(candidate));
+
   const byEntry = new Map<string, ConceptTagCandidate[]>();
-  for (const candidate of plan.resolved) {
+  const push = (candidate: ConceptTagCandidate) => {
     const list = byEntry.get(candidate.entryId) ?? [];
     list.push(candidate);
     byEntry.set(candidate.entryId, list);
+  };
+
+  for (const candidate of plan.resolved) {
+    if (allowed(candidate)) push(candidate);
+  }
+  // 猜测项只有被显式勾选（出现在 applyKeys 中）时才落地
+  for (const candidate of plan.needsConfirm) {
+    if (applyKeys && applyKeys.has(candidateKey(candidate))) push(candidate);
   }
 
   // unresolved 标签按「值」映射到新建概念
@@ -258,11 +310,10 @@ export function applyConceptMigration(
     suggestedByRaw.set(normalizeKey(concept.gloss_en), concept.concept_id);
   }
   for (const candidate of plan.unresolved) {
+    if (!allowed(candidate)) continue;
     const target = suggestedByRaw.get(normalizeKey(candidate.rawValue));
     if (!target) continue;
-    const list = byEntry.get(candidate.entryId) ?? [];
-    list.push({ ...candidate, conceptId: target, status: "resolved" });
-    byEntry.set(candidate.entryId, list);
+    push({ ...candidate, conceptId: target, status: "resolved" });
   }
 
   let changedEntries = 0;

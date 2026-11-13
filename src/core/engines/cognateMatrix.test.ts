@@ -133,6 +133,51 @@ describe("buildCognateMatrix", () => {
     expect(result.stats.innovationCount).toBe(2);
   });
 
+  test("merges descendants of a borrowed ancestor into one borrowed cognate set", () => {
+    const family: LanguageEntry[] = [
+      { language_id: "lang_p", name: "Proto", path: "roots/p", parent_id: null },
+      { language_id: "lang_c1", name: "C1", path: "branches/c1", parent_id: "lang_p" },
+      { language_id: "lang_c2", name: "C2", path: "branches/c2", parent_id: "lang_p" },
+      { language_id: "lang_c3", name: "C3", path: "branches/c3", parent_id: "lang_p" },
+    ];
+    const result = buildCognateMatrix({
+      languages: family,
+      concepts: CONCEPTS,
+      wordsByLanguage: {
+        // 父语言从外部借入该词，自身没有本语系词根
+        lang_p: [
+          word("p_water", "lang_p", "water", {
+            form: "watar",
+            etymology: { origin_type: "borrowed", source_language_id: "lang_donor" },
+          }),
+        ],
+        lang_c1: [
+          word("c1_water", "lang_c1", "water", {
+            etymology: { origin_type: "evolved", parent_entry_id: "p_water" },
+          }),
+        ],
+        lang_c2: [
+          word("c2_water", "lang_c2", "water", {
+            etymology: { origin_type: "evolved", parent_entry_id: "p_water" },
+          }),
+        ],
+        lang_c3: [
+          word("c3_water", "lang_c3", "water", {
+            etymology: { origin_type: "evolved", parent_entry_id: "p_water" },
+          }),
+        ],
+      },
+    });
+
+    const row = result.rows.find((item) => item.conceptId === "water")!;
+    // 父借入 + 3 子继承 → 4 门语言共享同一个借词源同源组
+    expect(row.cells.every((cell) => cell.cognateSetId === "borrowed::lang_p::p_water")).toBe(true);
+    expect(row.cells.every((cell) => cell.kind === "borrowed")).toBe(true);
+    expect(row.cognateSetCount).toBe(1);
+    expect(result.stats.borrowedCount).toBe(4);
+    expect(result.stats.innovationCount).toBe(0);
+  });
+
   test("keeps empty cells clickable and counts fill rate", () => {
     const result = buildCognateMatrix({
       languages: LANGUAGES,

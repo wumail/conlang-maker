@@ -3,41 +3,41 @@
 | 项目 | 内容 |
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
-| 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（15 / 20 已完成） |
+| 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0、[REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) v1.0 |
+| 当前状态 | 第一轮终审完成，待执行收敛修复 `F1`–`F5`（首轮：4 项通过 / 9 项有条件待补 / 7 项打回修复） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
-| 终审复核者 | Antigravity |
+| 终审复核者 | Antigravity（首轮复核日期：2026-11-13） |
 
 ---
 
 ## 1. P0–P3 全景完成度与双盲复核总表（Master Sign-off Checklist）
 
 > **填写说明**：
-> - **执行者（DeepSeek）**：每完成一个任务并跑通 `V-ALL` 全部 8 条门禁命令后，将该行「执行状态」改为 `[x]`，填入提交哈希（或 `working-tree`）与测试计数摘要，并在 **§3 逐任务执行日志** 填写完整验收记录。
+> - **执行者（DeepSeek）**：每完成一个任务并跑通 `V-ALL` 全部 8 条门禁命令后，将该行「执行状态」改为 `[x]`，填入提交哈希（或 `working-tree`）与测试计数摘要，并在 **§3 逐任务执行日志** 填写完整验收记录。第一轮打回项按 [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md) 执行 `F1`–`F5` 并在 **§4** 记录。
 > - **终审者（Antigravity）**：严禁仅凭勾选采信；必须独立运行 **§2 终审十项自动化核验命令** 并逐文件抽查代码与边界单测，全部达标后方可勾选「Antigravity 终审通过」。
 
 | 任务 ID | 梯度 | 任务摘要 | 对应 PRD | 执行状态 | 日期 / Commit | `V-ALL` 结果 | Antigravity 终审通过 | 终审备注 |
 | :---: | :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
-| **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [x] | 2026-11-12 / `e28b5bd` | 8/8 全绿（135 项单测：src 83 + mcp 34 + cargo 46 − 计数见 §3） | [ ] | |
-| **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [x] | 2026-11-12 / `30a4ad0` | 8/8 全绿（src 120 pass / mcp 34 pass / cargo 47 pass） | [ ] | |
-| **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [x] | 2026-11-12 / `bcc4e3b` | 8/8 全绿（src 120 pass） | [ ] | |
-| **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | |
-| **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [ ] | |
-| **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | |
-| **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [ ] | |
-| **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | |
-| **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | |
-| **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | |
-| **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | |
-| **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | |
-| **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | |
-| **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [ ] | |
-| **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [x] | 2026-11-13 / `dc89500` | 8/8 全绿（src 228 / mcp 58 / cargo 54） | [ ] | |
-| **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [x] | 2026-11-13 / `2cf43e7` | 8/8 全绿（src 243 / mcp 63 / cargo 54） | [ ] | |
-| **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [x] | 2026-11-13 / `ffaf8c7` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
-| **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [x] | 2026-11-13 / `79ced40` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
-| **T3.3** | P3 | 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台 | §5.2 | [x] | 2026-11-13 / `05ecab0` | 8/8 全绿（src 278 / mcp 70 / cargo 54） | [ ] | |
-| **T3.4** | P3 | 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出 | §5.3 | [x] | 2026-11-13 / `e003afd` | 8/8 全绿（src 290 / mcp 70 / cargo 54） | [ ] | |
+| **T0.1** | P0 | CI 全量门禁接入与僵尸翻译键清零 | §2.1 | [x] | 2026-11-12 / `e28b5bd` | 8/8 全绿（135 项单测：src 83 + mcp 34 + cargo 46 − 计数见 §3） | [ ] | **打回（见 F1.2）**：`font.rs` `#[serde(skip_serializing)]` 破坏了 `FontPanel.tsx:287` 的 `ss01` 书写模式选择器 |
+| **T0.2** | P0 | DP+最大声母音节切分器与 10 维词典质检引擎 | §2.2 | [x] | 2026-11-12 / `30a4ad0` | 8/8 全绿（src 120 pass / mcp 34 pass / cargo 47 pass） | [ ] | **待补（见 F5.1）**：复合词元音和谐需按词根分段、`homophonyClash` 需按 `entry_id` 去重、槽位匹配需剥离长音符超音段回退 |
+| **T0.3** | P0 | 罗马化静态诊断实时上屏 | §2.2 | [x] | 2026-11-12 / `bcc4e3b` | 8/8 全绿（src 120 pass） | [x] | **首轮通过**（`F5.1` 顺带给 `buildRuleLintIndex` 补上 `duplicate_rules` 与 `map_id` 前缀更佳） |
+| **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | **打回（见 F1.4 & F2.3）**：本地改词/改音系未调用 `invalidateLineageLexicon` 致跨语言脏缓存；`SCAPreview.handleBatchApply` 漏传 `prosodyContext` |
+| **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [x] | **首轮通过**：全部目标文件与子组件严格 `≤ 300` 行 |
+| **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | **打回（见 F1.3）**：`phonoStore.loadConfig` 未重置 `phonoHistoryBaseline` 导致切语言撤销覆写音系；切换项目未调 `clearHistory()`；`coalesceKey` 过粗 |
+| **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [x] | **首轮通过**（双轨匹配与防同形误判扎实） |
+| **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | **打回（见 F1.5）**：`onLexEntryCreated` 调用整篇 `runAutoGloss(corpus)` 覆盖所有句子手工标注，须改为仅重标当前行 |
+| **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | **待补（见 F5.2）**：打开面板时后台预热同工作区未缓存语言快照；`=` 演算补传 `prosodyContext` 并支持展示直接子语言 SCA 预览 |
+| **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | **待补（见 F5.3）**：修复含 `_` 或 `/` 的 `#` 注释解析误判，允许清空规则列表 |
+| **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | **待补（见 F2.4）**：Rust/读层满分，但 MCP `phono_update` 拦截 5 种新重音、`gram_update` 无法写入 `morphophonology_rules` |
+| **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | **待补（见 F2.4 & F5.4）**：补齐缺失的 14 条 `leipzig_jakarta_100` 与 `concepticon_id`；`概念\d+` 迁移须标记需确认防错配；`concept_upsert` 补 `"write"` toolset |
+| **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | **待补（见 F5.5）**：修复父代借词被子代继承时的同源组分裂、空白格补词重算目标语言 IPA 与同步当前 `lexiconStore`、单元格补 `<ScriptLine />` |
+| **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [x] | **首轮通过**（`F5.6` 顺带在 `WordEtymologySection` 补齐 `derived`/`mixed` 选项与过期提示横幅） |
+| **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [x] | 2026-11-13 / `dc89500` | 8/8 全绿（src 228 / mcp 58 / cargo 54） | [ ] | **打回（见 F2.1–F2.3）**：`morphophonology.ts` 跳过了 `feature_mode`；`morphophonology_rules` 与 `SCAProsodyContext` 未接入派生/同步/沙盒/MCP 主干 |
+| **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [x] | 2026-11-13 / `2cf43e7` | 8/8 全绿（src 243 / mcp 63 / cargo 54） | [ ] | **待补（见 F4.2）**：补齐 `condition.{then,else}_affix`、`infix`、`circumfix`、`ablaut` 的音变演化，以及 GUI 应用前自动创建语法快照 |
+| **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [x] | 2026-11-13 / `ffaf8c7` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | **打回（见 F3.1–F3.3）**：仅靠拉丁 NFD 导致人造文字附标对数为 0；须支持多连通轮廓分离 + `glyph_annotations` `hb.shape` 配对 + 横向占比 `widthStats` + 修 `markGid` 键冲突 |
+| **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [x] | 2026-11-13 / `79ced40` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | **待补（见 F3.1 & F3.4）**：`harfbuzzClient.ts` 须用 `try/finally` `.destroy()` 释放 WASM 对象；`GlyphCellRuler` 补左右 `LSB/RSB` 垂直虚线 |
+| **T3.3** | P3 | 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台 | §5.2 | [x] | 2026-11-13 / `05ecab0` | 8/8 全绿（src 278 / mcp 70 / cargo 54） | [ ] | **待补（见 F4.3）**：`sandbox.ts` 接入 `applyInflectionTypologyAware`（含形态音位）、UI 结果卡补 `<ScriptLine />`、`phraseSandbox` 补 `number`/`polarity`/`head_marking` |
+| **T3.4** | P3 | 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出 | §5.3 | [x] | 2026-11-13 / `e003afd` | 8/8 全绿（src 290 / mcp 70 / cargo 54） | [ ] | **打回（见 F4.1）**：词头漏 `.conlang` 类且未走 `wordToFontText`/`font-feature-settings` 致本族字连字失效；须移除 `ExportImport.tsx` 中旧乱码 `jspdf` 按钮 |
 
 ---
 
@@ -442,3 +442,68 @@
   1. 语法手册正文按纯文本 + `<br/>` 渲染，只识别 `{{paradigm:...}}` 一种宏；完整 Markdown 渲染会把 react-markdown 带进 core，违反 `core:check` 纯净性。
   2. 反向索引取每条词条**第一义项**的 gloss 作为排序键；多义项词条在 Part II 只出现一次，避免同一形式重复占位。
   3. Typst 只输出结构源码，不负责编译 PDF；实际排版交由用户的 Typst 工具链，HTML 打印路径已能独立产出矢量 PDF。
+
+
+---
+
+## 4. 第一轮终审收敛修复签收表与执行日志（`F1`–`F5`，依据 [REMEDIATION_PLAN.md](./REMEDIATION_PLAN.md)）
+
+| 修复包 | 核心修复范围 | 覆盖原任务 | 执行状态 | 日期 / Commit | `V-ALL-R2` (9/9) | Antigravity 二审通过 | 二审备注 |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :--- |
+| **F1** | `.workbuddy/` 清理 + 恢复 `ss01` 序列化 + 修 `phonoStore` 跨语言撤销串台 + 修谱系脏缓存 + 修语料建词清空手工标注 | T0.1, T0.4, T1.1, T1.3 | [ ] | — | — | [ ] | |
+| **F2** | 实现 `morphophonology` 特征模式 + 全链路贯通 `morphophonology_rules` 与 `SCAProsodyContext` + 修复 MCP 写工具 Schema | T0.4, T2.1, T2.2, T2.5 | [ ] | — | — | [ ] | |
+| **F3** | 修复 HarfBuzz WASM `.destroy()` 泄漏 + 支持人造文字（多连通轮廓 + `glyph_annotations` `hb.shape`）附标净距 + `widthStats` + `LSB/RSB` 垂直标尺 | T3.1, T3.2 | [ ] | — | — | [ ] | |
+| **F4** | 修复参考语法专著本族文字连字与反向索引 + 移除旧乱码 `jspdf` + 补全语法词缀全字段同步与句法台 `<ScriptLine />` / `head_marking` | T2.6, T3.3, T3.4 | [ ] | — | — | [ ] | |
+| **F5** | 补齐核心概念库 LJ-100 缺项与 `concepticon_id` + 修同源矩阵借词继承链与补词 IPA + 质检/DSL/`Cmd+K` 精修收尾 | T0.2, T0.3, T1.4, T1.5, T2.2, T2.3, T2.4 | [ ] | — | — | [ ] | |
+
+### F1 执行日志
+- 执行者：待填　日期：—　提交：—
+- 结果：待执行
+- 验收逐条：
+  - [ ] `git ls-files .workbuddy` 为空，`.gitignore` 包含 `.workbuddy/`。
+  - [ ] `font.rs` `substitution_features` / `positioning_features` 改为 `skip_serializing_if = "Vec::is_empty"`，黄金测试零改动通过且非空特性正常序列化。
+  - [ ] `phonoStore.loadConfig` 切换语言重置 `phonoHistoryBaseline`（附跨语言撤销回归单测）；`workspaceStore` 切项目调 `clearHistory()`；本地改词/改音系调用 `invalidateLineageLexicon`。
+  - [ ] `GlossingEditor` 抽屉建词仅重标当前行未绑定 Token，绝不覆盖其他句与手工标注（附单测）。
+- V-ALL-R2：待填
+- 偏差与决定：无
+
+### F2 执行日志
+- 执行者：待填　日期：—　提交：—
+- 结果：待执行
+- 验收逐条：
+  - [ ] `morphophonology.ts` 支持 `feature_mode: true` 跨 `+` 边界规则（含特征级元音和谐单测）并在 `MorphophonologySection` 开放编辑。
+  - [ ] `morphophonology_rules` 贯通至 `morphologyEngine` 全分支、`derivationEngine`、`autoGloss`、`sandbox`、MCP `gram_inflect`。
+  - [ ] `SCAProsodyContext` 贯通至 `SCAPreview.handleBatchApply`、`pullSync`、`grammarPullSync`、`CommandCalcPreview`、MCP `sca_simulate` / `lexicon`。
+  - [ ] MCP `phono_update` 支持 5 种重音、`gram_update` 支持写入 `morphophonology_rules`、`concept_upsert` 包含 `"write"` toolset。
+- V-ALL-R2：待填
+- 偏差与决定：无
+
+### F3 执行日志
+- 执行者：待填　日期：—　提交：—
+- 结果：待执行
+- 验收逐条：
+  - [ ] `harfbuzzClient.ts`、`mcp/font/loader.ts`、`mcp/font/shaper.ts` 全部通过 `try/finally` `.destroy()` 释放 WASM 对象。
+  - [ ] `fontGeometryAudit` + `harfbuzzClient` + `audit.ts` 修复 `compositeGid` 键冲突，支持单字多连通轮廓附标净距 + `glyph_annotations` `hb.shape` 配对，排除标点污染基线。
+  - [ ] 输出 `widthStats`（基础字形/附标宽度占比与 LSB/RSB 分布）；`GlyphCellRuler` 与单字弹窗支持 `LSB/RSB` 垂直标尺。
+- V-ALL-R2：待填
+- 偏差与决定：无
+
+### F4 执行日志
+- 执行者：待填　日期：—　提交：—
+- 结果：待执行
+- 验收逐条：
+  - [ ] `referenceBookBuilder.ts` 接入 `wordToFontText`、`fontFeaturesToCss`、`.conlang` 词头与 `opentype` 格式识别，Part II 覆盖全部义项；`ExportImport.tsx` 移除旧乱码 `jspdf` 入口。
+  - [ ] `grammarPullSync` 覆盖 `condition` / `infix` / `circumfix` / `ablaut` 全部词缀子字段，GUI 应用前自动建快照且单步可撤销。
+  - [ ] `phraseSandbox` 支持 `number`、`polarity`、`head_marking` 四模式，`ClauseBuilderCard` 顶部展示 `<ScriptLine />` 本族文字整句。
+- V-ALL-R2：待填
+- 偏差与决定：无
+
+### F5 执行日志
+- 执行者：待填　日期：—　提交：—
+- 结果：待执行
+- 验收逐条：
+  - [ ] `core_concepts.ts` 精确满足 Swadesh-100 (100条) 与 Leipzig-Jakarta-100 (100条) 且填齐标准 `concepticon_id`；`概念\d+` 数字标签迁移标记为需确认，不静默盲绑。
+  - [ ] `cognateMatrix` 修复借词继承链同源组归并；跨语言补词计算真实目标语言 IPA 并同步激活词库；单元格补 IPA 与本族字预览。
+  - [ ] 修复复合词分段元音和谐、`homophonyClash` 去重、长音符回退、`ruleDsl` 含 `_`/`/` 注释解析、`Cmd+K` 全工作区预热与父→子 SCA 推演、`WordEtymologySection` 词源选项与过期提示条。
+- V-ALL-R2：待填
+- 偏差与决定：无

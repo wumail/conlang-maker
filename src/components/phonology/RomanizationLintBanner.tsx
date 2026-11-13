@@ -14,21 +14,33 @@ interface RomanizationLintBannerProps {
 }
 
 /**
- * 把分析结果压缩为「rule_id → 诊断条数」索引，供规则表行内高亮使用。
+ * 把分析结果压缩为「map_id::rule_id → 诊断条数」索引，供规则表行内高亮使用。
+ * 键必须带上 map_id：分析覆盖全部映射表，不同表可能出现相同 rule_id。
  */
 export function buildRuleLintIndex(
   analysis: RomanizationAnalysisResult,
 ): Map<string, number> {
   const index = new Map<string, number>();
-  const bump = (ruleId: string): void => {
-    index.set(ruleId, (index.get(ruleId) ?? 0) + 1);
+  const bump = (mapId: string, ruleId: string): void => {
+    if (!ruleId) return;
+    const key = `${mapId}::${ruleId}`;
+    index.set(key, (index.get(key) ?? 0) + 1);
   };
 
-  for (const issue of analysis.shadowed_rules) bump(issue.shadowed_rule_id);
-  for (const issue of analysis.unknown_output_phonemes) bump(issue.rule_id);
-  for (const issue of analysis.case_issues) bump(issue.rule_id);
+  for (const issue of analysis.shadowed_rules) {
+    bump(issue.map_id, issue.shadowed_rule_id);
+  }
+  for (const issue of analysis.unknown_output_phonemes) {
+    bump(issue.map_id, issue.rule_id);
+  }
+  for (const issue of analysis.case_issues) {
+    bump(issue.map_id, issue.rule_id);
+  }
   for (const issue of analysis.conflicting_rules) {
-    for (const rule of issue.rules) bump(rule.rule_id);
+    for (const rule of issue.rules) bump(issue.map_id, rule.rule_id);
+  }
+  for (const issue of analysis.duplicate_rules) {
+    for (const ruleId of issue.rule_ids) bump(issue.map_id, ruleId);
   }
   return index;
 }

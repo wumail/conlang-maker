@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Loader2, Table2 } from "lucide-react";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { useGrammarStore } from "../store/grammarStore";
 import {
   listLineageSnapshots,
   loadLineageLexicon,
@@ -14,7 +13,7 @@ import { useSemanticFieldLabels } from "../lib/labelMaps";
 import { PageHeader } from "../components/common/PageHeader";
 import { CognateMatrixTable } from "../components/tree/CognateMatrixTable";
 import { INPUT, SELECT, TOGGLE, CARD } from "../lib/ui";
-import { createWordInLanguage, pickNounPosId } from "../utils/crossLanguageWord";
+import { createWordInLanguage } from "../utils/crossLanguageWord";
 import type { WordEntry } from "../types";
 
 /** 全语系同源词矩阵页（/cognates） */
@@ -24,7 +23,7 @@ export default function CognateMatrixPage() {
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const languages = useWorkspaceStore((s) => s.config.languages);
   const customConcepts = useWorkspaceStore((s) => s.config.custom_concepts);
-  const partsOfSpeech = useGrammarStore((s) => s.config.parts_of_speech);
+  const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const cacheVersion = useLineageLexiconCacheVersion();
 
   const [loading, setLoading] = useState(false);
@@ -75,7 +74,7 @@ export default function CognateMatrixPage() {
       if (!search.trim()) return true;
       const needle = search.trim().toLowerCase();
       return (
-        concept.concept_id.includes(needle) ||
+        concept.concept_id.toLowerCase().includes(needle) ||
         (concept.gloss_zh ?? "").toLowerCase().includes(needle) ||
         (concept.gloss_en ?? "").toLowerCase().includes(needle)
       );
@@ -99,7 +98,6 @@ export default function CognateMatrixPage() {
       romanized,
       conceptId,
       gloss: concept?.gloss_zh || concept?.gloss_en || romanized,
-      posId: pickNounPosId(partsOfSpeech),
     });
   };
 
@@ -165,6 +163,7 @@ export default function CognateMatrixPage() {
       <CognateMatrixTable
         rows={matrix.rows}
         languages={matrix.languages}
+        activeLanguageId={activeLanguageId}
         onCreate={handleCreate}
       />
     </div>

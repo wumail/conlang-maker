@@ -18,6 +18,7 @@ src-tauri/binaries/
 .vscode/*
 !.vscode/extensions.json
 .idea
+.workbuddy/
 .DS_Store
 *.suo
 *.ntvs*

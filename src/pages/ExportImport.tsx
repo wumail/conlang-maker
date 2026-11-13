@@ -4,7 +4,6 @@ import {
   FileDown,
   FileUp,
   FileSpreadsheet,
-  FileText,
   BookType,
   Copy,
   Bot,
@@ -16,7 +15,6 @@ import { useGrammarStore } from "../store/grammarStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
 import { useSCAStore } from "../store/scaStore";
 import { useCorpusStore } from "../store/corpusStore";
-import { exportPDF } from "../utils/exportPDF";
 import { exportExcel } from "../utils/exportExcel";
 import { exportDic } from "../utils/exportDic";
 import {
@@ -57,15 +55,6 @@ export function ExportImport() {
       s.config.languages.find((l) => l.language_id === s.activeLanguageId)
         ?.name || "Conlang",
   );
-
-  const handleExportPDF = () => {
-    exportPDF(activeLangName, wordsList, phonoConfig, grammarConfig, [
-      { title: "orthography", enabled: true },
-      { title: "paradigms", enabled: true },
-      { title: "manual", enabled: true },
-      { title: "dictionary", enabled: true },
-    ]);
-  };
 
   const handleExportExcel = () => {
     exportExcel(activeLangName, wordsList, phonoConfig);
@@ -167,19 +156,8 @@ export function ExportImport() {
       <PageHeader icon={<ArrowUpDown size={24} />} title={t("export.title")} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* PDF Export */}
-        <div className={CARD}>
-          <div className={`${CARD_BODY} p-4 text-center space-y-3`}>
-            <FileText className="w-12 h-12 mx-auto text-red-500" />
-            <h3 className="font-semibold">{t("export.pdf")}</h3>
-            <p className="text-sm text-base-content/60">
-              {t("export.pdfDesc")}
-            </p>
-            <button className={BTN_PRIMARY} onClick={handleExportPDF}>
-              <FileDown className="w-4 h-4" /> {t("export.downloadPDF")}
-            </button>
-          </div>
-        </div>
+        {/* Reference grammar & bidirectional dictionary */}
+        <ReferenceBookCard />
 
         {/* Excel Export */}
         <div className={CARD}>
@@ -246,8 +224,6 @@ export function ExportImport() {
           </div>
         </div>
       </div>
-
-      <ReferenceBookCard />
 
       {importPreview && (
         <ImportPreviewCard
