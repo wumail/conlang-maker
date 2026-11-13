@@ -29,6 +29,7 @@ import { WordGenerator } from "./components/wordgen/WordGenerator";
 import { LexiconPage } from "./pages/LexiconPage";
 import { SCAEditor } from "./pages/SCAEditor";
 import { FamilyTree } from "./pages/FamilyTree";
+import CognateMatrixPage from "./pages/CognateMatrix";
 import { ExportImport } from "./pages/ExportImport";
 import { CorpusPage } from "./pages/CorpusPage";
 import { WelcomePage } from "./pages/WelcomePage";
@@ -273,6 +274,10 @@ function App() {
             <Route
               path="/tree"
               element={<div className="flex-1 p-8 overflow-y-auto flex min-h-0"><FamilyTree /></div>}
+            />
+            <Route
+              path="/cognates"
+              element={<CognateMatrixPage />}
             />
             <Route
               path="/corpus"

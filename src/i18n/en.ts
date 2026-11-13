@@ -1,6 +1,7 @@
 export default {
   translation: {
     nav: {
+    cognates: "Cognates",
       lexicon: "Lexicon",
       phonology: "Phonology",
       writing: "Writing",
@@ -18,6 +19,23 @@ export default {
       statPhonemes: "Phonemes",
       statPOS: "POS",
       statCorpus: "Texts",
+    },
+    cognate: {
+      title: "Family cognate matrix",
+      description:
+        "Compare every core concept across the whole family. Cells sharing a colour descend from the same proto-form; click an empty cell to coin a word in that language.",
+      stats: "{{languages}} languages · {{concepts}} concepts · {{filled}}/{{cells}} filled",
+      legendInherited: "Cognate sets",
+      legendBorrowed: "Borrowed",
+      legendInnovation: "Innovations",
+      searchPlaceholder: "Filter concepts",
+      onlyFilled: "Only rows with forms",
+      empty: "No concept rows match the current filters",
+      concept: "Concept",
+      inherited: "inherited",
+      borrowed: "borrowed",
+      innovation: "innovation",
+      addHint: "Add a word for “{{concept}}” in this language",
     },
     concept: {
       field: {

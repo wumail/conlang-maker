@@ -3,6 +3,7 @@ import type { McpConfig } from "./config";
 import { registerAllPrompts } from "./prompts/index";
 import { registerConlangResources } from "./resources/index";
 import { registerAuditTools } from "./tools/audit";
+import { registerCognateTools } from "./tools/cognates";
 import { registerConceptTools } from "./tools/concepts";
 import { registerCorpusTools } from "./tools/corpus";
 import { registerExportImportTools } from "./tools/export_import";
@@ -42,6 +43,7 @@ export function createServer(config: McpConfig): McpServer {
   registerScaTools(server, config);
   registerCorpusTools(server, config);
   registerConceptTools(server, config);
+  registerCognateTools(server, config);
   registerExportImportTools(server, config);
   registerSnapshotTools(server, config);
 

@@ -78,6 +78,7 @@ export const EXPECTED_76_TOOLS: readonly string[] = [
   "corpus_concordance",
   "concept_list",
   "concept_upsert",
+  "family_cognate_matrix",
   // §5.9 Export & Import (5)
   "export_llm_brief",
   "export_workspace_bundle",

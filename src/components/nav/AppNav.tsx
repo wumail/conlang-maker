@@ -10,6 +10,7 @@ import {
   Wand2,
   Dna,
   GitFork,
+  Table2,
   FileDown,
   BookOpen,
   MoreHorizontal,
@@ -53,6 +54,11 @@ export function AppNav() {
       to: "/grammar",
       icon: <ScrollText className="w-4 h-4" />,
       label: t("nav.grammar"),
+    },
+    {
+      to: "/cognates",
+      icon: <Table2 className="w-4 h-4" />,
+      label: t("nav.cognates"),
     },
     {
       to: "/corpus",

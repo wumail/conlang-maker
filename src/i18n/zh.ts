@@ -1,6 +1,7 @@
 export default {
   translation: {
     nav: {
+    cognates: "同源词",
       lexicon: "词典",
       phonology: "音系",
       writing: "书写",
@@ -18,6 +19,23 @@ export default {
       statPhonemes: "音位",
       statPOS: "词类",
       statCorpus: "语料",
+    },
+    cognate: {
+      title: "全语系同源词矩阵",
+      description:
+        "按核心概念横向对照全语系。同色单元格源自同一祖语词形；点击空白格可直接在该语言中造词。",
+      stats: "{{languages}} 门语言 · {{concepts}} 个概念 · 已填 {{filled}}/{{cells}}",
+      legendInherited: "同源组",
+      legendBorrowed: "借词",
+      legendInnovation: "创新",
+      searchPlaceholder: "筛选概念",
+      onlyFilled: "只看已有词形",
+      empty: "当前筛选条件下没有概念行",
+      concept: "概念",
+      inherited: "继承",
+      borrowed: "借词",
+      innovation: "创新",
+      addHint: "在该语言中为「{{concept}}」补词",
     },
     concept: {
       field: {
