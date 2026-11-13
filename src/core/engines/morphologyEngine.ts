@@ -17,7 +17,9 @@ import type {
   MorphologyType,
   GrammarConfig,
   IrregularOverride,
+  MorphophonologyRule,
 } from "../../types";
+import { applyMorphophonology } from "./morphophonology";
 
 // ── 类型定义 ─────────────────────────────────────────────
 
@@ -189,6 +191,7 @@ export function applyInflection(
   word: string,
   rule: InflectionRule,
   phonoConfig: PhonologyConfig,
+  morphophonologyRules: readonly MorphophonologyRule[] = [],
 ): InflectionResult {
   const inventory = phonoConfig.phoneme_inventory;
 
@@ -222,6 +225,8 @@ export function applyInflection(
 
   // 3. 按 type 分支应用
   let result = word;
+  /** 带 `+` 词素边界的中间串（仅前缀/后缀/环缀能精确构造） */
+  let intermediate: string | null = null;
   let typeLog = "";
   let stemStart = 0;
 
@@ -230,12 +235,14 @@ export function applyInflection(
   switch (ruleType) {
     case "prefix":
       result = applyPrefix(word, effectiveAffix);
+      intermediate = `${effectiveAffix}+${word}`;
       stemStart = Array.from(effectiveAffix).length;
       typeLog = `prefix "${effectiveAffix}"`;
       break;
 
     case "suffix":
       result = applySuffix(word, effectiveAffix);
+      intermediate = `${word}+${effectiveAffix}`;
       typeLog = `suffix "${effectiveAffix}"`;
       break;
 
@@ -255,6 +262,7 @@ export function applyInflection(
       const cfg = rule.circumfix_config;
       if (cfg) {
         result = applyCircumfix(word, cfg.prefix_part, cfg.suffix_part);
+        intermediate = `${cfg.prefix_part}+${word}+${cfg.suffix_part}`;
         stemStart = Array.from(cfg.prefix_part).length;
         typeLog = `circumfix "${cfg.prefix_part}-...-${cfg.suffix_part}"`;
       } else {
@@ -291,6 +299,18 @@ export function applyInflection(
 
   const logParts = [typeLog];
   if (conditionLog) logParts.unshift(conditionLog);
+
+  // 跨词素边界的共时形态音位调整（无规则时零开销）
+  if (intermediate && morphophonologyRules.length > 0) {
+    const adjusted = applyMorphophonology(intermediate, morphophonologyRules, phonoConfig);
+    if (adjusted.surface !== result) {
+      logParts.push(
+        adjusted.steps.map((step) => step.description || step.ruleId).join(" → "),
+      );
+      result = adjusted.surface;
+    }
+  }
+
   return {
     result,
     applied: true,
@@ -317,7 +337,12 @@ export function generateParadigm(
 }[] {
   const posRules = rules.filter((r) => r.pos_id === posId && !r.disabled);
   const regular = posRules.map((rule) => {
-    const { result, log, stem_start } = applyInflection(word, rule, phonoConfig);
+    const { result, log, stem_start } = applyInflection(
+      word,
+      rule,
+      phonoConfig,
+      context?.grammar.morphophonology_rules ?? [],
+    );
     return {
       dimensionValues: rule.dimension_values,
       tag: rule.tag,

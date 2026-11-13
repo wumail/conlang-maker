@@ -5,6 +5,7 @@ const SUB_TABS = [
   { key: "syntax", labelKey: "grammar.sections.syntax" },
   { key: "pos", labelKey: "grammar.sections.pos" },
   { key: "inflectionSystem", labelKey: "grammar.sections.inflectionSystem" },
+  { key: "morphophonology", labelKey: "grammar.sections.morphophonology" },
   { key: "derivation", labelKey: "grammar.sections.derivation" },
   { key: "reference", labelKey: "grammar.sections.reference" },
 ] as const;

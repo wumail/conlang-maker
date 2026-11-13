@@ -4,9 +4,19 @@ import {
   SCAStepLog,
   FeatureExpression,
   FeatureReplacement,
+  PhonemeInventory,
+  Phonotactics,
+  StressConfig,
 } from "../../types";
 import { PHONEME_FEATURES } from "../../data/ipa_features";
 import { tokenizePhonemes, joinPhonemes } from "./phonemeTokenizer";
+import {
+  computeTokenProsody,
+  prosodyHasFeature,
+  PROSODIC_PSEUDO_FEATURES,
+  ruleUsesProsody,
+  type TokenProsodyMeta,
+} from "./prosody";
 
 /**
  * Built-in macro definitions for SCA context matching.
@@ -70,15 +80,21 @@ export function parseFeatureExpression(expr: string): FeatureExpression {
 export function matchesFeatures(
   phoneme: string,
   expr: FeatureExpression,
+  meta?: TokenProsodyMeta,
 ): boolean {
   const features = PHONEME_FEATURES[phoneme];
-  if (!features) return false;
-  const featureSet = new Set(features);
+  // 伪特征（重音/开闭音节等）由音节层提供，不写入音段特征表
+  const holds = (name: string): boolean | null => {
+    const pseudo = prosodyHasFeature(meta, name);
+    if (pseudo !== null) return pseudo;
+    if (PROSODIC_PSEUDO_FEATURES.has(name)) return null;
+    return features ? features.includes(name) : false;
+  };
   for (const p of expr.positive) {
-    if (!featureSet.has(p)) return false;
+    if (holds(p) !== true) return false;
   }
   for (const n of expr.negative) {
-    if (featureSet.has(n)) return false;
+    if (holds(n) === true) return false;
   }
   return true;
 }
@@ -165,6 +181,13 @@ export function applyFeatureReplacement(
   return resolvePhonemeByFeatures(current) || phoneme;
 }
 
+/** 超音段伪特征所需的音节/重音上下文 */
+export interface SCAProsodyContext {
+  phonotactics: Phonotactics;
+  inventory: PhonemeInventory;
+  stress?: StressConfig | null;
+}
+
 /**
  * 特征模式下应用单条 SCA 规则
  */
@@ -173,6 +196,7 @@ function applyFeatureRule(
   rule: SCARule,
   _macros: MacroDefs,
   inventoryPhonemes: string[],
+  prosodyContext?: SCAProsodyContext,
 ): { result: string; changed: boolean; featureDetails: string[] } {
   if (!rule.target_features || !rule.replacement_features) {
     return { result: word, changed: false, featureDetails: [] };
@@ -184,6 +208,17 @@ function applyFeatureRule(
   let changed = false;
   const resultTokens = [...tokens];
   const featureDetails: string[] = [];
+
+  // 仅当规则真的引用伪特征时才做音节切分（旧规则零开销）
+  const prosodyMetas =
+    prosodyContext && ruleUsesProsody(rule)
+      ? computeTokenProsody(
+          tokens,
+          prosodyContext.phonotactics,
+          prosodyContext.inventory,
+          prosodyContext.stress ?? null,
+        )
+      : null;
 
   const hasBoundaryConstraint = (expr: FeatureExpression | null): boolean => {
     if (!expr) return false;
@@ -208,7 +243,7 @@ function applyFeatureRule(
 
   for (let i = 0; i < tokens.length; i++) {
     // 检查 target
-    if (!matchesFeatures(tokens[i], rule.target_features)) continue;
+    if (!matchesFeatures(tokens[i], rule.target_features, prosodyMetas?.[i])) continue;
 
     // 检查 context_before
     if (rule.context_before_features) {
@@ -224,7 +259,7 @@ function applyFeatureRule(
         const beforeExpr = stripBoundaryConstraint(
           rule.context_before_features,
         );
-        if (!matchesFeatures(tokens[i - 1], beforeExpr)) continue;
+        if (!matchesFeatures(tokens[i - 1], beforeExpr, prosodyMetas?.[i - 1])) continue;
       }
     }
 
@@ -240,7 +275,7 @@ function applyFeatureRule(
       ) {
         if (i === tokens.length - 1) continue; // 无后文
         const afterExpr = stripBoundaryConstraint(rule.context_after_features);
-        if (!matchesFeatures(tokens[i + 1], afterExpr)) continue;
+        if (!matchesFeatures(tokens[i + 1], afterExpr, prosodyMetas?.[i + 1])) continue;
       }
     }
 
@@ -314,9 +349,10 @@ function applySingleRule(
   rule: SCARule,
   macros: MacroDefs,
   inventoryPhonemes: string[] = [],
+  prosodyContext?: SCAProsodyContext,
 ): { result: string; changed: boolean; featureDetails?: string[] } {
   if (rule.feature_mode) {
-    return applyFeatureRule(word, rule, macros, inventoryPhonemes);
+    return applyFeatureRule(word, rule, macros, inventoryPhonemes, prosodyContext);
   }
 
   // ── Character mode (Phase 2 original) ──
@@ -401,6 +437,7 @@ export function applySoundChanges(
   ruleSets: SCARuleSet[],
   macros: MacroDefs,
   inventoryPhonemes: string[] = [],
+  prosodyContext?: SCAProsodyContext,
 ): { result: string; changelog: SCAStepLog[] } {
   const changelog: SCAStepLog[] = [];
   let current = word;
@@ -416,6 +453,7 @@ export function applySoundChanges(
         rule,
         macros,
         inventoryPhonemes,
+        prosodyContext,
       );
       if (changed) {
         changelog.push({

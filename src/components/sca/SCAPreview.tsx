@@ -34,10 +34,26 @@ export function SCAPreview() {
     [phonoConfig],
   );
 
+  // 超音段伪特征（+stressed / +open_syllable 等）需要音节与重音上下文
+  const prosodyContext = useMemo(
+    () => ({
+      phonotactics: phonoConfig.phonotactics,
+      inventory: phonoConfig.phoneme_inventory,
+      stress: phonoConfig.phonotactics.stress ?? null,
+    }),
+    [phonoConfig],
+  );
+
   const singleResult = useMemo(() => {
     if (!testWord.trim()) return null;
-    return applySoundChanges(testWord.trim(), scaConfig.rule_sets, macros);
-  }, [testWord, scaConfig.rule_sets, macros]);
+    return applySoundChanges(
+      testWord.trim(),
+      scaConfig.rule_sets,
+      macros,
+      [],
+      prosodyContext,
+    );
+  }, [testWord, scaConfig.rule_sets, macros, prosodyContext]);
 
   const batchRows = useMemo<ScaPreviewRow[]>(() => {
     if (mode !== "batch") return [];
@@ -48,6 +64,8 @@ export function SCAPreview() {
         word.con_word_romanized,
         scaConfig.rule_sets,
         macros,
+        [],
+        prosodyContext,
       );
       if (changelog.length === 0) continue;
       rows.push({

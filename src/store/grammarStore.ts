@@ -13,6 +13,7 @@ import {
   InflectionRule,
   IrregularOverride,
   MorphologyType,
+  MorphophonologyRule,
   PartOfSpeech,
   SyntaxConfig,
   TypologyConfig,
@@ -75,6 +76,8 @@ interface GrammarStore {
   updateInflection: (ruleId: string, rule: InflectionRule) => void;
   deleteInflection: (ruleId: string) => void;
   setInflections: (rules: InflectionRule[]) => void;
+  /** 整组替换形态音位规则（T2.5，支持删除） */
+  setMorphophonologyRules: (rules: MorphophonologyRule[]) => void;
 
   // Inflection dimensions (Phase 2)
   addDimension: (dim: InflectionDimension) => void;
@@ -688,6 +691,13 @@ export const useGrammarStore = create<GrammarStore>((set, get) => {
       applyEdit((prev) => ({
         ...prev,
         inflection_rules: mergeById(prev.inflection_rules, rules, "rule_id"),
+      }));
+    },
+
+    setMorphophonologyRules: (rules) => {
+      applyEdit((prev) => ({
+        ...prev,
+        morphophonology_rules: rules,
       }));
     },
 

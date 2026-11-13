@@ -5,6 +5,8 @@ import {
   PhonologyConfig,
 } from "../../types";
 import { tokenizePhonemes } from "./phonemeTokenizer";
+import { syllabify } from "./syllabifier";
+import { pickStressedSyllable } from "./prosody";
 
 const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
 
@@ -653,25 +655,73 @@ function phonemeOffsetForStem(
   return offset;
 }
 
-function initialStressPositions(
+/**
+ * 计算主重音插入位置（字符下标）。
+ *
+ * 支持 `initial` / `ultimate` / `penultimate` / `antepenultimate` /
+ * `weight_sensitive`（重音节优先，全轻音节按 `weight_fallback` 回退）。
+ * 重音落在所选音节的**首个音素**上。
+ */
+function stressPositions(
   phonemes: string,
   config: PhonologyConfig,
   explicitStem: number | undefined,
 ): number[] {
   const stress = config.phonotactics.stress;
-  if (!stress || stress.position !== "initial") return [];
+  if (!stress) return [];
   const vowels = new Set(config.phoneme_inventory.vowels);
   const positions: number[] = [];
   const words = phonemes.matchAll(/[\p{L}\p{M}]+(?:[.·'-][\p{L}\p{M}]+)*/gu);
   for (const match of words) {
-    if (/[ˈˌ]/u.test(match[0])) continue;
-    if (!tokenizePhonemes(match[0], [...vowels]).some((token) => vowels.has(token))) continue;
-    const start = Array.from(phonemes.slice(0, match.index)).length;
-    const end = start + Array.from(match[0]).length;
-    const position = explicitStem !== undefined && explicitStem >= start && explicitStem < end
-      ? explicitStem
-      : start;
-    positions.push(position);
+    const text = match[0];
+    if (/[ˈˌ]/u.test(text)) continue;
+    const tokens = tokenizePhonemes(text, [...vowels]);
+    if (!tokens.some((token) => vowels.has(token))) continue;
+
+    // token 在 text 内的字符起点（用于把音节下标换回字符下标）
+    const tokenOffsets: number[] = [];
+    {
+      let cursor = 0;
+      for (const token of tokens) {
+        const index = text.indexOf(token, cursor);
+        tokenOffsets.push(index < 0 ? cursor : index);
+        cursor = (index < 0 ? cursor : index) + token.length;
+      }
+    }
+
+    let targetToken = -1;
+    // 显式 stem 偏移优先（前缀/环缀场景保持词干重音），与旧行为一致
+    if (explicitStem !== undefined) {
+      const stemChar = explicitStem - Array.from(phonemes.slice(0, match.index)).length;
+      if (stemChar >= 0 && stemChar < text.length) {
+        for (let i = tokenOffsets.length - 1; i >= 0; i -= 1) {
+          if (tokenOffsets[i]! <= stemChar) {
+            targetToken = i;
+            break;
+          }
+        }
+      }
+    }
+
+    if (targetToken < 0) {
+      const result = syllabify(tokens, config.phonotactics, config.phoneme_inventory);
+      if (result.valid) {
+        const syllableIndex = pickStressedSyllable(result.syllables, stress);
+        if (syllableIndex >= 0) {
+          let cursor = 0;
+          for (let i = 0; i < syllableIndex; i += 1) {
+            const syllable = result.syllables[i]!;
+            cursor += syllable.onset.length + syllable.nucleus.length + syllable.coda.length;
+          }
+          targetToken = cursor;
+        }
+      }
+      if (targetToken < 0) targetToken = 0;
+    }
+
+    const charPosition =
+      match.index + (tokenOffsets[targetToken] ?? 0);
+    positions.push(charPosition);
     if (stress.domain === "entry") break;
   }
   return positions;
@@ -737,15 +787,15 @@ export function generateIPATraced(
   const stemOffset = context.stem_start === undefined
     ? undefined
     : phonemeOffsetForStem(romanization.segments, context.stem_start);
-  const stressPositions = initialStressPositions(phonemes, config, stemOffset);
-  const surfacePositions = transformStressPositions(stressPositions, steps);
+  const phonemicStress = stressPositions(phonemes, config, stemOffset);
+  const surfacePositions = transformStressPositions(phonemicStress, steps);
 
   return {
-    phonemic: `/${insertStress(phonemes, stressPositions)}/`,
+    phonemic: `/${insertStress(phonemes, phonemicStress)}/`,
     surface: phonemes !== surfaceRaw ? `[${insertStress(surfaceRaw, surfacePositions)}]` : "",
     romanization,
     allophony_steps: steps,
-    ...(config.phonotactics.stress ? { prosody: { phonemic_positions: stressPositions, surface_positions: surfacePositions, ...context } } : {}),
+    ...(config.phonotactics.stress ? { prosody: { phonemic_positions: phonemicStress, surface_positions: surfacePositions, ...context } } : {}),
   };
 }
 

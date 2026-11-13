@@ -4,6 +4,7 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { Plus, Trash2 } from "lucide-react";
 import { INPUT_MONO, BTN_LINK, BTN_ERROR } from "../../lib/ui";
 import { VowelHarmonySection, ToneSystemSection } from "./PhonotacticsSections";
+import { StressSection } from "./StressSection";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { EmptyState } from "../common/EmptyState";
 import { PhonemeStrip } from "../common/PhonemeStrip";
@@ -217,6 +218,8 @@ export const PhonotacticsEditor: React.FC = () => {
           ))}
         </div>
       </div>
+
+      <StressSection />
 
       <VowelHarmonySection />
       <ToneSystemSection />

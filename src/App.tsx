@@ -19,6 +19,7 @@ import { PhonotacticsEditor } from "./components/phonology/PhonotacticsEditor";
 import { AllophonyEditor } from "./components/phonology/AllophonyEditor";
 import { GrammarPage } from "./pages/GrammarPage";
 import { TypologySection } from "./components/grammar/TypologySection";
+import { MorphophonologySection } from "./components/grammar/MorphophonologySection";
 import { SyntaxSection } from "./components/grammar/SyntaxSection";
 import { POSSection } from "./components/grammar/POSSection";
 import { InflectionSystemSection } from "./components/grammar/InflectionSystemSection";
@@ -256,6 +257,7 @@ function App() {
               <Route path="syntax" element={<SyntaxSection />} />
               <Route path="pos" element={<POSSection />} />
               <Route path="inflectionSystem" element={<InflectionSystemSection />} />
+              <Route path="morphophonology" element={<MorphophonologySection />} />
               <Route path="derivation" element={<DerivationEditor />} />
               <Route path="reference" element={<ReferenceSection />} />
             </Route>

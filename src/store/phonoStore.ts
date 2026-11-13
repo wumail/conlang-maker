@@ -9,6 +9,7 @@ import {
   PhonologyLoadResult,
   RomanizationMap,
   RomanizationRule,
+  StressConfig,
   ToneSystem,
   VowelHarmony,
   WriteResult,
@@ -87,6 +88,8 @@ interface PhonoStore {
   updateMacros: (macros: Record<string, string[]>) => void;
   updateBlacklistPatterns: (patterns: string[]) => void;
   updateVowelHarmony: (vh: VowelHarmony) => void;
+  /** 更新重音配置（T2.5：5 种模式） */
+  updateStress: (stress: StressConfig | null) => void;
   updateToneSystem: (ts: ToneSystem) => void;
 
   // Allophony
@@ -898,6 +901,19 @@ export const usePhonoStore = create<PhonoStore>((set, get) => ({
         phonotactics: {
           ...baseLocal.phonotactics,
           blacklist_patterns: patterns,
+        },
+      })),
+    );
+    get().saveConfig();
+  },
+
+  updateStress: (stress) => {
+    set((state) =>
+      applyLocalUpdate(state, (baseLocal) => ({
+        ...baseLocal,
+        phonotactics: {
+          ...baseLocal.phonotactics,
+          stress,
         },
       })),
     );
