@@ -3,6 +3,7 @@ import type { McpConfig } from "./config";
 import { registerAllPrompts } from "./prompts/index";
 import { registerConlangResources } from "./resources/index";
 import { registerAuditTools } from "./tools/audit";
+import { registerConceptTools } from "./tools/concepts";
 import { registerCorpusTools } from "./tools/corpus";
 import { registerExportImportTools } from "./tools/export_import";
 import { registerFontsWritingTools } from "./tools/fonts_writing";
@@ -40,6 +41,7 @@ export function createServer(config: McpConfig): McpServer {
   registerGrammarSandboxTools(server, config);
   registerScaTools(server, config);
   registerCorpusTools(server, config);
+  registerConceptTools(server, config);
   registerExportImportTools(server, config);
   registerSnapshotTools(server, config);
 

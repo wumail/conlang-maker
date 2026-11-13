@@ -7,7 +7,7 @@ import { useGrammarStore } from "../../store/grammarStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useSCAStore } from "../../store/scaStore";
 import { useCorpusStore } from "../../store/corpusStore";
-import type { Sense, WordEntry } from "../../types";
+import type { ConceptDefinition, Sense, WordEntry } from "../../types";
 import { generateIPA } from "../../utils/ipaGenerator";
 import { getWordEvolution } from "../../utils/wordLifecycle";
 import { ConfirmModal } from "../common/ConfirmModal";
@@ -29,6 +29,8 @@ export const EditorPane: React.FC = () => {
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const workspaceLanguages = useWorkspaceStore((s) => s.config.languages);
+  const customConcepts = useWorkspaceStore((s) => s.config.custom_concepts);
+  const addCustomConcepts = useWorkspaceStore((s) => s.addCustomConcepts);
   const scaConfig = useSCAStore((s) => s.config);
   const loadCorpus = useCorpusStore((s) => s.loadCorpus);
 
@@ -144,6 +146,8 @@ export const EditorPane: React.FC = () => {
       />
 
       <WordSensesSection
+        customConcepts={customConcepts}
+        onCreateConcept={(concept: ConceptDefinition) => addCustomConcepts([concept])}
         senses={word.senses}
         partsOfSpeech={partsOfSpeech}
         onChangeSense={handleSenseChange}

@@ -195,3 +195,43 @@ export function useUndoLabelTexts(): Record<string, string> {
     [t],
   );
 }
+
+/** 概念语义域标签 */
+export function useSemanticFieldLabels(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      pronoun: t("concept.field.pronoun"),
+      person: t("concept.field.person"),
+      kinship: t("concept.field.kinship"),
+      body: t("concept.field.body"),
+      animal: t("concept.field.animal"),
+      plant: t("concept.field.plant"),
+      nature: t("concept.field.nature"),
+      substance: t("concept.field.substance"),
+      action: t("concept.field.action"),
+      motion: t("concept.field.motion"),
+      cognition: t("concept.field.cognition"),
+      perception: t("concept.field.perception"),
+      property: t("concept.field.property"),
+      quantity: t("concept.field.quantity"),
+      culture: t("concept.field.culture"),
+      place: t("concept.field.place"),
+    }),
+    [t],
+  );
+}
+
+/** 概念标签迁移的状态标签 */
+export function useConceptMigrationStatusLabels(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      resolved: t("concept.migration.status.resolved"),
+      "already-applied": t("concept.migration.status.alreadyApplied"),
+      conflict: t("concept.migration.status.conflict"),
+      unresolved: t("concept.migration.status.unresolved"),
+    }),
+    [t],
+  );
+}

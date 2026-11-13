@@ -7,6 +7,8 @@ import { useWorkspaceStore } from "../../store/workspaceStore";
 import { createDraftWord, isDraftWord } from "../../utils/lexiconDraft";
 import { useLineageLexicon } from "../../store/lineageLexiconStore";
 import { exportToCSV } from "../../utils/exportCSV";
+import { buildConceptOptions } from "../../lib/lexiconConcepts";
+import { ConceptMigrationButton } from "./ConceptMigrationButton";
 import { ipaFuzzySearch } from "../../utils/ipaSearch";
 import type { WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
@@ -30,7 +32,8 @@ export const Sidebar: React.FC = () => {
   const { t } = useTranslation();
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
-  const workspaceLanguages = useWorkspaceStore((s) => s.config.languages);
+  const workspaceConfig = useWorkspaceStore((s) => s.config);
+  const workspaceLanguages = workspaceConfig.languages;
   const {
     wordsList,
     wordsMap,
@@ -49,6 +52,7 @@ export const Sidebar: React.FC = () => {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [filterPos, setFilterPos] = useState("");
   const [filterTags, setFilterTags] = useState<string[]>([]);
+  const [filterConcept, setFilterConcept] = useState("");
   const [filterOrigin, setFilterOrigin] = useState("");
   const [filterLifecycle, setFilterLifecycle] = useState<LexiconLifecycleFilter>("");
   const [batchMode, setBatchMode] = useState(false);
@@ -109,6 +113,11 @@ export const Sidebar: React.FC = () => {
     [config.phoneme_inventory],
   );
 
+  const conceptOptions = useMemo(
+    () => buildConceptOptions(wordsList, workspaceConfig.custom_concepts ?? []),
+    [wordsList, workspaceConfig],
+  );
+
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     wordsList.forEach((word) => {
@@ -138,6 +147,11 @@ export const Sidebar: React.FC = () => {
     if (filterOrigin) {
       result = result.filter((word) => word.etymology?.origin_type === filterOrigin);
     }
+    if (filterConcept) {
+      result = result.filter((word) =>
+        word.senses.some((sense) => sense.concept_id === filterConcept),
+      );
+    }
     if (filterTags.length > 0) {
       result = result.filter((word) =>
         word.metadata?.tags?.some((tag) =>
@@ -152,7 +166,7 @@ export const Sidebar: React.FC = () => {
       result.sort((a, b) => b.con_word_romanized.localeCompare(a.con_word_romanized));
     }
     return result;
-  }, [searchTerm, wordsList, ipaMode, inventory, sortMode, filterPos, filterOrigin, filterTags]);
+  }, [searchTerm, wordsList, ipaMode, inventory, sortMode, filterPos, filterOrigin, filterTags, filterConcept]);
 
   const displayWords = useMemo(() => {
     if (!filterLifecycle) return filteredWords;
@@ -228,6 +242,10 @@ export const Sidebar: React.FC = () => {
         onFilterLifecycleChange={setFilterLifecycle}
         filterTags={filterTags}
         onFilterTagsChange={setFilterTags}
+        filterConcept={filterConcept}
+        onFilterConceptChange={setFilterConcept}
+        conceptOptions={conceptOptions}
+        conceptMigrationSlot={<ConceptMigrationButton />}
         allTags={allTags}
         partsOfSpeech={partsOfSpeech}
         batchMode={batchMode}

@@ -1,6 +1,7 @@
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
-import type { PartOfSpeech, Sense } from "../../types";
+import type { ConceptDefinition, PartOfSpeech, Sense } from "../../types";
+import { ConceptPicker } from "../common/ConceptPicker";
 import { INPUT, SELECT, TEXTAREA, BTN_ERROR, BTN_LINK } from "../../lib/ui";
 
 interface WordSensesSectionProps {
@@ -9,6 +10,9 @@ interface WordSensesSectionProps {
   onChangeSense: (index: number, field: keyof Sense, value: Sense[keyof Sense]) => void;
   onAddSense: () => void;
   onRequestDeleteSense: (index: number) => void;
+  /** 工作区自定义概念（概念选择器用） */
+  customConcepts?: readonly ConceptDefinition[];
+  onCreateConcept?: (concept: ConceptDefinition) => void;
 }
 
 /** 多义项编辑区：词性 / 释义 / 定义 / 例句 */
@@ -18,6 +22,8 @@ export const WordSensesSection: React.FC<WordSensesSectionProps> = ({
   onChangeSense,
   onAddSense,
   onRequestDeleteSense,
+  customConcepts = [],
+  onCreateConcept,
 }) => {
   const { t } = useTranslation();
 
@@ -73,6 +79,19 @@ export const WordSensesSection: React.FC<WordSensesSectionProps> = ({
                 placeholder={t("lexicon.gloss")}
               />
             </div>
+          </div>
+
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-base-content/60">
+              {t("lexicon.concept.pick")}
+            </span>
+            <ConceptPicker
+              value={sense.concept_id}
+              onChange={(conceptId) => onChangeSense(index, "concept_id", conceptId)}
+              customConcepts={customConcepts}
+              onCreate={onCreateConcept}
+              compact
+            />
           </div>
 
           <div className="mb-4">

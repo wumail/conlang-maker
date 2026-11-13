@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { invoke } from "@tauri-apps/api/core";
 import {
+  ConceptDefinition,
   CreateProjectResult,
   LanguageEntry,
   WorkspaceConfig,
@@ -59,6 +60,8 @@ interface WorkspaceStore {
   deleteLanguage: (languageId: string) => Promise<void>;
   createRootLanguage: (name: string) => Promise<CreateProjectResult | null>;
   renameLanguage: (languageId: string, newName: string) => void;
+  /** 追加工作区自定义概念（去重后写回 workspace.conlang） */
+  addCustomConcepts: (concepts: ConceptDefinition[]) => void;
   getLanguageById: (languageId: string) => LanguageEntry | undefined;
   getChildLanguages: (parentId: string) => LanguageEntry[];
   copyProject: (
@@ -516,6 +519,22 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       if (conlangFilePath) {
         get().saveWorkspace();
       }
+    },
+
+    addCustomConcepts: (concepts) => {
+      if (concepts.length === 0) return;
+      const { config, conlangFilePath } = get();
+      const existing = config.custom_concepts ?? [];
+      const seen = new Set(existing.map((item) => item.concept_id));
+      const merged = [...existing];
+      for (const concept of concepts) {
+        if (seen.has(concept.concept_id)) continue;
+        seen.add(concept.concept_id);
+        merged.push(concept);
+      }
+      if (merged.length === existing.length) return;
+      set({ config: { ...config, custom_concepts: merged }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
     },
 
     getLanguageById: (languageId: string) => {

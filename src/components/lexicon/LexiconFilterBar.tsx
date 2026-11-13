@@ -34,6 +34,12 @@ interface LexiconFilterBarProps {
   onFilterLifecycleChange: (value: LexiconLifecycleFilter) => void;
   filterTags: string[];
   onFilterTagsChange: (tags: string[]) => void;
+  filterConcept: string;
+  onFilterConceptChange: (value: string) => void;
+  /** 当前语言中已绑定的概念（去重后按标签排序） */
+  conceptOptions: { id: string; label: string }[];
+  /** 概念迁移入口（自带弹窗的组件槽位） */
+  conceptMigrationSlot?: React.ReactNode;
   allTags: string[];
   partsOfSpeech: PartOfSpeech[];
   batchMode: boolean;
@@ -65,6 +71,10 @@ export const LexiconFilterBar: React.FC<LexiconFilterBarProps> = ({
   onFilterLifecycleChange,
   filterTags,
   onFilterTagsChange,
+  filterConcept,
+  onFilterConceptChange,
+  conceptOptions,
+  conceptMigrationSlot,
   allTags,
   partsOfSpeech,
   batchMode,
@@ -79,7 +89,7 @@ export const LexiconFilterBar: React.FC<LexiconFilterBarProps> = ({
 }) => {
   const { t } = useTranslation();
   const hasFilters = Boolean(
-    filterPos || filterOrigin || filterTags.length > 0 || filterLifecycle,
+    filterPos || filterOrigin || filterTags.length > 0 || filterLifecycle || filterConcept,
   );
 
   return (
@@ -213,6 +223,23 @@ export const LexiconFilterBar: React.FC<LexiconFilterBarProps> = ({
             </select>
           </div>
           <div>
+            <label className="block text-base-content/60 mb-1">
+              {t("lexicon.concept.filterLabel")}
+            </label>
+            <select
+              className={`${SELECT} select-xs w-full`}
+              value={filterConcept}
+              onChange={(event) => onFilterConceptChange(event.target.value)}
+            >
+              <option value="">{t("common.all")}</option>
+              {conceptOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
             <label className="block text-base-content/60 mb-1">{t("lexicon.tags")}</label>
             <TagSelector
               selected={filterTags}
@@ -233,12 +260,14 @@ export const LexiconFilterBar: React.FC<LexiconFilterBarProps> = ({
                   onFilterTagsChange([]);
                   onFilterOriginChange("");
                   onFilterLifecycleChange("");
+                  onFilterConceptChange("");
                 }}
               >
                 {t("common.clear")}
               </button>
             </div>
           )}
+          {conceptMigrationSlot}
         </div>
       )}
     </div>
