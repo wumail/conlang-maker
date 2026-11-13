@@ -150,6 +150,27 @@ export default {
     },
     lexicon: {
       title: "词典",
+      family: {
+        title: "词族",
+        size: "{{count}} 个相关词",
+        upstream: "由……构成",
+        downstream: "派生词",
+        components: "构词成分",
+        componentsHint: "把多个词素组合成本词（DAG，自动拒绝成环）",
+        addPlaceholder: "搜索词条以添加为成分",
+        cycleBlocked: "该成分会导致循环引用",
+        missing: "缺失",
+        refreshDigest: "重新核验",
+        digestHint: "读音摘要 {{digest}}",
+        depthHint: "第 {{depth}} 层",
+        relation: {
+          root: "词根",
+          modifier: "修饰",
+          head: "中心",
+          affix: "词缀",
+          reduplicant: "重叠",
+        },
+      },
       concept: {
         filterLabel: "概念",
         pick: "绑定概念",
@@ -615,6 +636,7 @@ export default {
         blacklistHit: "命中黑名单",
         vowelHarmonyViolation: "元音和谐冲突",
         homophonyClash: "同音碰撞",
+        staleCompound: "复合词读音过期",
       },
     },
     statistics: {

@@ -15,6 +15,7 @@ import { registerScaTools } from "./tools/sca";
 import { registerSnapshotTools } from "./tools/snapshots";
 import { registerSystemFamilyTools } from "./tools/system_family";
 import { registerWordgenTools } from "./tools/wordgen";
+import { registerWordFamilyTools } from "./tools/word_family";
 
 export function createServer(config: McpConfig): McpServer {
   const server = new McpServer(
@@ -39,6 +40,7 @@ export function createServer(config: McpConfig): McpServer {
   registerAuditTools(server, config);
   registerLexiconTools(server, config);
   registerWordgenTools(server, config);
+  registerWordFamilyTools(server, config);
   registerGrammarSandboxTools(server, config);
   registerScaTools(server, config);
   registerCorpusTools(server, config);

@@ -1,6 +1,8 @@
 import { useTranslation } from "react-i18next";
 import type { LanguageEntry, OriginType, WordEntry, WordEvolution } from "../../types";
 import { INPUT, SELECT, TOGGLE } from "../../lib/ui";
+import { WordComponentsEditor } from "./WordComponentsEditor";
+import { WordFamilyPanel } from "./WordFamilyPanel";
 
 interface WordEtymologySectionProps {
   word: WordEntry;
@@ -8,6 +10,9 @@ interface WordEtymologySectionProps {
   workspaceLanguages: LanguageEntry[];
   activeLanguageId: string;
   onChange: (field: keyof WordEntry, value: WordEntry[keyof WordEntry]) => void;
+  /** 词族/构词成分解析所需的全部词条 */
+  wordsMap: Record<string, WordEntry>;
+  onNavigate: (entryId: string) => void;
 }
 
 /** 词源 / 演化链 / 废弃状态 / 语义迁移备注 */
@@ -17,6 +22,8 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
   workspaceLanguages,
   activeLanguageId,
   onChange,
+  wordsMap,
+  onNavigate,
 }) => {
   const { t } = useTranslation();
   const etymology = word.etymology;
@@ -67,6 +74,10 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
           />
         </div>
       </div>
+
+      <WordComponentsEditor word={word} wordsMap={wordsMap} onChange={onChange} />
+
+      <WordFamilyPanel word={word} wordsMap={wordsMap} onNavigate={onNavigate} />
 
       <div>
         <label className="block text-xs font-medium text-base-content/60 mb-1">

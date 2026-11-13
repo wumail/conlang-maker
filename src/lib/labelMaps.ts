@@ -175,6 +175,7 @@ export function useQcRuleLabels(): Record<string, string> {
       blacklistHit: t("qc.rules.blacklistHit"),
       vowelHarmonyViolation: t("qc.rules.vowelHarmonyViolation"),
       homophonyClash: t("qc.rules.homophonyClash"),
+      staleCompound: t("qc.rules.staleCompound"),
     }),
     [t],
   );
@@ -231,6 +232,21 @@ export function useConceptMigrationStatusLabels(): Record<string, string> {
       "already-applied": t("concept.migration.status.alreadyApplied"),
       conflict: t("concept.migration.status.conflict"),
       unresolved: t("concept.migration.status.unresolved"),
+    }),
+    [t],
+  );
+}
+
+/** 构词成分关系标签 */
+export function useCompoundRelationLabels(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      root: t("lexicon.family.relation.root"),
+      modifier: t("lexicon.family.relation.modifier"),
+      head: t("lexicon.family.relation.head"),
+      affix: t("lexicon.family.relation.affix"),
+      reduplicant: t("lexicon.family.relation.reduplicant"),
     }),
     [t],
   );

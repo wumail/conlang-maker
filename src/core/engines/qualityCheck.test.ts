@@ -113,9 +113,10 @@ function word(
 const grammar = grammarWith([nounPos()]);
 
 describe("runQualityCheck: rule catalogue", () => {
-  test("exposes exactly ten rule keys", () => {
-    expect(QC_RULE_KEYS).toHaveLength(10);
-    expect(new Set(QC_RULE_KEYS).size).toBe(10);
+  test("exposes exactly eleven rule keys", () => {
+    expect(QC_RULE_KEYS).toHaveLength(11);
+    expect(new Set(QC_RULE_KEYS).size).toBe(11);
+    expect(QC_RULE_KEYS).toContain("staleCompound");
   });
 });
 
@@ -284,6 +285,53 @@ describe("runQualityCheck: disabled rules", () => {
   test("returns nothing when every rule is disabled", () => {
     const entries = [word("w1", "tazka", { phonetic_ipa: "", senses: [] })];
     const issues = runQualityCheck(entries, phonologyWith("(C)V(C)"), grammar, [...QC_RULE_KEYS]);
+    expect(issues).toEqual([]);
+  });
+});
+
+describe("runQualityCheck: staleCompound", () => {
+  test("flags compounds whose upstream pronunciation changed", () => {
+    const root = word("root", "taka");
+    const compound = word("compound", "taka", {
+      etymology: {
+        origin_type: "derived",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+        components: [{ entry_id: "root", relation: "root" }],
+        compounds_stale_digest: "deadbeef",
+      },
+    });
+    const issues = runQualityCheck(
+      [root, compound],
+      phonologyWith("(C)V(C)"),
+      grammarWith([nounPos()]),
+      only("staleCompound"),
+    );
+    expect(issues.map((issue) => issue.entry_id)).toEqual(["compound"]);
+    expect(issues[0]?.rule).toBe("staleCompound");
+    expect(issues[0]?.severity).toBe("warning");
+  });
+
+  test("accepts a matching digest and ignores words without components", () => {
+    const root = word("root", "taka");
+    const compound = word("compound", "taka", {
+      etymology: {
+        origin_type: "derived",
+        parent_entry_id: null,
+        source_language_id: null,
+        applied_sound_changes: [],
+        semantic_shift_note: "",
+        components: [{ entry_id: "root", relation: "root" }],
+      },
+    });
+    const issues = runQualityCheck(
+      [root, compound],
+      phonologyWith("(C)V(C)"),
+      grammarWith([nounPos()]),
+      only("staleCompound"),
+    );
     expect(issues).toEqual([]);
   });
 });

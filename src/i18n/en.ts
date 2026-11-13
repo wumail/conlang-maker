@@ -151,6 +151,27 @@ export default {
     },
     lexicon: {
       title: "Lexicon",
+      family: {
+        title: "Word family",
+        size: "{{count}} related",
+        upstream: "Built from",
+        downstream: "Derived words",
+        components: "Morpheme components",
+        componentsHint: "Combine parts into this word (DAG, cycles rejected)",
+        addPlaceholder: "Search a word to add as component",
+        cycleBlocked: "This component would create a cycle",
+        missing: "missing",
+        refreshDigest: "Re-verify",
+        digestHint: "Pronunciation digest {{digest}}",
+        depthHint: "Depth {{depth}}",
+        relation: {
+          root: "root",
+          modifier: "modifier",
+          head: "head",
+          affix: "affix",
+          reduplicant: "reduplicant",
+        },
+      },
       concept: {
         filterLabel: "Concept",
         pick: "Bind a concept",
@@ -635,6 +656,7 @@ export default {
         blacklistHit: "Blacklisted pattern",
         vowelHarmonyViolation: "Vowel harmony conflict",
         homophonyClash: "Homophone clash",
+        staleCompound: "Outdated compound",
       },
     },
     statistics: {

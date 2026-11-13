@@ -79,6 +79,7 @@ export const EXPECTED_76_TOOLS: readonly string[] = [
   "concept_list",
   "concept_upsert",
   "family_cognate_matrix",
+  "lex_word_family",
   // §5.9 Export & Import (5)
   "export_llm_brief",
   "export_workspace_bundle",

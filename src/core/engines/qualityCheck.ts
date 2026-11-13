@@ -3,7 +3,8 @@
  *
  * 规则（PRD §2.2）：
  *   missingPos / unmappedSpelling / emptyIpa / patternMismatch / missingRequired /
- *   duplicateWord / phonotacticViolation / blacklistHit / vowelHarmonyViolation / homophonyClash
+ *   duplicateWord / phonotacticViolation / blacklistHit / vowelHarmonyViolation /
+ *   homophonyClash / staleCompound
  *
  * 纯函数：不依赖 React / DOM / Tauri / Node FS，GUI 与 MCP 同源复用。
  */
@@ -17,6 +18,7 @@ import { generateIPATraced } from "./ipaGenerator";
 import { tokenizePhonemes } from "./phonemeTokenizer";
 import { compileSyllableUnits, syllabifyWithUnits } from "./syllabifier";
 import { matchesBlacklist } from "./wordGenerator";
+import { computeComponentsDigest } from "./wordFamily";
 
 export interface QCIssue {
   entry_id: string;
@@ -36,7 +38,8 @@ export type QCRuleKey =
   | "phonotacticViolation"
   | "blacklistHit"
   | "vowelHarmonyViolation"
-  | "homophonyClash";
+  | "homophonyClash"
+  | "staleCompound";
 
 /** 全部规则键（顺序即 UI 展示顺序） */
 export const QC_RULE_KEYS: readonly QCRuleKey[] = [
@@ -50,6 +53,7 @@ export const QC_RULE_KEYS: readonly QCRuleKey[] = [
   "blacklistHit",
   "vowelHarmonyViolation",
   "homophonyClash",
+  "staleCompound",
 ] as const;
 
 /** 允许原样透传、不视为「未映射拼写」的字符 */
@@ -114,6 +118,9 @@ export function runQualityCheck(
   const harmony = phonotactics.vowel_harmony;
   const harmonyA = new Set(harmony?.group_a ?? []);
   const harmonyB = new Set(harmony?.group_b ?? []);
+
+  const wordsMap: Record<string, WordEntry> = {};
+  for (const word of words) wordsMap[word.entry_id] = word;
 
   // 词形重复统计
   const wordFreq = new Map<string, string[]>();
@@ -280,7 +287,7 @@ export function runQualityCheck(
       }
     }
 
-    // Rule 10: 同音碰撞（表层发音相同 + 共享词性）
+    // 同音碰撞采集（Rule 10 的聚合在循环外完成）
     if (!disabled.has("homophonyClash")) {
       const surface = stripProsody(traced?.surface || traced?.phonemic || "");
       if (surface.length > 0) {
@@ -297,6 +304,27 @@ export function runQualityCheck(
     }
   }
 
+  // Rule 11: 复合词读音过期（上游词根词形/读音已变，摘要不一致）
+  if (!disabled.has("staleCompound")) {
+    for (const word of words) {
+      const components = word.etymology?.components ?? [];
+      if (components.length === 0) continue;
+      const stored = word.etymology?.compounds_stale_digest;
+      if (!stored) continue;
+      const current = computeComponentsDigest(components, wordsMap);
+      if (current && current !== stored) {
+        issues.push({
+          entry_id: word.entry_id,
+          word: word.con_word_romanized,
+          rule: "staleCompound",
+          severity: "warning",
+          message: "Component pronunciation changed since last verification",
+        });
+      }
+    }
+  }
+
+  // Rule 10: 同音碰撞（表层发音相同 + 共享词性）
   if (!disabled.has("homophonyClash")) {
     for (const group of homophoneGroups.values()) {
       const uniqueIds = new Set(group.entries.map((entry) => entry.entry_id));

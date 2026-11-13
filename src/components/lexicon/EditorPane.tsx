@@ -22,7 +22,8 @@ import { useWordLineage } from "./useWordLineage";
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { activeWordId, wordsMap, wordsList, upsertWord, deleteWord } = useLexiconStore();
+  const { activeWordId, wordsMap, wordsList, upsertWord, deleteWord, setActiveWordId } =
+    useLexiconStore();
   const phonoConfig = usePhonoStore((s) => s.config);
   const grammarConfig = useGrammarStore((s) => s.config);
   const partsOfSpeech = grammarConfig.parts_of_speech;
@@ -174,6 +175,8 @@ export const EditorPane: React.FC = () => {
       </div>
 
       <WordEtymologySection
+        wordsMap={wordsMap}
+        onNavigate={setActiveWordId}
         word={word}
         evolution={evolution}
         workspaceLanguages={workspaceLanguages}
