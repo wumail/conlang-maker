@@ -188,6 +188,19 @@ export function invalidateLineageLexicon(
   if (changed) notify();
 }
 
+/** 列出某工作区已缓存的全部语言词库（跨语系检索用） */
+export function listLineageSnapshots(
+  projectPath: string,
+): { languagePath: string; snapshot: LineageLexiconSnapshot }[] {
+  const prefix = `${projectPath}::`;
+  const result: { languagePath: string; snapshot: LineageLexiconSnapshot }[] = [];
+  for (const [key, record] of cache) {
+    if (!key.startsWith(prefix) || !record.snapshot) continue;
+    result.push({ languagePath: key.slice(prefix.length), snapshot: record.snapshot });
+  }
+  return result;
+}
+
 export interface LineageLexiconState {
   snapshot: LineageLexiconSnapshot | null;
   loading: boolean;

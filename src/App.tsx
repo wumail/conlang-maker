@@ -4,6 +4,8 @@ import { check } from "@tauri-apps/plugin-updater";
 import { useTranslation } from "react-i18next";
 import { TitleBar } from "./components/nav/TitleBar";
 import { useUndoShortcuts } from "./lib/useUndoShortcuts";
+import { useCommandPaletteHotkey } from "./lib/useCommandPaletteHotkey";
+import { CommandPalette } from "./components/common/CommandPalette";
 import { AppNav } from "./components/nav/AppNav";
 import { ProjectStats } from "./components/nav/ProjectStats";
 import { ExternalConflictModal } from "./components/common/ExternalConflictModal";
@@ -67,6 +69,7 @@ function App() {
 
   useConlangFont();
   useUndoShortcuts();
+  const commandPalette = useCommandPaletteHotkey();
   useProjectWatcher(projectPath, conlangFilePath);
 
   // 1. On mount, load registry and resolve active family
@@ -165,7 +168,12 @@ function App() {
 
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-base-200 font-sans">
-      <TitleBar ready={loadedLanguage === languageKey && !loadError} />
+      <TitleBar
+        ready={loadedLanguage === languageKey && !loadError}
+        onOpenCommandPalette={() => commandPalette.setOpen(true)}
+      />
+
+      <CommandPalette open={commandPalette.open} onClose={commandPalette.close} />
 
       {showWorkspaceChrome && <AppNav />}
 

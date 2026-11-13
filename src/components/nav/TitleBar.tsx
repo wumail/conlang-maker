@@ -10,6 +10,7 @@ import {
   Info,
 } from "lucide-react";
 import { QuickEntry } from "../common/QuickEntry";
+import { Search } from "lucide-react";
 import { LanguageToggle } from "../common/LanguageToggle";
 import { UndoRedoButtons } from "./UndoRedoButtons";
 import { useTheme } from "../../lib/useTheme";
@@ -36,7 +37,13 @@ const MaximizeIcon = () => (
   </svg>
 );
 
-export function TitleBar({ ready = true }: { ready?: boolean }) {
+export function TitleBar({
+  ready = true,
+  onOpenCommandPalette,
+}: {
+  ready?: boolean;
+  onOpenCommandPalette?: () => void;
+}) {
   const { t } = useTranslation();
   const { theme, toggle: toggleTheme } = useTheme();
   const [quickEntryOpen, setQuickEntryOpen] = useState(false);
@@ -87,6 +94,17 @@ export function TitleBar({ ready = true }: { ready?: boolean }) {
       {/* ── Right: Utility Actions ── */}
       <div className="flex items-center gap-1 shrink-0">
         {!isWelcome && <UndoRedoButtons />}
+        {!isWelcome && onOpenCommandPalette && (
+          <button
+            type="button"
+            className="btn btn-ghost btn-xs gap-1"
+            onClick={onOpenCommandPalette}
+            title={t("commandPalette.open")}
+          >
+            <Search size={14} />
+            <kbd className="kbd kbd-xs">⌘K</kbd>
+          </button>
+        )}
         {!isWelcome && (
           <>
             <button
