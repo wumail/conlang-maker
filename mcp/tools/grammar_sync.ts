@@ -181,6 +181,7 @@ export function registerGrammarSyncTools(
             childSca: childSca.config,
             inventory: childPhono.config.phoneme_inventory,
             phonotactics: childPhono.config.phonotactics,
+            phonology: childPhono.config,
             posIds: args.pos_ids,
           });
 
