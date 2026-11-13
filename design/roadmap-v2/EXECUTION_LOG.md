@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（6 / 20 已完成） |
+| 当前状态 | 执行中（7 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -24,7 +24,7 @@
 | **T0.4** | P0 | 谱系词库缓存层与动态高度虚拟列表接入 | §2.3 | [x] | 2026-11-12 / `4641c2d` | 8/8 全绿（src 126 pass / mcp 34 / cargo 47） | [ ] | |
 | **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [ ] | |
 | **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | |
-| **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [ ] | — | — | [ ] | |
+| **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [ ] | |
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [ ] | — | — | [ ] | |
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [ ] | — | — | [ ] | |
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [ ] | — | — | [ ] | |
@@ -182,13 +182,22 @@
   2. 各 Store 的 `coalesceKey` 默认分别取 `lex:<entryId>`、`<domain>:<languagePath>`、`corpus:<id>:<lineCount>`——粒度按「同一实体/同一语言」定义，符合 PRD「打字不产生逐步撤销」的目标；粒度更细的按字段合并留待 T1.5 DSL 编辑器接入时再细化。
 
 #### T1.2 语料反向索引引擎与词典详情三大内联卡片
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`d5fa1fb`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `concordance.ts` 单测通过；详情页接入例句出处、折叠屈折表、富信息演化链。
-  - [ ] MCP 注册 `corpus_concordance` 并更新 `expected-tools.ts` 与 `coverage-matrix.test.ts`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `concordance.ts`（139 行）+ `concordance.test.ts`（9 条）通过；详情页接入例句出处、折叠屈折表、富信息演化链。
+  - [x] MCP 注册 `corpus_concordance` 并更新 `expected-tools.ts` 与 `coverage-matrix.test.ts`；新增 5 条 InMemoryTransport 集成单测。
+  - [x] 涉及组件均 ≤ 300 行（EditorPane 215 / useWordLineage 183 / WordConcordanceSection 127 / WordParadigmCollapsible 109 / EvolutionChainCards 78）。
+- 关键实现：
+  1. **双轨匹配**：①`GlossToken.linked_entry_id === entry.entry_id` 或 `morpheme_break` 首段（按 `-`/`·` 切分后归一化）等于词条词干；②表层 `normalizeToken()` 落在「基础形 ∪ 各词性 `generateParadigm()` 屈折形 ∪ extraForms」集合内。**同形异义防护**：Token 已显式关联到其他词条时，两条轨道都不成立（单测固化）。
+  2. `limit`（默认 200）只截断 `matches`，`total` 始终为全量计数；空 `surface_form` 直接跳过；`gloss` 优先取 `gloss_labels`，否则回退词条释义拼接。
+  3. 三张卡片：`WordParadigmCollapsible` 用「带 override 上下文」与「纯规则」两次 `generateParadigm` 结果比对来判定不规则格（不新增引擎 API），并提供跳转语法页；`WordConcordanceSection` 展开时才 `loadAllCorpusTexts()`（复用已打开的语料副本，失败落空数组防重试风暴），点击回填 `activeCorpusId` 后跳 `/corpus`；`EvolutionChainCards` 每代展示语言名 + 罗马字 + 该语言音系算出的 `/IPA/` + `ScriptLine` 本族字，并保留 SCA 规则徽章。
+  4. **EditorPane 再瘦身**：把父语言/祖先链/生命周期/演化链派生逻辑整体抽到 `useWordLineage.ts`（183 行），EditorPane 215 行，为后续 T2.x 留出空间。
+  5. MCP：`corpus_concordance`（`toolsets: ["core","compute"]`、`access: "read"`、`idempotent`）支持 `entry_id` 或 `word_romanized` 二选一定位词条，返回 `matches/total/corpus_texts_scanned/dependencies`；按 §7.6 把 `coverage-matrix.test.ts` 的 `toBe(76)` 改为 `toBeGreaterThanOrEqual(76)` 与 `toBe(EXPECTED_76_TOOLS.length)`，工具总数升至 77。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 146 pass（新增 9）；`mcp:check` 0 error；`mcp:test` 39 pass（新增 5）；`cargo test` 47 pass。
+- 偏差与决定：
+  1. 集成测试用 `InMemoryTransport`（而非 `tools-e2e` 的 stdio 子进程）覆盖新工具，避免再起一个 MCP 进程拖慢套件；fixture 直接复用 `tests/fixtures/workspace-basic/branches/leaf`（`corp_leaf_1` 中 `entry_leaf_acha` 恰好 1 处出处）。
+  2. 「点击定位到具体语料句」当前只做到「切到 `/corpus` 并激活对应语料文章」，未做行级滚动锚点——`CorpusPage` 尚无行锚机制，强行滚动需改动语料页布局，留待 T1.3 打开语料编辑链路时一并实现。
 
 #### T1.3 语料三行标注侧边快建词条抽屉
 - 执行者：待填　日期：—　提交：—
