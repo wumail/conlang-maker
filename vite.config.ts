@@ -16,7 +16,8 @@ export default defineConfig({
   },
 
   build: {
-    target: "es2020",
+    // harfbuzzjs 使用顶层 await；Tauri 的 WebView 均为支持 ES2022 的现代引擎
+    target: "es2022",
     minify: "terser",
     cssMinify: true,
     sourcemap: false,

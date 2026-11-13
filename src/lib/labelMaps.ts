@@ -264,3 +264,19 @@ export function useGrammarSyncKindLabels(): Record<string, string> {
     [t],
   );
 }
+
+/** 字形几何审计问题类型标签（T3.2） */
+export function useGeometryIssueLabels(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      ascender_misaligned: t("writing.geometry.issueAscender"),
+      baseline_drift: t("writing.geometry.issueBaseline"),
+      mark_gap_too_large: t("writing.geometry.issueMarkGap"),
+      mark_gap_too_small: t("writing.geometry.issueMarkGap"),
+      stem_too_thin: t("writing.geometry.issueStem"),
+      weight_uneven: t("writing.geometry.issueWeight"),
+    }),
+    [t],
+  );
+}

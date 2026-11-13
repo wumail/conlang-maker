@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { Archive, GitBranch } from "lucide-react";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import type { GlyphAnnotation } from "../../types";
 import { unicodeBlockId, type UnicodeBlockId } from "../../utils/unicodeBlocks";
-import { BADGE, BTN_PRIMARY } from "../../lib/ui";
 import { useFontInspection } from "./FontInspectionContext";
 import { GlyphAnnotationPopover } from "./GlyphAnnotationPopover";
 import { GlyphGridSection } from "./GlyphGridSection";
+import { GlyphStatusNotices } from "./GlyphStatusNotices";
+import {
+  GlyphGeometryInspector,
+  type GeometryOverlay,
+} from "./GlyphGeometryInspector";
 import {
   ALL_BLOCKS,
   buildGlyphCells,
@@ -40,6 +43,7 @@ export function GlyphPanel() {
   );
   const setGlyphAnnotations = usePhonoStore((state) => state.setGlyphAnnotations);
   const projectPath = useWorkspaceStore((state) => state.projectPath);
+  const conlangFilePath = useWorkspaceStore((state) => state.conlangFilePath);
   const activeLanguageId = useWorkspaceStore((state) => state.activeLanguageId);
   const workspaceLanguages = useWorkspaceStore((state) => state.config.languages);
 
@@ -77,6 +81,11 @@ export function GlyphPanel() {
   const [query, setQuery] = useState("");
   const [blockFilter, setBlockFilter] = useState<BlockFilter>("all");
   const [page, setPage] = useState(0);
+  const [geometryOverlay, setGeometryOverlay] = useState<GeometryOverlay>({
+    showRulers: false,
+    metrics: null,
+    flagged: null,
+  });
   const [selectedCell, setSelectedCell] = useState<number[] | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
@@ -118,9 +127,19 @@ export function GlyphPanel() {
     [glyphCells, query, blockFilter, annotationByCodepoint, fontCodeSet],
   );
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const geometryCells = useMemo(
+    () =>
+      geometryOverlay.flagged
+        ? filtered.filter((cell) =>
+            cell.some((codepoint) => geometryOverlay.flagged!.has(codepoint)),
+          )
+        : filtered,
+    [filtered, geometryOverlay.flagged],
+  );
+
+  const pageCount = Math.max(1, Math.ceil(geometryCells.length / PAGE_SIZE));
   const safePage = Math.min(page, pageCount - 1);
-  const visible = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const visible = geometryCells.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
   const selectedCode = selectedCell ? representative(selectedCell) : null;
   const popoverOpen = selectedCell !== null;
 
@@ -157,41 +176,20 @@ export function GlyphPanel() {
         </div>
       )}
 
-      {annotationsSource === "inherited" && (
-        <div
-          className="alert alert-info alert-soft py-2.5 px-3 text-xs flex flex-wrap items-center justify-between gap-2"
-          data-testid="glyph-inherited-notice"
-        >
-          <div className="flex items-center gap-2">
-            <GitBranch className="w-4 h-4 shrink-0" />
-            <span className={`${BADGE} badge-info`}>
-              {t("writing.inheritedAnnotationsBadge", { name: ownerLanguageName })}
-            </span>
-            <span>
-              {t("writing.inheritedAnnotationsHint", { name: ownerLanguageName })}
-            </span>
-          </div>
-          <button
-            type="button"
-            className={BTN_PRIMARY}
-            onClick={localizeInheritedAnnotations}
-            data-testid="localize-parent-annotations"
-          >
-            {t("writing.localizeAnnotations")}
-          </button>
-        </div>
-      )}
+      <GlyphStatusNotices
+        inherited={annotationsSource === "inherited"}
+        ownerLanguageName={ownerLanguageName}
+        onLocalize={localizeInheritedAnnotations}
+        legacyFieldsPresent={legacyFieldsPresent}
+      />
 
-      {legacyFieldsPresent && (
-        <div
-          className="alert alert-soft py-2 px-3 text-xs flex items-center gap-2 border border-base-300"
-          data-testid="glyph-legacy-notice"
-        >
-          <Archive className="w-4 h-4 shrink-0 text-base-content/60" />
-          <span className="text-base-content/70">
-            {t("writing.legacyWritingNotice")}
-          </span>
-        </div>
+      {inspection?.present && (
+        <GlyphGeometryInspector
+          projectPath={projectPath}
+          conlangFilePath={conlangFilePath}
+          languageId={activeLanguageId}
+          onChange={setGeometryOverlay}
+        />
       )}
 
       <GlyphGridSection
@@ -204,7 +202,7 @@ export function GlyphPanel() {
           closePopover();
         }}
         totalCellsCount={glyphCells.length}
-        filteredCount={filtered.length}
+        filteredCount={geometryCells.length}
         annotationsCount={annotations.length}
         presentBlocks={presentBlocks}
         blockFilter={blockFilter}
@@ -230,6 +228,8 @@ export function GlyphPanel() {
         safePage={safePage}
         pageCount={pageCount}
         onPageChange={setPage}
+        showRulers={geometryOverlay.showRulers}
+        metrics={geometryOverlay.metrics}
       />
 
       {popoverOpen &&

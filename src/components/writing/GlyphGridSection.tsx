@@ -1,6 +1,8 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { RefreshCw } from "lucide-react";
+import type { FontMetricsInput } from "../../core/engines/fontGeometryAudit";
+import { GlyphCellRuler } from "./GlyphCellRuler";
 import type { UnicodeBlockId } from "../../utils/unicodeBlocks";
 import { BTN_GHOST, CARD, CARD_BODY, SECTION_HEADER } from "../../lib/ui";
 import {
@@ -31,6 +33,8 @@ interface GlyphGridSectionProps {
   safePage: number;
   pageCount: number;
   onPageChange: (next: number) => void;
+  showRulers?: boolean;
+  metrics?: FontMetricsInput | null;
 }
 
 export const GlyphGridSection: React.FC<GlyphGridSectionProps> = ({
@@ -54,6 +58,8 @@ export const GlyphGridSection: React.FC<GlyphGridSectionProps> = ({
   safePage,
   pageCount,
   onPageChange,
+  showRulers = false,
+  metrics = null,
 }) => {
   const { t } = useTranslation();
   const showEmptyFont = totalCellsCount === 0;
@@ -190,7 +196,11 @@ export const GlyphGridSection: React.FC<GlyphGridSectionProps> = ({
                         : ""
                     }`}
                   >
-                    {glyphText(codepoint)}
+                    {showRulers && metrics ? (
+                      <GlyphCellRuler char={glyphText(codepoint)} metrics={metrics} />
+                    ) : (
+                      glyphText(codepoint)
+                    )}
                   </span>
                   <span
                     className={`text-xs truncate max-w-full ${
