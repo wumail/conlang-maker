@@ -47,6 +47,12 @@ import {
   executeProjectTransaction,
   type PlannedMutation,
 } from "../storage/transaction";
+import {
+  linearizeClause,
+  type ClauseNode,
+  type NPNode,
+  type PPNode,
+} from "../../src/core/engines/phraseSandbox";
 import { registerDefinedTool } from "../toolRegistry";
 import { computeStructuralDiff } from "../util/diff";
 import { paginate } from "../util/paging";
@@ -321,6 +327,34 @@ function resolveWordAndPos(
     pos_id: posId,
   };
 }
+
+const npInputSchema: z.ZodType<NPNode> = z.lazy(() =>
+  z.object({
+    head: z.string(),
+    determiner: z.string().optional(),
+    numeral: z.string().optional(),
+    adjectives: z.array(z.string()).optional(),
+    possessor: npInputSchema.optional(),
+    pp: ppInputSchema.optional(),
+  }),
+);
+
+const ppInputSchema: z.ZodType<PPNode> = z.lazy(() =>
+  z.object({
+    adposition: z.string(),
+    object: npInputSchema,
+  }),
+);
+
+const clauseInputSchema: z.ZodType<ClauseNode> = z.object({
+  subject: npInputSchema,
+  verb: z.object({
+    gloss: z.string(),
+    tam: z.array(z.string()).optional(),
+  }),
+  object: npInputSchema.optional(),
+  obliques: z.array(ppInputSchema).optional(),
+});
 
 export function registerGrammarSandboxTools(
   server: McpServer,
@@ -934,7 +968,7 @@ export function registerGrammarSandboxTools(
     name: "sandbox_translate",
     title: "Translate Gloss Sentence in Grammar Sandbox",
     description:
-      "Translate gloss strings (e.g. 'dog-NOM see-PST cat-ACC') or role-annotated tokens into inflected, syntax-ordered conlang sentences with IPA.",
+      "Translate gloss strings (e.g. 'dog-NOM see-PST cat-ACC'), role-annotated tokens, or a recursive clause tree into inflected, syntax-ordered conlang sentences with IPA. A clause tree assigns case by the grammar's morphosyntactic alignment and keeps each NP's modifiers attached to its own head.",
     toolsets: ["compute"],
     access: "read",
     inputSchema: {
@@ -959,12 +993,21 @@ export function registerGrammarSandboxTools(
         .boolean()
         .optional()
         .describe("When annotated_tokens is provided, reorder by grammar.syntax (default: true)"),
+      clause: clauseInputSchema
+        .optional()
+        .describe(
+          "Recursive clause tree; each NP carries its own determiner/numeral/adjectives/possessor and nested PP. Case affixes are assigned from grammar.syntax.alignment.",
+        ),
     },
     handler: async (args) => {
-      if (!args.text?.trim() && (!args.annotated_tokens || args.annotated_tokens.length === 0)) {
+      if (
+        !args.text?.trim() &&
+        (!args.annotated_tokens || args.annotated_tokens.length === 0) &&
+        !args.clause
+      ) {
         throw new McpError(
           "VALIDATION",
-          "Provide either non-empty text or annotated_tokens.",
+          "Provide non-empty text, annotated_tokens, or a clause tree.",
         );
       }
 
@@ -994,7 +1037,11 @@ export function registerGrammarSandboxTools(
       }
 
       let effectiveGlossText = args.text?.trim() ?? "";
-      if (args.annotated_tokens && args.annotated_tokens.length > 0) {
+      let phrase: ReturnType<typeof linearizeClause> | null = null;
+      if (args.clause) {
+        phrase = linearizeClause(args.clause, snapshot.gram.config);
+        effectiveGlossText = phrase.glossLine;
+      } else if (args.annotated_tokens && args.annotated_tokens.length > 0) {
         const prepared: AnnotatedToken[] = args.annotated_tokens.map((tok) => {
           const cleanGloss = tok.gloss.trim();
           const matchedWord = Object.values(wordsMap).find((w) =>
@@ -1051,6 +1098,15 @@ export function registerGrammarSandboxTools(
           .map((t) => t.ipa.replace(/^\/|\/$/gu, ""))
           .join(" ")}/`,
         gloss_sentence: tokens.map((t) => t.gloss).join(" "),
+        phrase: phrase
+          ? {
+              alignment: phrase.alignment,
+              case_tags: phrase.caseTags,
+              words: phrase.words,
+              steps: phrase.steps,
+              warnings: phrase.warnings,
+            }
+          : undefined,
         tokens,
         unresolved_glosses: unresolvedGlosses,
         dependencies: {
