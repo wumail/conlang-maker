@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（11 / 20 已完成） |
+| 当前状态 | 执行中（12 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -29,7 +29,7 @@
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | |
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | |
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | |
-| **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [ ] | — | — | [ ] | |
+| **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | |
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [ ] | — | — | [ ] | |
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [ ] | — | — | [ ] | |
 | **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [ ] | — | — | [ ] | |
@@ -272,12 +272,22 @@
   2. “Rust ↔ TS 字节一致”以两侧分别断言实现：Rust 侧比对 `serde_json::Value` 往返，TS 侧比对 MCP 读层输出键集合（含空数组/空值清理），未引入跨语言进程间快照比对工具。
 
 #### T2.2 CLDF / Concepticon 核心概念库、词义绑定与旧标签迁移
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`d63cd02`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] 内置 Swadesh-100 + Leipzig-Jakarta 100 核心概念库；支持 `ConceptPicker` 与旧标签迁移向导；注册 `concept_list` / `concept_upsert`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] 内置 Swadesh-100 + Leipzig-Jakarta 100 核心概念库；支持 `ConceptPicker` 与旧标签迁移向导；注册 `concept_list` / `concept_upsert`。
+  - [x] `conceptMigration.test.ts` 15 条、`concepts-tool.test.ts` 5 条；涉及组件均 ≤ 300 行（Sidebar 296 / LexiconFilterBar 275 / ConceptPicker 189 / ConceptMigrationModal 183）。
+- 关键实现：
+  1. `core_concepts.ts`（323 行）以 `ConceptSeed[]` 紧凑表描述 **144** 条概念（Swadesh-100 ∪ Leipzig-Jakarta ∪ 亲属/家畜/器物扩展），导出 `CORE_CONCEPTS`、`getCoreConcept`、`searchConcepts`（命中优先级 id > 中文 > 英文 > 语义域，前缀/子串分层排序）。
+  2. `conceptMigration.ts`：`概念:水` / `concept:fire` / `概念12`（1-based 映射 `SWADESH_100`）三类标签统一解析；`scanConceptTags` 产出 `resolved / already-applied / conflict / unresolved` 四态，同词条多标签指向不同概念记冲突；`applyConceptMigration` 为**纯函数**（不就地修改入参），只写 `resolved` 与 `unresolved`，重复执行 `hasWork === false`。
+  3. UI：`ConceptPicker` 支持中英文/ID 搜索 + 语义域下拉 + 查询词一键新建自定义概念；`ConceptMigrationModal` 展示 dry-run 全表与状态徽章，可选「绑定后移除标签」；入口挂在筛选栏高级面板底部（`ConceptMigrationButton` 自带弹窗与落地逻辑，宿主零状态）。
+  4. `workspaceStore.addCustomConcepts` 去重后写回 `workspace.conlang`；`buildConceptOptions` 只列出当前语言**实际绑定**的概念，避免下拉框塞入 144 条噪声。
+  5. MCP `concept_list`（query / semantic_field / standard_list / include_core / 分页）与 `concept_upsert`（事务 + CAS + dry-run，核心库概念写入被显式拒绝）。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 184 pass（新增 15）；`mcp:check` 0 error；`mcp:test` 48 pass（新增 5，工具数 79）；`cargo test` 54 pass。
+- 偏差与决定：
+  1. `concepticon_id` 全部留空——Concepticon 编号需从官方数据集导入，硬编码猜测会污染后续跨库对齐，故不臆造；字段与读写链路已就绪，导入脚本可原位填充。
+  2. 迁移时概念只绑定到**首个义项**（多义项共享概念是常见建模），后续如需逐义项绑定由用户在义项卡内用 `ConceptPicker` 手动调整。
+  3. `ConceptPicker` 的「新建概念」使用查询词做 ID 规范化（ASCII 保留、CJK 走短哈希），与 `slugifyConceptId` 同源策略。
 
 #### T2.3 全语系同源词矩阵引擎与虚拟化对照表视图
 - 执行者：待填　日期：—　提交：—
