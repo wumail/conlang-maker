@@ -34,8 +34,8 @@
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [ ] | |
 | **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [x] | 2026-11-13 / `dc89500` | 8/8 全绿（src 228 / mcp 58 / cargo 54） | [ ] | |
 | **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [x] | 2026-11-13 / `2cf43e7` | 8/8 全绿（src 243 / mcp 63 / cargo 54） | [ ] | |
-| **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [ ] | — | — | [ ] | |
-| **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [ ] | — | — | [ ] | |
+| **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [x] | 2026-11-13 / `ffaf8c7` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
+| **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [x] | 2026-11-13 / `79ced40` | 8/8 全绿（src 256 / mcp 66 / cargo 54） | [ ] | |
 | **T3.3** | P3 | 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台 | §5.2 | [ ] | — | — | [ ] | |
 | **T3.4** | P3 | 出版级《参考语法与双向词典》单文件 HTML/矢量打印与 Typst 导出 | §5.3 | [ ] | — | — | [ ] | |
 
@@ -370,20 +370,40 @@
 ### P3 专业深水区与出版闭环阶段
 
 #### T3.1 HarfBuzz WASM 字形几何与排版度量审计纯引擎
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`ffaf8c7`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `fontGeometryAudit.ts` 完成贝塞尔采样、上下基线超调量、附标高度带 `opticalGapX` 与扫描线字重计算；注册 `font_audit_geometry`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `fontGeometryAudit.ts` 完成贝塞尔采样、上下基线超调量、附标高度带 `opticalGapX` 与扫描线字重计算；注册 `font_audit_geometry`。
+  - [x] 单测 13 条（曲线采样 / 度量推断 / 上缘越带 / 基线悬空 / 深降部剔除 / 附标悬空与粘连 / 细笔画与字重不均 / 边距 / 空字形）；MCP 端到端 3 条。
+- 关键实现：
+  1. 二次/三次贝塞尔各取 `STEPS = 16` 离散为多边形；`Z` 显式补回起点，射线交点用半开区间 `y_a <= y < y_b` 避免顶点重复计数。
+  2. 上缘判定不取全字体中位数（会把小写字体中的大写全判为异常），而是取到 `{xHeight, capHeight, ascender}` **最近度量带**的距离；容差 0.03 upm。
+  3. 主干底边先剔除 `min(descender/2, -0.15 upm)` 以下的深降部轮廓，再与全字体 `mainYMin` 中位数比较，容差 0.02 upm。
+  4. 附标净距：附标整体高于基字上缘时取**纵向**悬空高度，否则在附标高度带取 5 条扫描线的 `min(markHits) - max(baseHits)` 最小值；上限定为 0.12 upm（悬空），下限 0（粘连）。
+  5. `stemQ1` 取水平扫描弦长的下四分位，`barQ1` 取垂直扫描弦长下四分位，`weightCv` 用全部弦长标准差/均值；Q1 < 0.03 upm 判过细，CV > 0.55 判字重不均。
+  6. 轮廓提取在 `mcp/font/outline.ts`：`glyphToJson` → `PathCmd[]`；`base+mark` 对由 Unicode NFD 分解推导（é → e + U+0301），只有两者都在 cmap 时才成对。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；version OK；`core:check` 43 文件；tsc 0；`bun test src` 256 pass（新增 13）；`mcp:check` 0；`mcp:test` 66 pass（新增 3）；`cargo test` 54 pass；MCP 工具 83 个。
+- 偏差与决定：
+  1. 任务卡只要求 `opticalGapX`，实现补了「附标在基字上方时退化为纵向净距」的分支，否则常见的上方附加符号永远测不到净距。
+  2. `capHeight/xHeight` 优先取 `H`/`x` 字形实际轮廓高度，缺失时由全字体上缘中位数推断——比硬编码 0.7/0.5 upm 更贴近真实字库。
+  3. 审计只覆盖 cmap 中前 `glyph_limit` 个字形（默认 400）；未编码字形需显式 `include_unmapped`。
 
 #### T3.2 书写系统可视化基准线叠加层与异常字形诊断面板
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`79ced40`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `GlyphGeometryInspector.tsx` 支持排版标尺开关与参差字形高亮筛选。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `GlyphGeometryInspector.tsx` 支持排版标尺开关与参差字形高亮筛选。
+  - [x] 无字体时优雅降级（面板仅在有 `inspection.present` 时挂载）；`GlyphGeometryInspector` 198 / `GlyphCellRuler` 56 / `GlyphStatusNotices` 51 / `GlyphGridSection` 251 / `GlyphPanel` 281，全部 ≤ 300。
+- 关键实现：
+  1. `src/utils/harfbuzzClient.ts`：`read_resolved_font` → base64 解码 → 动态 `import("harfbuzzjs")` → `Blob/Face/Font` → `glyphToJson`，审计结果按 `languageId::resolvedRevision` 缓存，避免每次切页重算。
+  2. 面板按问题类型做多选筛选（上缘偏低 / 基线悬空 / 附标过远 / 笔画过细 / 字重不均），命中字形的**码位集合**回传给 `GlyphPanel`，网格据此过滤分页；未选任何类型时不过滤。
+  3. `GlyphCellRuler` 用 SVG 在 24px 字身的 em 框上按 `value/upm` 画 Ascender / Cap / x-height / Baseline / Descender 五条线，基线与字身精确对齐，优于 CSS 百分比近似。
+  4. i18n 走 `useGeometryIssueLabels` 显式映射，避免 `t(kindMap[kind])` 动态键。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；version OK；tsc 0；`bun test src` 256 pass；`mcp:test` 66 pass；`cargo test` 54 pass；`vite build` 通过。
+- 偏差与决定：
+  1. `vite.config.ts` 的 `build.target` 从 `es2020` 升到 `es2022`：harfbuzzjs 模块顶层 `await createHarfBuzz()`，es2020 下 esbuild 直接拒绝打包。Tauri 2 的 WebView（WKWebView / WebView2 / WebKitGTK）均支持 ES2022；该改动只影响产物语法级别。
+  2. 审计按需在面板挂载后异步执行，不阻塞字形网格首屏；WASM 加载失败时只显示「暂无审计结果」，不影响原有标注功能。
+  3. 网格标尺只作用于单字格子，不做整页像素级叠加——逐字 SVG 更易与虚拟列表/分页共存，也不会因滚动产生错位。
 
 #### T3.3 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台
 - 执行者：待填　日期：—　提交：—
