@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（7 / 20 已完成） |
+| 当前状态 | 执行中（8 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -25,7 +25,7 @@
 | **T0.5** | P0 | 四大超长组件解耦拆分（回归 ≤300 行红线） | §2.3 | [x] | 2026-11-12 / `00baaf9` | 8/8 全绿（src 126 pass） | [ ] | |
 | **T1.1** | P1 | 零依赖跨 Store 命令合并型 Undo/Redo 引擎 | §3.1 | [x] | 2026-11-12 / `3583dda` | 8/8 全绿（src 137 pass） | [ ] | |
 | **T1.2** | P1 | 语料反向索引引擎与词典详情三大内联卡片 | §3.2 | [x] | 2026-11-13 / `d5fa1fb` | 8/8 全绿（src 146 pass / mcp 39 pass / cargo 47） | [ ] | |
-| **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [ ] | — | — | [ ] | |
+| **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | |
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [ ] | — | — | [ ] | |
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [ ] | — | — | [ ] | |
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [ ] | — | — | [ ] | |
@@ -200,12 +200,21 @@
   2. 「点击定位到具体语料句」当前只做到「切到 `/corpus` 并激活对应语料文章」，未做行级滚动锚点——`CorpusPage` 尚无行锚机制，强行滚动需改动语料页布局，留待 T1.3 打开语料编辑链路时一并实现。
 
 #### T1.3 语料三行标注侧边快建词条抽屉
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`54ccace`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `CorpusQuickLexDrawer.tsx` 经 `ModalPortal` 挂载，建词后当场重跑当前句 `autoGloss`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `CorpusQuickLexDrawer.tsx`（257 行）经 `ModalPortal` 挂载，建词后当场重跑当前句 `autoGloss`。
+  - [x] 无需离开 `/corpus` 即可建词并重标注；建词走 `upsertWord`，自动支持 `Cmd+Z` 撤销；组件均 ≤ 300 行。
+- 关键实现：
+  1. 抽屉形态：`<ModalPortal><div className="modal modal-open">` + `absolute right-0 top-0 h-full w-[26rem]` 右侧滑出面板；`key=quicklex_<tokenId>` 保证换 token 时表单状态重置。
+  2. 自动预填 `normalizeToken(surface)`；`suggestStems()` 扫描**启用中的后缀规则**，命中即给出 `词干 (−PL)` 快速回填按钮（禁用规则、前缀规则、会剥空的规则一律排除，最多 3 条）。
+  3. 表单：词干 / 词性（`parts_of_speech`）/ 释义 / 逗号分隔标签，含必填校验与「已存在同形词条」提示；保存时用 `generateIPA` 生成音位转写，`language_id` 取 `workspaceStore.activeLanguageId`。
+  4. 回填链路：`GlossTokenEdit` 在未关联词条时显示「加入词典」→ 抽屉保存后 `onCreated` → `GlossLineRow` 透传 → `GlossingEditor.runAutoGloss(corpus)` 立即重跑整篇并回填 `morpheme_break`/`gloss_labels`。
+  5. 顺带修正 `runAutoGloss` 读取 `useLexiconStore.getState().wordsList`（原闭包变量会漏掉刚创建的词条）。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 150 pass（新增 4 条 `suggestStems` 单测）；`mcp:test` 39 pass；`cargo test` 47 pass。
+- 偏差与决定：
+  1. 抽屉建词后不再手改当前 Token 的 `linked_entry_id`——因为紧接着的 `autoGloss` 会重建该行 Token（沿用既有「自动标注」语义），手工链接反而会被覆盖；若用户只想关联已有词条，仍走原有 `GlossTokenEdit` 的候选列表。
+  2. 为守住 300 行红线，把语料级 SCA 差异面板抽成 `CorpusScaDiffPanel.tsx`（96 行），`GlossingEditor` 295 → 238 行。
 
 #### T1.4 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板
 - 执行者：待填　日期：—　提交：—
