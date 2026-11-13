@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（14 / 20 已完成） |
+| 当前状态 | 执行中（15 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -32,7 +32,7 @@
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | |
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | |
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [ ] | |
-| **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [ ] | — | — | [ ] | |
+| **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [x] | 2026-11-13 / `dc89500` | 8/8 全绿（src 228 / mcp 58 / cargo 54） | [ ] | |
 | **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [ ] | — | — | [ ] | |
 | **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [ ] | — | — | [ ] | |
 | **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [ ] | — | — | [ ] | |
@@ -328,12 +328,23 @@
   3. 词族面板在「上游为空且下游为空」时整体不渲染，避免每个单纯词都显示一个空盒子。
 
 #### T2.5 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`dc89500`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `morphophonology.ts` 支持 `+` 词素边界音变；重音支持 5 种模式；SCA 支持 `±stressed` 与音节开闭伪特征。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] 单测覆盖土耳其式后缀元音和谐（`ev+lar → evler`）、拉丁式倒数第二音节音重敏感重音、非重读音节元音弱化为 `ə`；原有旧测试 100% 不破（ipaGenerator 15 条全绿）。
+  - [x] `morphophonology.test.ts` 10 条、`prosody.test.ts` 11 条；组件均 ≤ 300 行（MorphophonologySection 142 / StressSection 113 / PhonotacticsSections 204 / App 299）。
+- 关键实现：
+  1. **规则匹配器**：先把 `a+b` 拆成带 `boundaryBefore` 标记的音素 token 序列，再按 `V` / `C` / `#` / `+` / `X*` 组合匹配语境；`+` 在向后匹配时吸附「边界左侧最后一个 token」，向前匹配时吸附「边界右侧第一个 token」，因此既能写 `e C* + _`（词干末元音和谐），也能写 `_ + V`（跨边界浊化）。
+  2. `applyMorphophonology` 按 `priority` 升序执行（同优先级保持数组序，排序稳定），每条规则循环至不再变化（上限 20 轮），返回 `{ surface, intermediate, steps }`。
+  3. `morphologyEngine.applyInflection` 新增可选 `morphophonologyRules`：prefix/suffix/circumfix 分别构造 `affix+word` / `word+affix` / `pre+word+suf` 中间串，命中规则后替换 `result` 并把规则说明追加到 `log`；`generateParadigm` 从 `context.grammar` 透传，**无规则时零开销、零行为变更**。
+  4. `prosody.ts`：`pickStressedSyllable` 支持五种模式（`weight_sensitive` 取最后一个重音节，全轻音节按 `weight_fallback` 回退，默认 penultimate）；`computeTokenProsody` 逐 token 输出 `stressed / open_syllable / closed_syllable / initial_syllable / final_syllable`。
+  5. `ipaGenerator` 重写重音位置计算：音节切分 → 选音节 → 映射回字符下标；**保留旧行为**：显式 `stem_start` 优先于位置规则（前缀场景保持词干重音）。
+  6. `scaEngine`：`matchesFeatures` 增加可选 `TokenProsodyMeta`，`ruleUsesProsody()` 命中时才调用 `computeTokenProsody`（旧规则零性能开销）；`applySoundChanges` 新增可选第 5 参数 `SCAProsodyContext`，SCA 预览页已传入真实音系配置。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 228 pass（新增 21）；`mcp:check` 0 error；`mcp:test` 58 pass；`cargo test` 54 pass。
+- 偏差与决定：
+  1. 语境语法是**受控子集**（字面量 / V / C / # / + / `X*`），不支持正则与捕获组——刻意如此：正则无法静态判定跨边界语义，且会让规则难以在 GUI 中可视化。DSL（T1.5）的 SCA 语法不受影响。
+  2. `feature_mode` 的形态音位规则暂由 SCA 引擎处理（`applyMorphophonology` 跳过），因为特征替换需要 `FeatureExpression` 求解器；混用场景下建议把特征规则放进 SCA 规则集。
+  3. 首次接入时 `ipaGenerator` 的三条旧测试回归（`stem_start` 在 `domain: "word"` 下同样生效），已按旧语义修复并通过，未修改任何测试断言。
 
 #### T2.6 历时语法词缀演化同步与同音中和（Syncretism）预警
 - 执行者：待填　日期：—　提交：—
