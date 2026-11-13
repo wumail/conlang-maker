@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（10 / 20 已完成 · P1 收官） |
+| 当前状态 | 执行中（11 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -28,7 +28,7 @@
 | **T1.3** | P1 | 语料三行标注侧边快建词条抽屉 | §3.2 | [x] | 2026-11-13 / `54ccace` | 8/8 全绿（src 150 pass） | [ ] | |
 | **T1.4** | P1 | 全局 `Cmd+K` 跨语系检索与即时沙盒演算面板 | §3.3 | [x] | 2026-11-13 / `243ed0a` | 8/8 全绿（src 158 pass） | [ ] | |
 | **T1.5** | P1 | 单行语言学规则 DSL ↔ 表单双向无损编辑器 | §3.4 | [x] | 2026-11-13 / `c62a352` | 8/8 全绿（src 169 pass） | [ ] | |
-| **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [ ] | — | — | [ ] | |
+| **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | |
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [ ] | — | — | [ ] | |
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [ ] | — | — | [ ] | |
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [ ] | — | — | [ ] | |
@@ -256,13 +256,20 @@
 ### P2 核心语言学模型深化阶段
 
 #### T2.1 P2 向后兼容持久化 Schema 同步扩展
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`62493c7`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `src/types/index.ts`、`src-tauri/src/models.rs`、`mcp/storage/read.ts` 完成同步扩展。
-  - [ ] `tests/golden/*.json` 零改动通过 Rust 与 MCP 双端 `conformance` 测试。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `src/types/index.ts`、`src-tauri/src/models.rs`、`mcp/storage/read.ts` 完成同步扩展。
+  - [x] `tests/golden/*.json` 零改动通过 Rust 与 MCP 双端 `conformance` 测试（`git diff tests/golden/` 为空）。
+- 关键实现：
+  1. TS 侧新增 `ConceptDefinition` / `MorphemeComponent` / `CompoundRelation` / `StressPattern`(5 种) / `StressConfig` / `MorphophonologyRule` / `MorphosyntacticAlignment` / `CaseDimBinding`，并扩展 `WorkspaceConfig.custom_concepts`、`Sense.concept_id`、`Etymology.components`+`compounds_stale_digest`、`Phonotactics.stress`、`SyntaxConfig.alignment`+`case_gloss_map`、`GrammarConfig.morphophonology_rules`——全部可选，旧对象字面量零改动仍可编译。
+  2. Rust 侧按 §7.5-B 模板新增三个结构体（含 `#[serde(default, flatten)] extra`），五个既有结构体字段一律 `Option`+`skip_serializing_if="Option::is_none"` / `Vec`+`skip_serializing_if="Vec::is_empty"`。
+  3. **严守 §7.5-A 红线**：`Phonotactics` 未新增 `stress` 字段，继续由 `extra` 透传；新增 6 条 Rust 测试固化「省略 / null / 对象」三形态字节不变。
+  4. `mcp/storage/read.ts`：`Sense.concept_id` 为 null/undefined 时删除；`Etymology.components` 空数组与 `compounds_stale_digest` null 时删除；`readWorkspaceUnlocked` 删除空 `custom_concepts`；`readGrammarUnlocked` 显式透传非空 `morphophonology_rules`（**此前该字段会被读层静默丢弃**，属本次发现并修复的缺陷），并对空数组不落键。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 169 pass；`mcp:check` 0 error；`mcp:test` 43 pass（新增 4 条读层断言，工具数不变）；`cargo test` 54 pass（46 单测 + 2 conformance + 6 p2_schema）。
+- 偏差与决定：
+  1. 4 个既有 `#[cfg(test)]` 构造器（`font.rs`/`oplog.rs`/`phonology.rs`/`watcher.rs`）补 `custom_concepts: Vec::new()`——Rust 结构体字面量要求字段齐全，属编译期必要改动，不影响生产路径。
+  2. “Rust ↔ TS 字节一致”以两侧分别断言实现：Rust 侧比对 `serde_json::Value` 往返，TS 侧比对 MCP 读层输出键集合（含空数组/空值清理），未引入跨语言进程间快照比对工具。
 
 #### T2.2 CLDF / Concepticon 核心概念库、词义绑定与旧标签迁移
 - 执行者：待填　日期：—　提交：—
