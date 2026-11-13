@@ -31,6 +31,8 @@ interface CorpusStore {
 
   loadIndex: (projectPath: string, languagePath: string) => Promise<void>;
   loadCorpus: (corpusId: string) => Promise<void>;
+  /** 读取当前语言全部语料正文（反向索引用；已打开的语料复用内存副本） */
+  loadAllCorpusTexts: () => Promise<CorpusText[]>;
   upsertCorpus: (text: CorpusText, opts?: HistoryOpts) => void;
   deleteCorpus: (corpusId: string) => Promise<void>;
   setActiveCorpusId: (id: string | null) => void;
@@ -533,6 +535,27 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
           redo: () => get().upsertCorpus(structuredClone(nextSnapshot), { skipHistory: true }),
         });
       }
+    },
+
+    loadAllCorpusTexts: async () => {
+      const { projectPath, languagePath, index, activeCorpus } = get();
+      const texts: CorpusText[] = [];
+      for (const entry of index) {
+        if (activeCorpus && activeCorpus.corpus_id === entry.corpus_id) {
+          texts.push(activeCorpus);
+          continue;
+        }
+        try {
+          const loaded = await invoke<CorpusTextLoadResult>(
+            "load_corpus_text_with_revision",
+            { projectPath, languagePath, corpusId: entry.corpus_id },
+          );
+          texts.push(loaded.corpus);
+        } catch (err) {
+          console.warn(`加载语料 ${entry.corpus_id} 失败：${err}`);
+        }
+      }
+      return texts;
     },
 
     deleteCorpus: async (corpusId) => {

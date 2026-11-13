@@ -63,6 +63,19 @@ export default {
     },
     lexicon: {
       title: "词典",
+      paradigm: {
+        title: "屈折速览",
+        empty: "该词性尚未配置屈折规则",
+        irregular: "不规则",
+        customize: "前往语法页定制",
+      },
+      concordance: {
+        title: "语料例句出处",
+        count: "{{count}} 处出处",
+        empty: "该词尚未在任何语料中出现",
+        noCorpus: "该语言还没有语料文本",
+        truncated: "仅显示前 {{shown}} 条，共 {{total}} 处",
+      },
       resultCount: "{{count}} 个词条",
       noMatches: "没有符合当前筛选条件的词条",
       addWord: "添加单词",

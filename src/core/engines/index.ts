@@ -18,3 +18,4 @@ export * from "./llmPrompt";
 export * from "./exportDic";
 export * from "./romanizationLint";
 export * from "./coverage";
+export * from "./concordance";

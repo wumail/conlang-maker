@@ -4,6 +4,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { newPrefixedId, nowIso } from "../../src/core/lexicon/ids";
 import { autoGloss } from "../../src/core/workflows/autoGloss";
+import { findWordConcordance } from "../../src/core/engines/concordance";
 import type {
   CorpusIndexEntry,
   CorpusText,
@@ -1341,6 +1342,102 @@ export function registerCorpusTools(
           };
         },
       });
+    },
+  });
+
+  // ── 6. corpus_concordance ────────────────────────────────────────────────
+  registerDefinedTool(server, config, {
+    name: "corpus_concordance",
+    title: "Find Corpus Occurrences of a Lexicon Entry",
+    description:
+      "Reverse-index a lexicon entry across every corpus text of a language. Matches explicit token links, morpheme stems, and known inflected forms (with homograph protection for tokens linked to other entries).",
+    toolsets: ["core", "compute"],
+    access: "read",
+    idempotent: true,
+    inputSchema: {
+      ...familyInputFields,
+      ...languageInputFields,
+      entry_id: z
+        .string()
+        .optional()
+        .describe("Lexicon entry id to trace (required unless word_romanized is given)"),
+      word_romanized: z
+        .string()
+        .optional()
+        .describe("Romanized form used to resolve the entry when entry_id is omitted"),
+      limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(500)
+        .optional()
+        .describe("Maximum returned matches (default 200); total always reports the full count"),
+    },
+    handler: async (args) => {
+      const family = resolveFamilyFromArgs(config, args);
+      const snapshot = await withConsistentProjectRead(
+        family.project_dir,
+        config.mode,
+        "corpus_concordance",
+        () => {
+          const resolved = resolveLanguageUnlocked(family, args);
+          const lex = readLexiconUnlocked(family.project_dir, resolved.language);
+          const phono = readPhonologyUnlocked(
+            family.project_dir,
+            family.conlang_file_path,
+            resolved.language,
+          );
+          const grammar = readGrammarUnlocked(family.project_dir, resolved.language);
+          const idx = readCorpusIndexUnlocked(family.project_dir, resolved.language);
+          const texts = idx.entries
+            .map((entry) =>
+              readCorpusTextUnlocked(family.project_dir, resolved.language, entry.corpus_id),
+            )
+            .map((loaded) => loaded.corpus);
+          return { resolved, lex, phono, grammar, idx, texts };
+        },
+      );
+
+      const rawEntryId = args.entry_id?.trim();
+      const rawRomanized = args.word_romanized?.trim().toLowerCase();
+      if (!rawEntryId && !rawRomanized) {
+        throw new McpError(
+          "VALIDATION",
+          "corpus_concordance requires either entry_id or word_romanized.",
+        );
+      }
+
+      const entry = snapshot.lex.words.find((word) => {
+        if (rawEntryId) return word.entry_id === rawEntryId;
+        return word.con_word_romanized.trim().toLowerCase() === rawRomanized;
+      });
+      if (!entry) {
+        throw new McpError("NOT_FOUND", "No lexicon entry matches the given selector.");
+      }
+
+      const result = findWordConcordance({
+        entry,
+        corpusTexts: snapshot.texts,
+        grammar: snapshot.grammar.config,
+        phono: snapshot.phono.config,
+        limit: args.limit,
+      });
+
+      return {
+        family_id: family.family_id,
+        language_id: snapshot.resolved.language.language_id,
+        entry_id: entry.entry_id,
+        word_romanized: entry.con_word_romanized,
+        matches: result.matches,
+        total: result.total,
+        corpus_texts_scanned: snapshot.texts.length,
+        dependencies: {
+          lexicon: snapshot.lex.revision,
+          "corpus_index.json": snapshot.idx.revision,
+          "phonology.json": snapshot.phono.revision,
+          "grammar.json": snapshot.grammar.revision,
+        },
+      };
     },
   });
 }

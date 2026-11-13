@@ -63,6 +63,19 @@ export default {
     },
     lexicon: {
       title: "Lexicon",
+      paradigm: {
+        title: "Inflection at a glance",
+        empty: "No inflection rules for this part of speech yet",
+        irregular: "irregular",
+        customize: "Customize in Grammar",
+      },
+      concordance: {
+        title: "Corpus concordance",
+        count: "{{count}} occurrences",
+        empty: "This word does not appear in any corpus text yet",
+        noCorpus: "No corpus texts in this language yet",
+        truncated: "Showing first {{shown}} of {{total}} occurrences",
+      },
       resultCount: "{{count}} entries",
       noMatches: "No entries match the current filters",
       addWord: "Add Word",

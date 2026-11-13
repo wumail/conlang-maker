@@ -1,147 +1,51 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useNavigate } from "react-router-dom";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useSCAStore } from "../../store/scaStore";
-import {
-  getLineageLexicon,
-  loadLineageLexicon,
-  useLineageLexicon,
-  useLineageLexiconCacheVersion,
-} from "../../store/lineageLexiconStore";
-import type { LanguageEntry, Sense, WordEntry } from "../../types";
+import { useCorpusStore } from "../../store/corpusStore";
+import type { Sense, WordEntry } from "../../types";
 import { generateIPA } from "../../utils/ipaGenerator";
-import {
-  getWordEvolution,
-  getInheritedParentEntryId,
-  getWordChangeDetails,
-  type WordLifecycleFlags,
-} from "../../utils/wordLifecycle";
+import { getWordEvolution } from "../../utils/wordLifecycle";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { WordHeaderSection } from "./WordHeaderSection";
 import { WordSensesSection } from "./WordSensesSection";
 import { WordEtymologySection } from "./WordEtymologySection";
+import { WordParadigmCollapsible } from "./WordParadigmCollapsible";
+import { WordConcordanceSection } from "./WordConcordanceSection";
+import { EvolutionChainCards } from "./EvolutionChainCards";
+import { useWordLineage } from "./useWordLineage";
 
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { activeWordId, wordsMap, wordsList, upsertWord, deleteWord } = useLexiconStore();
   const phonoConfig = usePhonoStore((s) => s.config);
-  const partsOfSpeech = useGrammarStore((s) => s.config.parts_of_speech);
+  const grammarConfig = useGrammarStore((s) => s.config);
+  const partsOfSpeech = grammarConfig.parts_of_speech;
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const workspaceLanguages = useWorkspaceStore((s) => s.config.languages);
   const scaConfig = useSCAStore((s) => s.config);
+  const loadCorpus = useCorpusStore((s) => s.loadCorpus);
 
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDeleteSenseIdx, setConfirmDeleteSenseIdx] = useState<number | null>(null);
 
   const prevRomanizedRef = useRef<string>("");
-  const cacheVersion = useLineageLexiconCacheVersion();
-
   const word = activeWordId ? wordsMap[activeWordId] : null;
   const evolution = word ? getWordEvolution(word) : null;
 
-  const activeLanguage = useMemo(
-    () => workspaceLanguages.find((l) => l.language_id === activeLanguageId),
-    [workspaceLanguages, activeLanguageId],
-  );
-  const parentLanguage = useMemo(() => {
-    if (!activeLanguage?.parent_id) return null;
-    return workspaceLanguages.find((l) => l.language_id === activeLanguage.parent_id) ?? null;
-  }, [workspaceLanguages, activeLanguage]);
-
-  const lineageLanguages = useMemo<LanguageEntry[]>(() => {
-    if (!activeLanguage) return [];
-    const chain: LanguageEntry[] = [];
-    const visited = new Set<string>();
-    let current: LanguageEntry | null = activeLanguage;
-
-    while (current && !visited.has(current.language_id)) {
-      chain.push(current);
-      visited.add(current.language_id);
-      const parentId: string | null = current.parent_id;
-      current = parentId
-        ? (workspaceLanguages.find((l) => l.language_id === parentId) ?? null)
-        : null;
-    }
-
-    return chain.reverse();
-  }, [activeLanguage, workspaceLanguages]);
-
-  // 父语言词表走谱系缓存（与 Sidebar 共用同一次 IPC）
-  const { snapshot: parentSnapshot } = useLineageLexicon(
-    parentLanguage ? projectPath : null,
-    parentLanguage?.path ?? null,
-  );
-  const parentPhonoConfig = parentSnapshot?.phonoConfig ?? null;
-
-  // 祖先链按需加载（同一语言只加载一次）
-  const ancestorLanguages = useMemo(
-    () => lineageLanguages.filter((lang) => lang.language_id !== activeLanguageId),
-    [lineageLanguages, activeLanguageId],
-  );
-  useEffect(() => {
-    if (!projectPath) return;
-    for (const ancestor of ancestorLanguages) {
-      void loadLineageLexicon(projectPath, ancestor.path);
-    }
-  }, [projectPath, ancestorLanguages]);
-
-  const ancestorWordsByLanguage = useMemo<Record<string, Record<string, WordEntry>>>(() => {
-    if (!projectPath) return {};
-    const result: Record<string, Record<string, WordEntry>> = {};
-    for (const ancestor of ancestorLanguages) {
-      const snapshot = getLineageLexicon(projectPath, ancestor.path);
-      if (snapshot) result[ancestor.language_id] = snapshot.wordsById;
-    }
-    return result;
-    // cacheVersion 参与依赖，缓存更新时重算
-  }, [projectPath, ancestorLanguages, cacheVersion]);
-
-  const inheritedParentId =
-    word && parentLanguage
-      ? getInheritedParentEntryId(word, parentLanguage.language_id)
-      : null;
-  const parentWord =
-    inheritedParentId && parentSnapshot
-      ? (parentSnapshot.wordsById[inheritedParentId] ?? null)
-      : null;
-
-  const evolutionPathWords = useMemo(() => {
-    if (!word || !activeLanguageId) return [] as string[];
-    const path = [word.con_word_romanized.trim()];
-    let current: WordEntry = word;
-    for (let index = lineageLanguages.length - 1; index > 0; index -= 1) {
-      const parent = lineageLanguages[index - 1];
-      if (!parent) break;
-      const parentId = getInheritedParentEntryId(current, parent.language_id);
-      const ancestor = parentId
-        ? (ancestorWordsByLanguage[parent.language_id]?.[parentId] ?? null)
-        : null;
-      if (!ancestor) break;
-      path.push(ancestor.con_word_romanized.trim());
-      current = ancestor;
-    }
-    return path
-      .reverse()
-      .filter((value, index, values) => value && (index === 0 || value !== values[index - 1]));
-  }, [word, activeLanguageId, lineageLanguages, ancestorWordsByLanguage]);
-
-  const lifecycleFlags = useMemo<WordLifecycleFlags | null>(() => {
-    if (!word) return null;
-    const isDeprecated = getWordEvolution(word).is_deprecated;
-    const changes = parentWord
-      ? getWordChangeDetails(word, parentWord, phonoConfig, parentPhonoConfig)
-      : undefined;
-    return {
-      isNew: !!parentLanguage && !parentWord,
-      isDeprecated,
-      isChanged: !isDeprecated && !!changes && Object.values(changes).some(Boolean),
-      changes,
-    };
-  }, [word, parentLanguage, parentWord, parentPhonoConfig, phonoConfig]);
+  const { lifecycleFlags, evolutionChain } = useWordLineage({
+    word,
+    activeLanguageId,
+    projectPath,
+    workspaceLanguages,
+    phonoConfig,
+  });
 
   const scaRuleLookup = useMemo(() => {
     const map = new Map<string, string>();
@@ -219,6 +123,12 @@ export const EditorPane: React.FC = () => {
     );
   };
 
+  const showEvolutionChain =
+    (word.etymology?.origin_type === "evolved" ||
+      word.etymology?.origin_type === "borrowed") &&
+    Boolean(word.etymology?.parent_entry_id) &&
+    evolutionChain.length > 1;
+
   const { surface } = generateIPA(word.con_word_romanized, phonoConfig);
 
   return (
@@ -241,15 +151,41 @@ export const EditorPane: React.FC = () => {
         onRequestDeleteSense={setConfirmDeleteSenseIdx}
       />
 
+      <div className="mt-6 space-y-2">
+        <WordParadigmCollapsible
+          word={word}
+          grammar={grammarConfig}
+          phono={phonoConfig}
+          onCustomize={() => navigate("/grammar")}
+        />
+        <WordConcordanceSection
+          word={word}
+          grammar={grammarConfig}
+          phono={phonoConfig}
+          onNavigate={(corpusId) => {
+            void loadCorpus(corpusId);
+            navigate("/corpus");
+          }}
+        />
+      </div>
+
       <WordEtymologySection
         word={word}
         evolution={evolution}
-        evolutionPathWords={evolutionPathWords}
-        scaRuleLookup={scaRuleLookup}
         workspaceLanguages={workspaceLanguages}
         activeLanguageId={activeLanguageId}
         onChange={handleChange}
       />
+
+      {showEvolutionChain && (
+        <div className="mt-3 rounded-lg border border-base-300 bg-base-200/40 px-3 py-2">
+          <EvolutionChainCards
+            chain={evolutionChain}
+            appliedSoundChanges={word.etymology?.applied_sound_changes}
+            scaRuleLookup={scaRuleLookup}
+          />
+        </div>
+      )}
 
       <ConfirmModal
         open={confirmDelete}

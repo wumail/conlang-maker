@@ -1,4 +1,3 @@
-import { Fragment } from "react";
 import { useTranslation } from "react-i18next";
 import type { LanguageEntry, OriginType, WordEntry, WordEvolution } from "../../types";
 import { INPUT, SELECT, TOGGLE } from "../../lib/ui";
@@ -6,8 +5,6 @@ import { INPUT, SELECT, TOGGLE } from "../../lib/ui";
 interface WordEtymologySectionProps {
   word: WordEntry;
   evolution: WordEvolution | null;
-  evolutionPathWords: string[];
-  scaRuleLookup: Map<string, string>;
   workspaceLanguages: LanguageEntry[];
   activeLanguageId: string;
   onChange: (field: keyof WordEntry, value: WordEntry[keyof WordEntry]) => void;
@@ -17,8 +14,6 @@ interface WordEtymologySectionProps {
 export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
   word,
   evolution,
-  evolutionPathWords,
-  scaRuleLookup,
   workspaceLanguages,
   activeLanguageId,
   onChange,
@@ -72,40 +67,6 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
           />
         </div>
       </div>
-
-      {(etymology?.origin_type === "evolved" || etymology?.origin_type === "borrowed") &&
-        etymology?.parent_entry_id && (
-          <div className="bg-base-200/50 border border-base-300 rounded-lg p-3 mt-2">
-            <p className="text-xs font-medium text-base-content/60 mb-1">
-              {t("lexicon.evolutionPath")}
-            </p>
-            <div className="flex items-center gap-2 font-mono text-sm flex-wrap">
-              {evolutionPathWords.map((pathWord, index) => (
-                <Fragment key={`${pathWord}-${index}`}>
-                  {index > 0 && <span className="text-base-content/50">→</span>}
-                  <span
-                    className={
-                      index === evolutionPathWords.length - 1
-                        ? "font-bold text-primary"
-                        : "text-base-content/60 italic"
-                    }
-                  >
-                    {pathWord}
-                  </span>
-                </Fragment>
-              ))}
-            </div>
-            {etymology.applied_sound_changes && etymology.applied_sound_changes.length > 0 && (
-              <div className="mt-2 flex items-center gap-1 flex-wrap">
-                {etymology.applied_sound_changes.map((scId, index) => (
-                  <span key={index} className="badge badge-xs badge-ghost" title={scId}>
-                    {scaRuleLookup.get(scId) || scId.slice(0, 8)}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
 
       <div>
         <label className="block text-xs font-medium text-base-content/60 mb-1">

@@ -75,6 +75,7 @@ export const EXPECTED_76_TOOLS: readonly string[] = [
   "corpus_save",
   "corpus_delete",
   "corpus_auto_gloss",
+  "corpus_concordance",
   // §5.9 Export & Import (5)
   "export_llm_brief",
   "export_workspace_bundle",
