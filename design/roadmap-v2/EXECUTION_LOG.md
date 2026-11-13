@@ -4,7 +4,7 @@
 | --- | --- |
 | 关联规格文档 | [PRD.md](./PRD.md) v1.0 |
 | 关联执行计划 | [EXECUTION_PLAN.md](./EXECUTION_PLAN.md) v1.0 |
-| 当前状态 | 执行中（13 / 20 已完成） |
+| 当前状态 | 执行中（14 / 20 已完成） |
 | 执行模型 | DeepSeek v4.1 Flash（或开发者） |
 | 终审复核者 | Antigravity |
 
@@ -31,7 +31,7 @@
 | **T2.1** | P2 | P2 向后兼容持久化 Schema 同步扩展 | §4.1–4.3 | [x] | 2026-11-13 / `62493c7` | 8/8 全绿（cargo 54 pass 含 6 条新增） | [ ] | |
 | **T2.2** | P2 | CLDF/Concepticon 概念库、词义绑定与旧标签迁移 | §4.1 | [x] | 2026-11-13 / `d63cd02` | 8/8 全绿（src 184 / mcp 48 / cargo 54） | [ ] | |
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | |
-| **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [ ] | — | — | [ ] | |
+| **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [ ] | |
 | **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [ ] | — | — | [ ] | |
 | **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [ ] | — | — | [ ] | |
 | **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [ ] | — | — | [ ] | |
@@ -309,12 +309,23 @@
   3. 空单元格建词视为「独立创新」（`origin_type: a_priori`、无父链接），符合用户在子语言中直接造新词的语义；若要建同源词，应先在该语言的词典页设置父词条。
 
 #### T2.4 DAG 多词素构词图谱、词族树与过期复合词质检
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`da4d90f`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `wordFamily.ts` DFS 环检测拦截自指与间接环；详情展示词族树；质检支持 `staleCompound`；注册 `lex_word_family`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `wordFamily.ts` DFS 环检测拦截自指与间接环；详情展示词族树；质检支持 `staleCompound`；注册 `lex_word_family`。
+  - [x] `wordFamily.test.ts` 12 条（自指 `A→A`、间接环 `A→B→C→A`、菱形共享不成环、既有成环数据不死循环）；组件均 ≤ 300 行（EditorPane 222 / WordComponentsEditor 185 / WordFamilyPanel 119 / WordEtymologySection 150）。
+- 关键实现：
+  1. `wouldIntroduceCycle(entryId, targetComponentId, wordsMap)`：从候选成分出发沿 `components` 边 DFS，能回到 `entryId` 即成环；`entryId === target` 直接判真。UI 在添加成分时即时拒绝并给出文案。
+  2. `computeComponentsDigest`：把「顺序 + 关系 + `entry_id` + 当前词形 + 当前 IPA」拼串后做 FNV-1a（8 位十六进制）。因此上游改字形或改读音都会让摘要漂移，而纯调整关系顺序也会（语义敏感）。
+  3. `getWordFamilyGraph`：上游递归建树（带 `visited` 防环、`missing` 标记悬空引用），下游先反查 `components` 建父索引再 BFS 取**最短**层级。
+  4. `WordComponentsEditor`：搜索选择词条 → 加为成分；每条可改关系（root/modifier/head/affix/reduplicant）或删除；任何变更即时重算并写回 `compounds_stale_digest`（即「保存即核验」），另提供手动「重新核验」。
+  5. `qualityCheck` 第 11 条 `staleCompound`：仅当词条有 `components` **且**存有 `compounds_stale_digest` 时比较，摘要不一致记 `warning`。`QC_RULE_KEYS` 扩至 11 条后，GUI 开关与 MCP zod 枚举自动同步（`mcp/tools/lexicon.ts` 直接引用该常量）。
+  6. MCP `lex_word_family`：返回 `components` / `digest` / `stored_digest` / `stale` / `unresolved_components` / `upstream` / `downstream` / `family_size`，并支持 `test_component_id` 预演成环。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；tsc 0 error；`bun test src` 207 pass（新增 14）；`mcp:check` 0 error；`mcp:test` 58 pass（新增 5，工具数 81）；`cargo test` 54 pass。
+- 偏差与决定：
+  1. 组件编辑器把「写入摘要」与「编辑成分」绑定为同一步操作：摘要的含义是「上次核验时的上游读音」，若只在用户点「重新核验」时才写，则新建复合词会立刻被自己标红。当前语义为「编辑即核验，上游变化后才预警」，符合 PRD 的「过期检测」目标。
+  2. `staleCompound` 不影响 `emptyIpa` 等既有规则的计数；`qualityCheck.test.ts` 中「恰好十条规则」的断言同步改为十一条并显式断言包含 `staleCompound`（该断言属本仓自建测试，非黄金快照）。
+  3. 词族面板在「上游为空且下游为空」时整体不渲染，避免每个单纯词都显示一个空盒子。
 
 #### T2.5 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA
 - 执行者：待填　日期：—　提交：—
