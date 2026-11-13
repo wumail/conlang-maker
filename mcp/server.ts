@@ -9,6 +9,7 @@ import { registerCorpusTools } from "./tools/corpus";
 import { registerExportImportTools } from "./tools/export_import";
 import { registerFontsWritingTools } from "./tools/fonts_writing";
 import { registerGrammarSandboxTools } from "./tools/grammar_sandbox";
+import { registerGrammarSyncTools } from "./tools/grammar_sync";
 import { registerLexiconTools } from "./tools/lexicon";
 import { registerPhonologyTools } from "./tools/phonology";
 import { registerScaTools } from "./tools/sca";
@@ -42,6 +43,7 @@ export function createServer(config: McpConfig): McpServer {
   registerWordgenTools(server, config);
   registerWordFamilyTools(server, config);
   registerGrammarSandboxTools(server, config);
+  registerGrammarSyncTools(server, config);
   registerScaTools(server, config);
   registerCorpusTools(server, config);
   registerConceptTools(server, config);

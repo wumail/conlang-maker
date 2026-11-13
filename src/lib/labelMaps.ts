@@ -251,3 +251,16 @@ export function useCompoundRelationLabels(): Record<string, string> {
     [t],
   );
 }
+
+/** 历时语法同步的规则种类标签（T2.6） */
+export function useGrammarSyncKindLabels(): Record<string, string> {
+  const { t } = useTranslation();
+  return useMemo(
+    () => ({
+      inflection: t("tree.grammarSync.kindInflection"),
+      derivation: t("tree.grammarSync.kindDerivation"),
+      irregular: t("tree.grammarSync.kindIrregular"),
+    }),
+    [t],
+  );
+}

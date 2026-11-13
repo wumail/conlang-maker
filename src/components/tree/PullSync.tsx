@@ -23,6 +23,7 @@ import type {
   WordEntry,
 } from "../../types";
 import { computePullSync, isValidWordEntry } from "../../core";
+import { GrammarSyncLauncher } from "./GrammarSyncModal";
 
 interface PendingSyncWord {
   word: WordEntry;
@@ -228,6 +229,7 @@ export function PullSync() {
           <Download className="w-4 h-4" />
           {loading ? t("common.loading") : t("tree.checkUpdates")}
         </button>
+        <GrammarSyncLauncher />
         <button
           className={BTN_PRIMARY}
           onClick={() => void runMigration(true)}
@@ -245,9 +247,7 @@ export function PullSync() {
           {migrating ? t("common.loading") : t("tree.migrateLegacy")}
         </button>
       </div>
-      {migrationMessage && (
-        <p className="text-xs text-base-content/60">{migrationMessage}</p>
-      )}
+      {migrationMessage && <p className="text-xs text-base-content/60">{migrationMessage}</p>}
 
       {scaConfig.rule_sets.length === 0 && (
         <div className="flex items-center gap-2 text-xs text-warning">
