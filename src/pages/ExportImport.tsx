@@ -27,12 +27,13 @@ import { previewCSVImport } from "../utils/importCSV";
 import { WordEntry } from "../types";
 import {
   BTN_PRIMARY,
-  BTN_SUCCESS,
   BTN_GHOST,
   CARD,
   CARD_BODY,
 } from "../lib/ui";
 import { PageHeader } from "../components/common/PageHeader";
+import { ImportPreviewCard } from "../components/export/ImportPreviewCard";
+import { ReferenceBookCard } from "../components/export/ReferenceBookModal";
 
 export function ExportImport() {
   const { t } = useTranslation();
@@ -110,6 +111,11 @@ export function ExportImport() {
     reader.readAsText(file);
   };
 
+  const closeImport = () => {
+    setImportPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
   const handleConfirmImport = () => {
     if (!importPreview) return;
 
@@ -153,8 +159,7 @@ export function ExportImport() {
     }
 
     importWords(wordsToImport);
-    setImportPreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = "";
+    closeImport();
   };
 
   return (
@@ -242,97 +247,17 @@ export function ExportImport() {
         </div>
       </div>
 
-      {/* Import Preview */}
+      <ReferenceBookCard />
+
       {importPreview && (
-        <div className={CARD}>
-          <div className={`${CARD_BODY} p-4 space-y-3`}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-semibold">
-                {t("export.importPreview")} ({importPreview.length}{" "}
-                {t("export.entries")})
-              </h3>
-              <span className="badge badge-sm">{importFormat}</span>
-            </div>
-            <div className="overflow-x-auto max-h-64 overflow-y-auto">
-              <table className="table table-xs">
-                <thead>
-                  <tr>
-                    <th>{t("lexicon.word")}</th>
-                    <th>{"IPA"}</th>
-                    <th>{t("lexicon.pos")}</th>
-                    <th>{t("lexicon.gloss")}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {importPreview.slice(0, 30).map((w) => (
-                    <tr key={w.entry_id}>
-                      <td className="font-mono">{w.con_word_romanized}</td>
-                      <td className="font-mono text-xs">{w.phonetic_ipa}</td>
-                      <td>{w.senses[0]?.pos_id}</td>
-                      <td>{w.senses[0]?.gloss}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {importPreview.length > 30 && (
-                <p className="text-xs text-base-content/50 mt-1">
-                  +{importPreview.length - 30} {t("common.more")}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-4 bg-base-200 p-3 rounded-lg text-sm border border-base-300">
-              <span className="font-semibold text-base-content/80">
-                {t("export.conflictHandling", "If word exists:")}
-              </span>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="conflict"
-                  className="radio radio-primary radio-sm"
-                  checked={conflictStrategy === "keep_both"}
-                  onChange={() => setConflictStrategy("keep_both")}
-                />
-                {t("export.conflictKeepBoth", "Keep Both")}
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="conflict"
-                  className="radio radio-primary radio-sm"
-                  checked={conflictStrategy === "skip"}
-                  onChange={() => setConflictStrategy("skip")}
-                />
-                {t("export.conflictSkip", "Skip New")}
-              </label>
-              <label className="flex items-center gap-1 cursor-pointer">
-                <input
-                  type="radio"
-                  name="conflict"
-                  className="radio radio-primary radio-sm"
-                  checked={conflictStrategy === "overwrite"}
-                  onChange={() => setConflictStrategy("overwrite")}
-                />
-                {t("export.conflictOverwrite", "Overwrite Existing")}
-              </label>
-            </div>
-
-            <div className="flex gap-2 justify-end">
-              <button
-                className={BTN_GHOST}
-                onClick={() => {
-                  setImportPreview(null);
-                  if (fileInputRef.current) fileInputRef.current.value = "";
-                }}
-              >
-                {t("common.close")}
-              </button>
-              <button className={BTN_SUCCESS} onClick={handleConfirmImport}>
-                <FileUp className="w-4 h-4" /> {t("export.confirmImport")}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ImportPreviewCard
+          preview={importPreview}
+          format={importFormat}
+          strategy={conflictStrategy}
+          onStrategyChange={setConflictStrategy}
+          onClose={closeImport}
+          onConfirm={handleConfirmImport}
+        />
       )}
     </div>
   );
