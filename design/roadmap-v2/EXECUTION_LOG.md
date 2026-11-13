@@ -33,7 +33,7 @@
 | **T2.3** | P2 | 全语系同源词矩阵引擎与虚拟化对照表视图 | §4.1 | [x] | 2026-11-13 / `0d94a99` | 8/8 全绿（src 193 / mcp 53 / cargo 54） | [ ] | |
 | **T2.4** | P2 | DAG 多词素构词图谱、词族树与过期复合词质检 | §4.2 | [x] | 2026-11-13 / `da4d90f` | 8/8 全绿（src 207 / mcp 58 / cargo 54） | [ ] | |
 | **T2.5** | P2 | 共时形态音位层（`+` 边界）、多模式重音与超音段 SCA | §4.3 | [x] | 2026-11-13 / `dc89500` | 8/8 全绿（src 228 / mcp 58 / cargo 54） | [ ] | |
-| **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [ ] | — | — | [ ] | |
+| **T2.6** | P2 | 历时语法词缀演化同步与同音中和（Syncretism）预警 | §4.4 | [x] | 2026-11-13 / `2cf43e7` | 8/8 全绿（src 243 / mcp 63 / cargo 54） | [ ] | |
 | **T3.1** | P3 | HarfBuzz WASM 字形几何与排版度量审计纯引擎 | §5.1 | [ ] | — | — | [ ] | |
 | **T3.2** | P3 | 书写系统可视化基准线叠加层与异常字形诊断面板 | §5.1 | [ ] | — | — | [ ] | |
 | **T3.3** | P3 | 递归短语结构树与格对齐（Nom-Acc / Erg-Abs）句法台 | §5.2 | [ ] | — | — | [ ] | |
@@ -347,12 +347,23 @@
   3. 首次接入时 `ipaGenerator` 的三条旧测试回归（`stem_start` 在 `domain: "word"` 下同样生效），已按旧语义修复并通过，未修改任何测试断言。
 
 #### T2.6 历时语法词缀演化同步与同音中和（Syncretism）预警
-- 执行者：待填　日期：—　提交：—
-- 结果：待执行
+- 执行者：DeepSeek v4.1 Flash　日期：2026-11-13　提交：`2cf43e7`
+- 结果：✅ 完成
 - 验收逐条：
-  - [ ] `grammarPullSync.ts` 演化 `sca_mutable` 词缀与不规则表并检出范畴合流警告；注册 `gram_pull_sync`。
-- V-ALL：待填
-- 偏差与决定：无
+  - [x] `grammarPullSync.ts` 演化 `sca_mutable` 词缀与不规则表并检出范畴合流警告；注册 `gram_pull_sync`。
+  - [x] 单测 15 条覆盖常规音变、`sca_mutable: false` 跳过、已同步判等、中和检出、父语固有同形不误报、跨条件不误报、跨词性不误报、不规则词形同步、`posIds` 过滤与入参不可变；MCP 端到端 5 条；弹窗严格走 `ModalPortal`。
+  - [x] 组件行数：`GrammarSyncModal` 257 / `GrammarSyncTable` 94 / `PullSync` 299。
+- 关键实现：
+  1. `planGrammarPullSync` 统一用 `buildRow` 生成三类行（屈折 / 派生 / 不规则），`locked` 行直接取父语言表层且不计入变更；`before` 取子语言当前表层（缺失时回落父语言），`after` 为 SCA 结果。
+  2. **中和判定三重前提**：同一 `pos_id`、同一条件指纹（`conditionFingerprint` = `[type, class, regex]`）、父语言表层原本不同。原实现只看 `posId::form`，会把继承而来的固有多义（如父语 PL/DU 本就同形）误报为音变中和；条件不同的两条规则（如 `ends_with_phoneme_class` 与无条件）也不构成中和。
+  3. 不规则覆盖行 id 为 `entry_id::维度排序指纹`，音变作用于整条 `surface_form`；`applyGrammarPullSync` 只更新子语言已存在的规则/词形，缺失项不新增（fork 已复制全量 grammar，缺失通常代表子语言有意删除）。
+  4. MCP `gram_pull_sync`：默认只读预览并返回 `dependencies` revision；`apply: true` 时走 `executeProjectTransaction`，`operation_id` + `expected_revision` 双约束，`scope: "grammar"` 自动快照，写入时以磁盘原文为基底只替换 `affix` / `surface_form`，`x_unknown_*` 等未知字段原样保留。
+  5. UI 入口收敛为 `GrammarSyncLauncher`（按钮自带开合状态），`PullSync` 仅新增 1 行调用；表格拆出 `GrammarSyncTable` 以满足 300 行红线。i18n 采用 `useGrammarSyncKindLabels` 显式映射，避免动态 key。
+- V-ALL：`[exit 0] × 8` — i18n 0/0；version OK；`core:check` 42 文件纯净；tsc 0 error；`bun test src` 243 pass（新增 15）；`mcp:check` 0 error；`mcp:test` 63 pass（新增 5）；`cargo test` 54 pass；MCP 工具 82 个。
+- 偏差与决定：
+  1. 中和告警比任务卡更严格（增加「同条件」「父语原本不同」两条前提）——任务卡原文只说「同一 `pos_id` 下原本不同表层的两条规则」，实现把「原本不同」落在**父语言表层**而非子语言当前值，否则子语言先手动改过一条就会漏报。
+  2. 不规则覆盖没有 `sca_mutable` 字段，统一视为可变；若将来需要锁定，应在类型层补字段而不是用魔法 `entry_id`。
+  3. `gram_pull_sync` 同时挂 `write` 与 `compute` 工具集：只读模式下仍可预览，`apply` 由 `assertWriteAllowed` 拒绝（返回 `READ_ONLY`）。
 
 ---
 
