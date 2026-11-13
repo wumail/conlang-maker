@@ -3,6 +3,11 @@ import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import {
+  auditFontGeometry,
+  outlineBounds,
+  type GlyphOutlineInput,
+} from "../../src/core/engines/fontGeometryAudit";
+import {
   auditFontCoverage,
   type CaseMode,
   type CharCoverageClassification,
@@ -34,6 +39,7 @@ import {
   loadFontFromBytes,
   loadFontFromFile,
 } from "../font/loader";
+import { buildMarkPairs, extractGlyph, isCombiningMark } from "../font/outline";
 import { shapeText } from "../font/shaper";
 import { resolveFontFeatures } from "../../src/core/engines/fontLayout";
 import {
@@ -2114,6 +2120,173 @@ export function registerAuditTools(
               language_ids: Array.from(langSet),
             })),
         },
+      };
+    },
+  });
+  // 3. font_audit_geometry — 字形几何与排版度量审计（T3.1）
+  registerDefinedTool(server, config, {
+    name: "font_audit_geometry",
+    title: "Audit Glyph Geometry and Typographic Metrics",
+    description:
+      "Extract true glyph outlines with HarfBuzz and audit baseline/ascender alignment, mark-to-base optical gaps, and stem weight uniformity (40 scanlines, chord Q1). Read-only: returns per-glyph rows plus an issue summary.",
+    toolsets: ["audit"],
+    access: "read",
+    idempotent: true,
+    inputSchema: {
+      ...familyInputFields,
+      ...languageInputFields,
+      font_path: z
+        .string()
+        .optional()
+        .describe(
+          "Optional explicit .ttf/.otf file path to audit instead of the language's resolved font",
+        ),
+      glyph_limit: z
+        .number()
+        .int()
+        .min(1)
+        .max(2000)
+        .optional()
+        .describe("Maximum glyphs to extract and audit (default 400)"),
+      scanlines: z
+        .number()
+        .int()
+        .min(8)
+        .max(80)
+        .optional()
+        .describe("Horizontal/vertical scanline count per glyph (default 40)"),
+      include_unmapped: z
+        .boolean()
+        .optional()
+        .describe("Include glyphs without cmap entries (default false)"),
+      only_flagged: z
+        .boolean()
+        .optional()
+        .describe("Return only glyphs with at least one issue"),
+      max_rows: z
+        .number()
+        .int()
+        .min(1)
+        .max(2000)
+        .optional()
+        .describe("Cap on returned rows (default 200)"),
+      ascender_tolerance: z.number().min(0).max(0.2).optional(),
+      baseline_tolerance: z.number().min(0).max(0.2).optional(),
+      mark_gap_max: z.number().min(0).max(0.5).optional(),
+      stem_min: z.number().min(0).max(0.3).optional(),
+      weight_cv_max: z.number().min(0).max(2).optional(),
+    },
+    handler: async (args) => {
+      const family = resolveFamilyFromArgs(config, args);
+      const ws = readWorkspaceUnlocked(family.conlang_file_path);
+
+      let handle: LoadedFontHandle;
+      let fontName: string;
+      let languageId: string | null = null;
+      if (args.font_path?.trim()) {
+        const fontPath = assertPathAllowed(args.font_path.trim(), config);
+        handle = await loadFontFromFile(fontPath);
+        fontName = path.basename(fontPath);
+        languageId = (args.language ?? args.language_id) || null;
+      } else {
+        const resolvedLang = resolveLanguage(family, pickLanguageArg(args), {
+          workspace: ws.config,
+          revision: ws.revision,
+        });
+        const lang = resolvedLang.language;
+        const resolvedFont = resolveFontFileUnlocked(
+          family.project_dir,
+          ws.config.languages,
+          lang.language_id,
+        );
+        if (!resolvedFont) {
+          throw new McpError(
+            "NO_FONT",
+            `Language "${lang.name}" (${lang.language_id}) and its ancestors have no font installed.`,
+            "Import a font with font_import or pass an explicit font_path.",
+          );
+        }
+        handle = await loadFontFromBytes(resolvedFont.bytes, resolvedFont.file_name);
+        fontName = resolvedFont.file_name;
+        languageId = lang.language_id;
+      }
+
+      const limit = args.glyph_limit ?? 400;
+      const enumerated = enumerateAllGlyphs(handle);
+      const candidates = enumerated.filter(
+        (glyph) =>
+          glyph.gid !== 0 &&
+          (args.include_unmapped === true || glyph.mapped_codepoints.length > 0),
+      );
+      const { pairs, compositeGids } = buildMarkPairs(handle);
+      const selected = candidates.slice(0, limit);
+      const selectedGids = new Set(selected.map((glyph) => glyph.gid));
+
+      const glyphs: GlyphOutlineInput[] = selected.map((glyph) => {
+        const extracted = extractGlyph(handle, glyph.gid);
+        return {
+          gid: glyph.gid,
+          name: extracted.name,
+          codepoints: glyph.mapped_codepoints,
+          advanceWidth: extracted.advanceWidth,
+          commands: extracted.commands,
+          isMark: glyph.mapped_codepoints.every((cp) => isCombiningMark(cp)),
+        };
+      });
+
+      const metricsOverrides: { capHeight?: number; xHeight?: number } = {};
+      const capGid = handle.nominalGlyph(0x48);
+      if (capGid) {
+        const bounds = outlineBounds(extractGlyph(handle, capGid).commands);
+        if (bounds.maxY > 0) metricsOverrides.capHeight = bounds.maxY;
+      }
+      const xGid = handle.nominalGlyph(0x78);
+      if (xGid) {
+        const bounds = outlineBounds(extractGlyph(handle, xGid).commands);
+        if (bounds.maxY > 0) metricsOverrides.xHeight = bounds.maxY;
+      }
+
+      const result = auditFontGeometry({
+        glyphs,
+        upm: handle.upem,
+        metrics: metricsOverrides,
+        markPairs: pairs.filter(
+          (pair) => selectedGids.has(pair.baseGid) && selectedGids.has(pair.markGid),
+        ),
+        scanlineCount: args.scanlines ?? 40,
+        tolerances: {
+          ascender: args.ascender_tolerance ?? 0.03,
+          baseline: args.baseline_tolerance ?? 0.02,
+          markGapMax: args.mark_gap_max ?? 0.12,
+          stemMin: args.stem_min ?? 0.03,
+          weightCv: args.weight_cv_max ?? 0.55,
+        },
+      });
+
+      const filtered = args.only_flagged
+        ? result.rows.filter((row) => row.issues.length > 0)
+        : result.rows;
+      const maxRows = args.max_rows ?? 200;
+
+      return {
+        family_id: family.family_id,
+        language_id: languageId,
+        font: {
+          file_name: fontName,
+          sha256: handle.sha256,
+          upem: handle.upem,
+          glyph_count: handle.glyphCount,
+        },
+        metrics: result.metrics,
+        summary: {
+          ...result.summary,
+          mark_pairs: pairs.length,
+          composite_glyphs: compositeGids.size,
+          audited_glyphs: glyphs.length,
+          returned_rows: Math.min(filtered.length, maxRows),
+          truncated: filtered.length > maxRows,
+        },
+        rows: filtered.slice(0, maxRows),
       };
     },
   });

@@ -33,6 +33,7 @@ export const EXPECTED_76_TOOLS: readonly string[] = [
   "font_shape",
   "font_audit_coverage",
   "font_audit_family",
+  "font_audit_geometry",
   "font_import",
   "font_import_batch",
   "font_clear",
