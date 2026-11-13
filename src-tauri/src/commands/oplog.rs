@@ -2358,6 +2358,7 @@ mod tests {
                 parent_id: None,
                 extra: BTreeMap::new(),
             }],
+            custom_concepts: Vec::new(),
             extra: BTreeMap::new(),
         };
         fs::write(&ws_path, serde_json::to_string_pretty(&ws_v1).unwrap()).unwrap();

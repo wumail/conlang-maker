@@ -17,6 +17,7 @@ import type {
   LegacyWritingInspection,
   LexiconLoadResult,
   LexiconSkippedLine,
+  MorphophonologyRule,
   PhonologyConfig,
   PhonologyLoadResult,
   SCAConfig,
@@ -143,6 +144,9 @@ export function readWorkspaceUnlocked(conlangFilePath: string): WorkspaceLoadRes
         }))
       : [],
   };
+  if (Array.isArray(config.custom_concepts) && config.custom_concepts.length === 0) {
+    delete config.custom_concepts;
+  }
   return { config, revision };
 }
 
@@ -499,6 +503,9 @@ export function normalizeWordEntryFromRaw(
     if (copy.grammatical_function === null || copy.grammatical_function === undefined) {
       delete copy.grammatical_function;
     }
+    if (copy.concept_id === null || copy.concept_id === undefined) {
+      delete copy.concept_id;
+    }
     return {
       ...(copy as unknown as Sense),
       sense_id: typeof s.sense_id === "string" ? s.sense_id : "",
@@ -530,6 +537,13 @@ export function normalizeWordEntryFromRaw(
         ? rawEtym.semantic_shift_note
         : "",
   };
+  // 与 Rust `skip_serializing_if` 对齐：空构词成分与空摘要不落空键
+  if (!Array.isArray(etymology.components) || etymology.components.length === 0) {
+    delete etymology.components;
+  }
+  if (etymology.compounds_stale_digest == null) {
+    delete etymology.compounds_stale_digest;
+  }
 
   const rawMeta = (raw.metadata ?? {}) as Record<string, unknown>;
   const metadata: EntryMetadata = {
@@ -811,6 +825,9 @@ export function readGrammarUnlocked(
     irregular_overrides: Array.isArray(raw.irregular_overrides)
       ? (raw.irregular_overrides as GrammarConfig["irregular_overrides"])
       : [],
+    ...(Array.isArray(raw.morphophonology_rules) && raw.morphophonology_rules.length > 0
+      ? { morphophonology_rules: raw.morphophonology_rules as MorphophonologyRule[] }
+      : {}),
   };
   return { config, revision };
 }

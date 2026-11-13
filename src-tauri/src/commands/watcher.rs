@@ -723,6 +723,7 @@ mod tests {
         let ws = WorkspaceConfig {
             workspace_version: "3.0".to_string(),
             languages: sample_languages(),
+            custom_concepts: Vec::new(),
             extra: BTreeMap::new(),
         };
         fs::write(

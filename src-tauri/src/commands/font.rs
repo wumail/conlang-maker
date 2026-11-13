@@ -699,6 +699,7 @@ mod tests {
         let config = WorkspaceConfig {
             workspace_version: "3.0".to_string(),
             languages: entries,
+            custom_concepts: Vec::new(),
             extra: BTreeMap::new(),
         };
         let conlang = project.join("family.conlang");

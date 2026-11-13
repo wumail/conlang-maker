@@ -246,6 +246,8 @@ pub struct Sense {
     pub examples: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub grammatical_function: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concept_id: Option<String>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -262,6 +264,10 @@ pub struct Etymology {
     pub applied_sound_changes: Vec<String>,
     #[serde(default)]
     pub semantic_shift_note: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub components: Vec<MorphemeComponent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compounds_stale_digest: Option<String>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -278,6 +284,8 @@ impl Default for Etymology {
             source_language_id: None,
             applied_sound_changes: Vec::new(),
             semantic_shift_note: String::new(),
+            components: Vec::new(),
+            compounds_stale_digest: None,
             extra: ExtraFields::new(),
         }
     }
@@ -340,6 +348,8 @@ pub struct SyntaxConfig {
     pub modifier_position: String,
     #[serde(default = "default_adposition_type")]
     pub adposition_type: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alignment: Option<String>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -360,6 +370,7 @@ impl Default for SyntaxConfig {
             word_order: default_word_order(),
             modifier_position: default_modifier_position(),
             adposition_type: default_adposition_type(),
+            alignment: None,
             extra: ExtraFields::new(),
         }
     }
@@ -717,6 +728,8 @@ pub struct GrammarConfig {
     pub conjugation_classes: Vec<ConjugationClass>,
     #[serde(default)]
     pub irregular_overrides: Vec<IrregularOverride>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub morphophonology_rules: Vec<MorphophonologyRule>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -739,6 +752,7 @@ impl Default for GrammarConfig {
             affix_slots: Vec::new(),
             conjugation_classes: Vec::new(),
             irregular_overrides: Vec::new(),
+            morphophonology_rules: Vec::new(),
             extra: ExtraFields::new(),
         }
     }
@@ -757,12 +771,81 @@ pub struct LanguageEntry {
     pub extra: ExtraFields,
 }
 
+/// CLDF / Concepticon 兼容概念定义（T2.1）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct ConceptDefinition {
+    #[serde(default)]
+    pub concept_id: String,
+    #[serde(default)]
+    pub gloss_en: String,
+    #[serde(default)]
+    pub gloss_zh: String,
+    #[serde(default)]
+    pub semantic_field: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub concepticon_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub standard_lists: Vec<String>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
+/// 共时构词成分（T2.1）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct MorphemeComponent {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub derivation_rule_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_override: Option<String>,
+    #[serde(default)]
+    pub relation: String,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
+/// 共时形态音位规则（T2.1）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct MorphophonologyRule {
+    #[serde(default)]
+    pub rule_id: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub disabled: Option<bool>,
+    #[serde(default)]
+    pub priority: u32,
+    #[serde(default)]
+    pub target: String,
+    #[serde(default)]
+    pub replacement: String,
+    #[serde(default)]
+    pub context_before: String,
+    #[serde(default)]
+    pub context_after: String,
+    #[serde(default)]
+    pub feature_mode: bool,
+    #[serde(default)]
+    pub target_features: Option<FeatureExpression>,
+    #[serde(default)]
+    pub replacement_features: Option<FeatureReplacement>,
+    #[serde(default)]
+    pub context_before_features: Option<FeatureExpression>,
+    #[serde(default)]
+    pub context_after_features: Option<FeatureExpression>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct WorkspaceConfig {
     #[serde(default = "default_workspace_version")]
     pub workspace_version: String,
     #[serde(default)]
     pub languages: Vec<LanguageEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom_concepts: Vec<ConceptDefinition>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -782,6 +865,7 @@ impl Default for WorkspaceConfig {
                 parent_id: None,
                 extra: ExtraFields::new(),
             }],
+            custom_concepts: Vec::new(),
             extra: ExtraFields::new(),
         }
     }

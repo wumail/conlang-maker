@@ -573,6 +573,7 @@ mod tests {
                     extra: BTreeMap::new(),
                 },
             ],
+            custom_concepts: Vec::new(),
             extra: BTreeMap::new(),
         };
         fs::write(

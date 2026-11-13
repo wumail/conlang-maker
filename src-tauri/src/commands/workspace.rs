@@ -243,6 +243,7 @@ pub fn create_new_project(
                 parent_id: None,
                 extra: BTreeMap::new(),
             }],
+            custom_concepts: Vec::new(),
             extra: BTreeMap::new(),
         };
 

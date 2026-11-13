@@ -52,13 +52,76 @@ export interface ToneSystem {
   tones: ToneDefinition[];
 }
 
+// ── P2 扩展类型（T2.1：全部为可选字段，旧工作区零破坏）─────────────
+
+/** CLDF / Concepticon 兼容概念定义 */
+export interface ConceptDefinition {
+  concept_id: string;
+  gloss_en: string;
+  gloss_zh: string;
+  semantic_field: string;
+  concepticon_id?: string;
+  standard_lists?: ("swadesh_100" | "leipzig_jakarta_100")[];
+}
+
+/** 多词素构词成分的关系类型 */
+export type CompoundRelation = "root" | "modifier" | "head" | "affix" | "reduplicant";
+
+/** 共时构词成分（A + B -> AB） */
+export interface MorphemeComponent {
+  entry_id?: string;
+  derivation_rule_id?: string;
+  surface_override?: string;
+  relation: CompoundRelation;
+}
+
+/** 重音模式（向后兼容旧的 `{ position: "initial" }`） */
+export type StressPattern =
+  | "initial"
+  | "ultimate"
+  | "penultimate"
+  | "antepenultimate"
+  | "weight_sensitive";
+
+export interface StressConfig {
+  position: StressPattern;
+  domain: "word" | "entry";
+  weight_fallback?: "initial" | "penultimate" | "antepenultimate";
+}
+
+/** 共时形态音位规则（复用 SCARule 的规则体，语境可用 `+` 表示词素边界） */
+export interface MorphophonologyRule {
+  rule_id: string;
+  description: string;
+  disabled?: boolean;
+  priority: number;
+  target: string;
+  replacement: string;
+  context_before: string;
+  context_after: string;
+  feature_mode: boolean;
+  target_features: FeatureExpression | null;
+  replacement_features: FeatureReplacement | null;
+  context_before_features: FeatureExpression | null;
+  context_after_features: FeatureExpression | null;
+}
+
+/** 形态句法对齐类型 */
+export type MorphosyntacticAlignment = "nom_acc" | "erg_abs" | "tripartite";
+
+/** 显式绑定的格维度值 */
+export interface CaseDimBinding {
+  dim_id: string;
+  val_id: string;
+}
+
 export interface Phonotactics {
   macros: Record<string, string[]>;
   syllable_structure: string;
   blacklist_patterns: string[];
   vowel_harmony: VowelHarmony;
   tone_system: ToneSystem;
-  stress?: { position: "initial"; domain: "word" | "entry" } | null;
+  stress?: StressConfig | null;
 }
 
 export interface AllophonyRule {
@@ -120,6 +183,8 @@ export interface Sense {
   definitions: string[];
   examples: string[];
   grammatical_function?: string; // 孤立语虚词功能标签（如 particle / topic / aspect_marker）
+  /** 绑定跨语言概念锚点（T2.2） */
+  concept_id?: string;
 }
 
 export type OriginType =
@@ -136,6 +201,10 @@ export interface Etymology {
   source_language_id: string | null;
   applied_sound_changes: string[];
   semantic_shift_note: string;
+  /** 共时构词成分（DAG 多词素，T2.4） */
+  components?: MorphemeComponent[];
+  /** 上次核验时各成分词根读音摘要（级联过期检测） */
+  compounds_stale_digest?: string;
 }
 
 export interface EntryMetadata {
@@ -173,6 +242,10 @@ export interface SyntaxConfig {
   word_order: WordOrder;
   modifier_position: ModifierPosition;
   adposition_type: AdpositionType;
+  /** 形态句法对齐；缺省视为 "nom_acc" */
+  alignment?: MorphosyntacticAlignment;
+  /** 可选显式绑定格维度值 */
+  case_gloss_map?: Partial<Record<"nom" | "acc" | "erg" | "abs" | "gen", CaseDimBinding>>;
 }
 
 export interface PartOfSpeech {
@@ -354,6 +427,8 @@ export interface GrammarConfig {
   affix_slots: AffixSlot[];
   conjugation_classes: ConjugationClass[];
   irregular_overrides: IrregularOverride[];
+  /** 共时形态音位规则（T2.5） */
+  morphophonology_rules?: MorphophonologyRule[];
 }
 
 // ── Workspace & Language Registry (Phase 2 Sprint 6) ─────
@@ -410,6 +485,8 @@ export interface ResolvedFontBytes {
 export interface WorkspaceConfig {
   workspace_version: string;
   languages: LanguageEntry[];
+  /** 用户自定义概念表（T2.2） */
+  custom_concepts?: ConceptDefinition[];
 }
 
 // ── Global Registry ──────────────────────────────────────
