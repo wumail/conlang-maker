@@ -12,9 +12,11 @@ import { ScriptText } from "../writing/ScriptText";
 
 interface GlossLineRowProps {
   line: GlossedLine;
+  /** 新建词条后由语料页重跑当前句 autoGloss */
+  onLexEntryCreated?: () => void;
 }
 
-export function GlossLineRow({ line }: GlossLineRowProps) {
+export function GlossLineRow({ line, onLexEntryCreated }: GlossLineRowProps) {
   const { t } = useTranslation();
   const updateGlossedLine = useCorpusStore((s) => s.updateGlossedLine);
   const deleteGlossedLine = useCorpusStore((s) => s.deleteGlossedLine);
@@ -163,6 +165,8 @@ export function GlossLineRow({ line }: GlossLineRowProps) {
       {editingTokenId && (
         <GlossTokenEdit
           token={line.tokens.find((t) => t.token_id === editingTokenId)!}
+          line={line}
+          onLexEntryCreated={onLexEntryCreated}
           onSave={(token) => {
             updateToken(editingTokenId, token);
             setEditingTokenId(null);

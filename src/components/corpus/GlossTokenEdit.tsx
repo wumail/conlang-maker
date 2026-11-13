@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { GlossToken } from "../../types";
+import { GlossedLine, GlossToken } from "../../types";
 import { useLexiconStore } from "../../store/lexiconStore";
 import {
   INPUT,
@@ -10,24 +10,33 @@ import {
   BTN_OUTLINE_ERROR,
 } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
+import { CorpusQuickLexDrawer } from "./CorpusQuickLexDrawer";
+import { BookPlus } from "lucide-react";
 import { ScriptLine, ScriptPreview } from "../writing/ScriptText";
 
 interface GlossTokenEditProps {
   token: GlossToken;
+  /** 当前行上下文（快建词条抽屉展示用） */
+  line?: GlossedLine | null;
   onSave: (token: GlossToken) => void;
   onDelete: () => void;
   onClose: () => void;
+  /** 新建词条后由语料页重跑当前句 autoGloss */
+  onLexEntryCreated?: () => void;
 }
 
 export function GlossTokenEdit({
   token,
+  line = null,
   onSave,
   onDelete,
   onClose,
+  onLexEntryCreated,
 }: GlossTokenEditProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<GlossToken>({ ...token });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showQuickLex, setShowQuickLex] = useState(false);
   const wordsList = useLexiconStore((s) => s.wordsList);
 
   // Find matching entries for linking
@@ -134,6 +143,11 @@ export function GlossTokenEdit({
         )}
 
         <div className="flex gap-2 justify-end pt-2">
+          {!draft.linked_entry_id && (
+            <button className={BTN_GHOST} onClick={() => setShowQuickLex(true)}>
+              <BookPlus size={14} /> {t("corpus.quickLex.entry")}
+            </button>
+          )}
           <button className={BTN_OUTLINE_ERROR} onClick={() => setShowDeleteConfirm(true)}>
             {t("common.delete")}
           </button>
@@ -154,6 +168,18 @@ export function GlossTokenEdit({
           onDelete();
         }}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      <CorpusQuickLexDrawer
+        key={`quicklex_${token.token_id}`}
+        open={showQuickLex}
+        surfaceForm={draft.surface_form}
+        line={line}
+        onClose={() => setShowQuickLex(false)}
+        onCreated={() => {
+          onLexEntryCreated?.();
+          onClose();
+        }}
       />
     </div>
   );
