@@ -1,8 +1,11 @@
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2, ChevronDown, ChevronRight, Copy, Download } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Copy, Download, Code2 } from "lucide-react";
+import { useState } from "react";
 import type { SCARule, SCARuleSet } from "../../types";
 import { BTN_GHOST, BTN_GHOST_SQ, BTN_ERROR } from "../../lib/ui";
 import { SCARuleEditorRow } from "./SCARuleEditorRow";
+import { RuleDslEditor } from "../common/RuleDslEditor";
+import { parseScaRulesDsl, serializeScaRulesDsl } from "../../core/engines/ruleDsl";
 
 interface SCARuleCardProps {
   ruleSet: SCARuleSet;
@@ -16,6 +19,8 @@ interface SCARuleCardProps {
   onPatchRule: (ruleId: string, next: SCARule) => void;
   onToggleRuleFeatureMode: (ruleId: string) => void;
   onRequestDeleteRule: (ruleId: string) => void;
+  /** DSL 编辑器整组替换规则 */
+  onReplaceRules: (rules: SCARule[]) => void;
 }
 
 /** 单个音变规则集卡片：折叠头 + 规则列表 */
@@ -31,8 +36,10 @@ export const SCARuleCard: React.FC<SCARuleCardProps> = ({
   onPatchRule,
   onToggleRuleFeatureMode,
   onRequestDeleteRule,
+  onReplaceRules,
 }) => {
   const { t } = useTranslation();
+  const [dslOpen, setDslOpen] = useState(false);
 
   return (
     <div className="border border-base-200 rounded-lg">
@@ -53,6 +60,13 @@ export const SCARuleCard: React.FC<SCARuleCardProps> = ({
             {ruleSet.name || t("sca.unnamed")}
           </span>
           <span className="text-xs text-base-content/50">#{ruleSet.order}</span>
+          <button
+            className={BTN_GHOST_SQ}
+            onClick={() => setDslOpen(true)}
+            title={t("ruleDsl.open")}
+          >
+            <Code2 className="w-3.5 h-3.5" />
+          </button>
           <button className={BTN_GHOST_SQ} onClick={onCopy} title={t("sca.copyRuleSet")}>
             <Copy className="w-3.5 h-3.5" />
           </button>
@@ -92,6 +106,16 @@ export const SCARuleCard: React.FC<SCARuleCardProps> = ({
           </div>
         )}
       </div>
+
+      <RuleDslEditor<SCARule>
+        open={dslOpen}
+        title={t("ruleDsl.scaTitle")}
+        hint={t("ruleDsl.scaHint")}
+        initialText={serializeScaRulesDsl(ruleSet.rules)}
+        parse={parseScaRulesDsl}
+        onApply={onReplaceRules}
+        onClose={() => setDslOpen(false)}
+      />
     </div>
   );
 };

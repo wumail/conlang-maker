@@ -7,7 +7,7 @@ import { CARD } from "../../lib/ui";
 import { SCARuleCard } from "./SCARuleCard";
 import { SCARuleSetImportModal } from "./SCARuleSetImportModal";
 import { SCARuleSetToolbar } from "./SCARuleSetToolbar";
-import { parseSCARulesText } from "../../utils/scaImportParser";
+import { parseRuleSetImport } from "../../lib/scaRuleSetImport";
 import {
   copyTextToClipboard,
   downloadTextFile,
@@ -27,8 +27,15 @@ interface PendingDeleteRule {
 
 export function RuleSetList() {
   const { t } = useTranslation();
-  const { config, addRuleSet, deleteRuleSet, addRule, updateRule, deleteRule } =
-    useSCAStore();
+  const {
+    config,
+    addRuleSet,
+    updateRuleSet,
+    deleteRuleSet,
+    addRule,
+    updateRule,
+    deleteRule,
+  } = useSCAStore();
   const [expandedSets, setExpandedSets] = useState<Set<string>>(new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [confirmDeleteRuleId, setConfirmDeleteRuleId] =
@@ -181,26 +188,9 @@ export function RuleSetList() {
   };
 
   const handleImportRuleSet = () => {
-    const parsed = parseSCARulesText(importText);
-    if (parsed.rules.length === 0) {
-      setImportErrors([t("sca.importRuleSetNoRules")]);
-      return;
-    }
-    if (parsed.errors.length > 0) {
-      const limited = parsed.errors
-        .slice(0, 6)
-        .map((error) =>
-          t("sca.importRuleSetErrorLine", {
-            line: error.line,
-            source: error.source.trim(),
-          }),
-        );
-      if (parsed.errors.length > 6) {
-        limited.push(
-          t("sca.importRuleSetMoreErrors", { count: parsed.errors.length - 6 }),
-        );
-      }
-      setImportErrors(limited);
+    const result = parseRuleSetImport(importText, generateId, t);
+    if (result.errors.length > 0) {
+      setImportErrors(result.errors);
       return;
     }
 
@@ -211,7 +201,7 @@ export function RuleSetList() {
         importRuleSetName.trim() ||
         t("sca.importRuleSetDefaultName", t("sca.newRuleSet")),
       order: config.rule_sets.length + 1,
-      rules: parsed.rules.map((rule) => ({ ...rule, rule_id: generateId() })),
+      rules: result.rules,
     });
     setExpandedSets((prev) => new Set(prev).add(id));
     closeImportModal();
@@ -252,6 +242,9 @@ export function RuleSetList() {
           }
           onRequestDeleteRule={(ruleId) =>
             setConfirmDeleteRuleId({ rulesetId: ruleSet.ruleset_id, ruleId })
+          }
+          onReplaceRules={(rules) =>
+            updateRuleSet(ruleSet.ruleset_id, { ...ruleSet, rules })
           }
         />
       ))}

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePhonoStore } from "../../store/phonoStore";
 import { RomanizationMap, RomanizationRule } from "../../types";
-import { Plus, Trash2, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, ChevronDown, ChevronRight, Code2 } from "lucide-react";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { EmptyState } from "../common/EmptyState";
 import { BTN_PRIMARY, BTN_ERROR, BTN_LINK, BADGE } from "../../lib/ui";
@@ -12,6 +12,11 @@ import {
   buildRuleLintIndex,
 } from "./RomanizationLintBanner";
 import { analyzeRomanization } from "../../core/engines/romanizationLint";
+import {
+  parseRomanizationDsl,
+  serializeRomanizationDsl,
+} from "../../core/engines/ruleDsl";
+import { RuleDslEditor } from "../common/RuleDslEditor";
 
 const emptyRule = (): RomanizationRule => ({
   rule_id: crypto.randomUUID(),
@@ -35,6 +40,7 @@ export const RomanizationEditor: React.FC = () => {
     maps[0]?.map_id ?? null,
   );
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [dslMapId, setDslMapId] = useState<string | null>(null);
 
   // 映射表与音素表变化时实时重算静态诊断（纯函数，6 类检查）
   const analysis = useMemo(
@@ -158,6 +164,16 @@ export const RomanizationEditor: React.FC = () => {
                     {t("common.setDefault")}
                   </button>
                 )}
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDslMapId(map.map_id);
+                  }}
+                  className={BTN_LINK}
+                  title={t("ruleDsl.open")}
+                >
+                  <Code2 size={13} /> DSL
+                </button>
                 {confirmDeleteId === map.map_id ? null : (
                   <button
                     onClick={(e) => {
@@ -189,6 +205,21 @@ export const RomanizationEditor: React.FC = () => {
           </div>
         ))}
       </div>
+
+      <RuleDslEditor
+        open={dslMapId !== null}
+        title={t("ruleDsl.romanizationTitle")}
+        hint={t("ruleDsl.romanizationHint")}
+        initialText={serializeRomanizationDsl(
+          maps.find((map) => map.map_id === dslMapId)?.rules ?? [],
+        )}
+        parse={parseRomanizationDsl}
+        onApply={(rules) => {
+          const target = maps.find((map) => map.map_id === dslMapId);
+          if (target) updateRomanizationMap(target.map_id, { ...target, rules });
+        }}
+        onClose={() => setDslMapId(null)}
+      />
 
       <ConfirmModal
         open={!!confirmDeleteId}

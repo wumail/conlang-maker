@@ -19,6 +19,20 @@ export default {
       statPOS: "词类",
       statCorpus: "语料",
     },
+    ruleDsl: {
+      open: "以单行 DSL 编辑规则",
+      romanizationTitle: "罗马化规则 · DSL",
+      romanizationHint:
+        "每行一条：sh -> ʃ / _ i · 分隔符：'- -> [sep] · 空串：∅ · 用 @id: 保留规则 ID",
+      allophonyTitle: "音位变体规则 · DSL",
+      allophonyHint: "每行一条：t -> d / V _ V  # 说明 · 优先级按行号重排",
+      scaTitle: "音变规则 · DSL",
+      scaHint:
+        "字符模式：p t k -> b d g / V _ V  ! pt, kt · 特征模式：[+stop, -voiced] -> [+voiced]",
+      valid: "已解析 {{count}} 条规则",
+      errorCount: "{{count}} 处语法错误，修正后才能应用",
+      apply: "应用到表单",
+    },
     commandPalette: {
       open: "搜索或执行命令",
       placeholder: "检索词条、> 动作、= 即时演算",

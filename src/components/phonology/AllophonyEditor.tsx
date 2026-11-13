@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { usePhonoStore } from "../../store/phonoStore";
 import { AllophonyRule } from "../../types";
-import { Plus, Trash2, GripVertical } from "lucide-react";
-import { INPUT, INPUT_MONO, BTN_PRIMARY, BTN_ERROR } from "../../lib/ui";
+import { Plus, Trash2, GripVertical, Code2 } from "lucide-react";
+import { INPUT, INPUT_MONO, BTN_PRIMARY, BTN_ERROR, BTN_GHOST } from "../../lib/ui";
 import { ConfirmModal } from "../common/ConfirmModal";
 import { EmptyState } from "../common/EmptyState";
 import {
@@ -14,6 +14,11 @@ import {
   verticalListSortingStrategy,
 } from "../../utils/useDragReorder";
 import { SortableItem } from "../common/SortableItem";
+import {
+  parseAllophonyDsl,
+  serializeAllophonyDsl,
+} from "../../core/engines/ruleDsl";
+import { RuleDslEditor } from "../common/RuleDslEditor";
 
 const emptyRule = (): AllophonyRule => ({
   rule_id: crypto.randomUUID(),
@@ -38,6 +43,7 @@ export const AllophonyEditor: React.FC = () => {
     (a, b) => (b.priority ?? 0) - (a.priority ?? 0),
   );
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
+  const [dslOpen, setDslOpen] = useState(false);
 
   const { sensors, onDragEnd } = useDragReorder(
     rules,
@@ -72,7 +78,10 @@ export const AllophonyEditor: React.FC = () => {
 
   return (
     <div className="space-y-4 overflow-y-auto bg-base-100 p-6 min-w-[900px] flex-1">
-      <div className="flex justify-end items-center mb-4">
+      <div className="flex justify-end items-center gap-2 mb-4">
+        <button onClick={() => setDslOpen(true)} className={BTN_GHOST}>
+          <Code2 size={14} /> DSL
+        </button>
         <button onClick={handleAdd} className={BTN_PRIMARY}>
           <Plus size={16} /> {t("phonology.allophony.addRule")}
         </button>
@@ -249,6 +258,16 @@ export const AllophonyEditor: React.FC = () => {
           </div>
         </SortableContext>
       </DndContext>
+
+      <RuleDslEditor
+        open={dslOpen}
+        title={t("ruleDsl.allophonyTitle")}
+        hint={t("ruleDsl.allophonyHint")}
+        initialText={serializeAllophonyDsl([...rules].reverse())}
+        parse={parseAllophonyDsl}
+        onApply={(next) => setAllophonyRules([...next].reverse())}
+        onClose={() => setDslOpen(false)}
+      />
 
       <ConfirmModal
         open={!!deleteTarget}

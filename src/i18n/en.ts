@@ -19,6 +19,21 @@ export default {
       statPOS: "POS",
       statCorpus: "Texts",
     },
+    ruleDsl: {
+      open: "Edit rules as single-line DSL",
+      romanizationTitle: "Romanization rules · DSL",
+      romanizationHint:
+        "One rule per line: sh -> ʃ / _ i  ·  separator: '- -> [sep]  ·  empty: ∅  ·  keep ids with @id:",
+      allophonyTitle: "Allophony rules · DSL",
+      allophonyHint:
+        "One rule per line: t -> d / V _ V  # description  ·  priority follows line order",
+      scaTitle: "Sound-change rules · DSL",
+      scaHint:
+        "Character mode: p t k -> b d g / V _ V  ! pt, kt  ·  feature mode: [+stop, -voiced] -> [+voiced]",
+      valid: "{{count}} rule(s) parsed",
+      errorCount: "{{count}} syntax error(s) — fix them before applying",
+      apply: "Apply to form",
+    },
     commandPalette: {
       open: "Search or run a command",
       placeholder: "Search words, > actions, = instant sandbox",
