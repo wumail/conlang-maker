@@ -135,7 +135,7 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
         return Err(err);
     }
 
-    if let Err(err) = fs::rename(&tmp_path, path) {
+    if let Err(err) = rename_with_windows_retry(&tmp_path, path) {
         let _ = fs::remove_file(&tmp_path);
         return Err(format!(
             "IO: Failed renaming '{}' to '{}': {err}",
@@ -154,6 +154,35 @@ pub fn atomic_write_bytes(path: &Path, bytes: &[u8]) -> Result<(), String> {
 /// UTF-8 string convenience wrapper around `atomic_write_bytes`.
 pub fn atomic_write(path: &Path, content: &str) -> Result<(), String> {
     atomic_write_bytes(path, content.as_bytes())
+}
+
+fn rename_with_windows_retry(from: &Path, to: &Path) -> std::io::Result<()> {
+    #[cfg(not(windows))]
+    {
+        fs::rename(from, to)
+    }
+    #[cfg(windows)]
+    {
+        const ERROR_ACCESS_DENIED: i32 = 5;
+        const ERROR_SHARING_VIOLATION: i32 = 32;
+        let mut attempt = 0u32;
+        loop {
+            match fs::rename(from, to) {
+                Ok(()) => return Ok(()),
+                Err(err) => {
+                    let raw = err.raw_os_error();
+                    let retryable = err.kind() == ErrorKind::PermissionDenied
+                        || raw == Some(ERROR_ACCESS_DENIED)
+                        || raw == Some(ERROR_SHARING_VIOLATION);
+                    if !retryable || attempt >= 20 {
+                        return Err(err);
+                    }
+                    attempt += 1;
+                    std::thread::sleep( std::time::Duration::from_millis((attempt as u64).min(10)) );
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

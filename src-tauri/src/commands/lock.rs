@@ -347,9 +347,12 @@ where
                 created_by_us = true;
             }
             Err(err)
-                if err.kind() == ErrorKind::AlreadyExists || err.kind() == ErrorKind::NotFound =>
+                if err.kind() == ErrorKind::AlreadyExists
+                    || err.kind() == ErrorKind::NotFound
+                    || (cfg!(windows) && err.kind() == ErrorKind::PermissionDenied) =>
             {
-                // Never delete an existing file on AlreadyExists; NotFound means lock_dir raced with rmdir.
+                // Never delete an existing file on AlreadyExists; NotFound / Windows DELETE_PENDING
+                // PermissionDenied means lock_dir raced with a concurrent rmdir.
             }
             Err(err) => {
                 return Err(format!(
@@ -575,6 +578,12 @@ mod tests {
         fs::create_dir_all(&lock_dir).unwrap();
 
         // Spawn a short-lived child process to get a guaranteed-dead local PID
+        #[cfg(windows)]
+        let mut child = std::process::Command::new("cmd")
+            .args(["/C", "exit", "0"])
+            .spawn()
+            .unwrap();
+        #[cfg(not(windows))]
         let mut child = std::process::Command::new("sh")
             .arg("-c")
             .arg("exit 0")

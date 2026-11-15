@@ -1,0 +1,18 @@
+* text=auto eol=lf
+
+*.json text eol=lf
+*.conlang text eol=lf
+*.ndjson text eol=lf
+*.jsonl text eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.icns binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.wasm binary

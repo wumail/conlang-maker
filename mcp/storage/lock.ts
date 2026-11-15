@@ -178,7 +178,12 @@ export async function withDirectoryLock<T>(
         createdByUs = true;
       } catch (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        if (code !== "EEXIST" && code !== "ENOENT") {
+        // On Windows NTFS, concurrent rmdirSync on lockDir marks the directory
+        // DELETE_PENDING until all open handles close, causing openSync("wx")
+        // to fail transiently with EPERM (-4048) or EACCES.
+        const winDeletePending =
+          process.platform === "win32" && (code === "EPERM" || code === "EACCES");
+        if (code !== "EEXIST" && code !== "ENOENT" && !winDeletePending) {
           throw err;
         }
       }
@@ -191,6 +196,7 @@ export async function withDirectoryLock<T>(
           entries = null;
         }
 
+        let liveRivalsRemain = false;
         if (entries !== null) {
           const owners = entries.filter((f) => f.startsWith("owner-"));
           if (owners.length === 1 && owners[0] === ownerFileName) {
@@ -212,6 +218,8 @@ export async function withDirectoryLock<T>(
               } catch {
                 // Another contender may have cleaned it
               }
+            } else {
+              liveRivalsRemain = true;
             }
           }
         }
@@ -222,10 +230,12 @@ export async function withDirectoryLock<T>(
         } catch {
           // Ignore ENOENT
         }
-        try {
-          fs.rmdirSync(lockDir);
-        } catch {
-          // Ignore ENOTEMPTY / ENOENT
+        if (!liveRivalsRemain) {
+          try {
+            fs.rmdirSync(lockDir);
+          } catch {
+            // Ignore ENOTEMPTY / ENOENT / EPERM
+          }
         }
       }
 

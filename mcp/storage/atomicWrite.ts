@@ -50,7 +50,7 @@ export function atomicWriteFileSync(
     fs.closeSync(fd);
     fd = null;
 
-    fs.renameSync(tmpPath, targetPath);
+    renameWithWindowsRetrySync(tmpPath, targetPath);
     syncParentDirBestEffort(parentDir);
   } catch (err) {
     if (fd !== null) {
@@ -82,6 +82,27 @@ export function syncParentDirBestEffort(dirPath: string): void {
     }
   } catch {
     // Some filesystems do not support fsync on directories; best-effort per §3.3
+  }
+}
+
+function renameWithWindowsRetrySync(tmpPath: string, targetPath: string): void {
+  if (process.platform !== "win32") {
+    fs.renameSync(tmpPath, targetPath);
+    return;
+  }
+  const sharedBuf = new Int32Array(new SharedArrayBuffer(4));
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(tmpPath, targetPath);
+      return;
+    } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code;
+      const retryable = code === "EPERM" || code === "EACCES" || code === "EBUSY";
+      if (!retryable || attempt >= 15) {
+        throw err;
+      }
+      Atomics.wait(sharedBuf, 0, 0, Math.min(20, 2 * (attempt + 1)));
+    }
   }
 }
 
