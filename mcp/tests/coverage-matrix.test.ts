@@ -6,9 +6,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { parseConfig } from "../config";
 import { createServer } from "../server";
-import { EXPECTED_76_TOOLS } from "./expected-tools";
+import { EXPECTED_77_TOOLS } from "./expected-tools";
 
-export { EXPECTED_76_TOOLS };
+export { EXPECTED_77_TOOLS };
 
 export const EXPECTED_RESOURCE_TEMPLATES: readonly string[] = [
   "conlang://{family_id}/tree",
@@ -31,7 +31,7 @@ export const EXPECTED_PROMPTS: readonly string[] = [
 
 describe("T4.9 PRD Coverage Matrix (76 Tools, 10 Resources, 4 Prompts & Annotations)", () => {
   test("exposes all 76 PRD tools, 10 conlang:// resources, and 4 prompts with valid annotations", async () => {
-    expect(EXPECTED_76_TOOLS.length).toBeGreaterThanOrEqual(76);
+    expect(EXPECTED_77_TOOLS.length).toBeGreaterThanOrEqual(77);
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "conlang-matrix-"));
     const tempRegistry = path.join(tmpDir, "registry.json");
@@ -51,10 +51,10 @@ describe("T4.9 PRD Coverage Matrix (76 Tools, 10 Resources, 4 Prompts & Annotati
     try {
       const { tools } = await client.listTools();
       const actualNames = tools.map((t) => t.name).sort();
-      const expectedSorted = [...EXPECTED_76_TOOLS].sort();
+      const expectedSorted = [...EXPECTED_77_TOOLS].sort();
 
       expect(actualNames).toEqual(expectedSorted);
-      expect(tools.length).toBe(EXPECTED_76_TOOLS.length);
+      expect(tools.length).toBe(EXPECTED_77_TOOLS.length);
 
       const byName = new Map(tools.map((t) => [t.name, t]));
       for (const tool of tools) {

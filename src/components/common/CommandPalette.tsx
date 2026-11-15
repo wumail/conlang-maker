@@ -1,56 +1,44 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
-import {
-  ArrowRight,
-  BookOpen,
-  CornerDownLeft,
-  Languages,
-  Plus,
-  Search,
-} from "lucide-react";
+import { useNavigate, useLocation } from "react-router-dom";
+import { CornerDownLeft, Search } from "lucide-react";
 import { ModalPortal } from "./ModalPortal";
-import { BADGE } from "../../lib/ui";
 import { CommandCalcPreview } from "./CommandCalcPreview";
+import {
+  CommandPaletteResults,
+  type PaletteActionItem,
+} from "./CommandPaletteResults";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { useLexiconStore } from "../../store/lexiconStore";
+import { useCorpusStore } from "../../store/corpusStore";
 import {
   listLineageSnapshots,
   useLineageLexiconCacheVersion,
 } from "../../store/lineageLexiconStore";
-import {
-  PALETTE_ROUTES,
-  parsePaletteMode,
-  searchWords,
-  type CommandWordHit,
-  type WordSearchGroup,
-} from "../../lib/commandPalette";
+import { PALETTE_ROUTES, parsePaletteMode, type CommandWordHit, type WordSearchGroup } from "../../lib/commandPalette";
 import { useCommandPaletteWarmup } from "../../lib/useCommandPaletteHotkey";
+import { filterAndSearchWords } from "../../core/lexicon/searchLexicon";
+import { saveLanguageViewMemory } from "../../lib/languageViewMemory";
+import { CORE_CONCEPTS } from "../../data/core_concepts";
 import { createDraftWord } from "../../utils/lexiconDraft";
+import type { ConceptDefinition } from "../../types";
 
 interface CommandPaletteProps {
   open: boolean;
   onClose: () => void;
 }
 
-interface ActionItem {
-  id: string;
-  label: string;
-  kind: "language" | "route" | "create";
-  run: () => void;
-}
-
 /** 全局命令面板：检索 / `>` 动作 / `=` 即时演算（Cmd+K） */
 export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const inputRef = useRef<HTMLInputElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const retryTimers = useRef<number[]>([]);
 
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const languages = useWorkspaceStore((s) => s.config.languages);
+  const customConcepts = useWorkspaceStore((s) => s.config.custom_concepts);
   const setActiveLanguage = useWorkspaceStore((s) => s.setActiveLanguage);
   const wordsList = useLexiconStore((s) => s.wordsList);
   const setActiveWordId = useLexiconStore((s) => s.setActiveWordId);
@@ -70,16 +58,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     return () => window.clearTimeout(timer);
   }, [open]);
 
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [raw]);
-
-  useEffect(() => {
-    return () => {
-      retryTimers.current.forEach((timer) => window.clearTimeout(timer));
-      retryTimers.current = [];
-    };
-  }, []);
+  useEffect(() => setActiveIndex(0), [raw]);
 
   const cachedGroups = useMemo<WordSearchGroup[]>(() => {
     if (!projectPath) return [];
@@ -97,47 +76,64 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     // cacheVersion 触发重算
   }, [projectPath, languages, cacheVersion]);
 
-  const hits = useMemo<CommandWordHit[]>(() => {
-    if (mode !== "search") return [];
-    return searchWords({
-      query: body,
-      activeLanguageId,
-      activeWords: wordsList,
-      cachedGroups,
-    });
-  }, [mode, body, activeLanguageId, wordsList, cachedGroups]);
-
-  const focusWordInLanguage = (languageId: string, entryId: string) => {
-    if (languageId !== activeLanguageId) {
-      setActiveLanguage(languageId);
-      navigate("/lexicon");
-      // 目标语言词库异步加载完成后聚焦该词条（最多重试 3s）
-      for (let attempt = 1; attempt <= 30; attempt += 1) {
-        const timer = window.setTimeout(() => {
-          if (useLexiconStore.getState().wordsMap[entryId]) {
-            useLexiconStore.getState().setActiveWordId(entryId);
-          }
-        }, attempt * 100);
-        retryTimers.current.push(timer);
-      }
-      return;
+  const conceptsMap = useMemo(() => {
+    const map = new Map<string, ConceptDefinition>();
+    for (const concept of [...CORE_CONCEPTS, ...(customConcepts ?? [])]) {
+      map.set(concept.concept_id, concept);
     }
-    setActiveWordId(entryId);
-    navigate("/lexicon");
+    return map;
+  }, [customConcepts]);
+
+  /** 统一搜索引擎：词形 / IPA / 释义 / 定义 / 用法 / 标签 / 概念名与别名 */
+  const hits = useMemo<CommandWordHit[]>(() => {
+    if (mode !== "search" || !body.trim()) return [];
+    const groups: WordSearchGroup[] = [
+      {
+        languageId: activeLanguageId,
+        languageName: languages.find((item) => item.language_id === activeLanguageId)?.name ?? "",
+        words: wordsList,
+      },
+      ...cachedGroups.filter((group) => group.languageId !== activeLanguageId),
+    ];
+    const out: CommandWordHit[] = [];
+    for (const group of groups) {
+      for (const word of filterAndSearchWords(group.words, { searchTerm: body }, conceptsMap)) {
+        out.push({
+          entryId: word.entry_id,
+          languageId: group.languageId,
+          languageName: group.languageName,
+          romanized: word.con_word_romanized,
+          ipa: word.phonetic_ipa,
+          gloss: word.senses[0]?.gloss ?? "",
+          tags: word.metadata?.tags ?? [],
+          isActiveLanguage: group.languageId === activeLanguageId,
+        });
+        if (out.length >= 20) return out;
+      }
+    }
+    return out;
+  }, [mode, body, activeLanguageId, wordsList, cachedGroups, conceptsMap, languages]);
+
+  /** 切换语言时保持当前路由；仅 /welcome 才回词典（目标词条由 App 视图记忆恢复选中） */
+  const switchLanguage = (languageId: string, entryId?: string) => {
+    saveLanguageViewMemory(activeLanguageId, {
+      activeWordId: useLexiconStore.getState().activeWordId,
+      activeCorpusId: useCorpusStore.getState().activeCorpus?.corpus_id ?? null,
+    });
+    if (entryId) saveLanguageViewMemory(languageId, { activeWordId: entryId });
+    setActiveLanguage(languageId);
+    // HashRouter 下 window.location.pathname 恒为 "/"，只能用 router 的 location
+    if (location.pathname.startsWith("/welcome")) navigate("/lexicon");
   };
 
-  const actions = useMemo<ActionItem[]>(() => {
-    const items: ActionItem[] = [];
+  const actions = useMemo<PaletteActionItem[]>(() => {
+    const items: PaletteActionItem[] = [];
     for (const language of languages) {
       if (language.language_id === activeLanguageId) continue;
       items.push({
         id: `lang_${language.language_id}`,
         label: t("commandPalette.switchLanguage", { name: language.name }),
         kind: "language",
-        run: () => {
-          setActiveLanguage(language.language_id);
-          navigate("/lexicon");
-        },
       });
     }
     for (const route of PALETTE_ROUTES) {
@@ -145,22 +141,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
         id: `route_${route.path}`,
         label: t("commandPalette.goTo", { page: t(route.labelKey) }),
         kind: "route",
-        run: () => navigate(route.path),
       });
     }
-    items.push({
-      id: "create_word",
-      label: t("commandPalette.createWord"),
-      kind: "create",
-      run: () => {
-        const draft = createDraftWord(t("lexicon.newMeaning"));
-        upsertWord(draft);
-        setActiveWordId(draft.entry_id);
-        navigate("/lexicon");
-      },
-    });
+    items.push({ id: "create_word", label: t("commandPalette.createWord"), kind: "create" });
     return items;
-  }, [languages, activeLanguageId, navigate, setActiveLanguage, upsertWord, setActiveWordId, t]);
+  }, [languages, activeLanguageId, t]);
 
   const filteredActions = useMemo(() => {
     const needle = body.toLowerCase();
@@ -170,20 +155,38 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
 
   const rowCount = mode === "search" ? hits.length : mode === "actions" ? filteredActions.length : 0;
 
+  const runAction = (index: number) => {
+    const action = filteredActions[index];
+    if (!action) return;
+    if (action.kind === "language") {
+      switchLanguage(action.id.replace("lang_", ""));
+    } else if (action.kind === "route") {
+      const route = PALETTE_ROUTES.find((item) => `route_${item.path}` === action.id);
+      if (route) navigate(route.path);
+    } else {
+      const draft = createDraftWord(t("lexicon.newMeaning"));
+      upsertWord(draft);
+      setActiveWordId(draft.entry_id);
+      navigate("/lexicon");
+    }
+    onClose();
+  };
+
   const activate = (index: number) => {
     if (mode === "search") {
       const hit = hits[index];
       if (!hit) return;
-      focusWordInLanguage(hit.languageId, hit.entryId);
+      if (hit.languageId !== activeLanguageId) {
+        switchLanguage(hit.languageId, hit.entryId);
+        navigate("/lexicon");
+      } else {
+        setActiveWordId(hit.entryId);
+        navigate("/lexicon");
+      }
       onClose();
       return;
     }
-    if (mode === "actions") {
-      const action = filteredActions[index];
-      if (!action) return;
-      action.run();
-      onClose();
-    }
+    if (mode === "actions") runAction(index);
   };
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>) => {
@@ -213,14 +216,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
     <ModalPortal open={open}>
       <div className="modal modal-open" onClick={onClose}>
         <div
-          className="modal-box max-w-2xl p-0 overflow-hidden"
+          className="modal-box max-w-2xl overflow-hidden p-0"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center gap-2 border-b border-base-300 px-4 py-3">
             <Search size={16} className="text-base-content/50" />
             <input
               ref={inputRef}
-              className="w-full bg-transparent outline-none text-sm"
+              className="w-full bg-transparent text-sm outline-none"
               value={raw}
               placeholder={t("commandPalette.placeholder")}
               onChange={(event) => setRaw(event.target.value)}
@@ -232,59 +235,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ open, onClose })
           {mode === "calc" ? (
             <CommandCalcPreview word={body} />
           ) : (
-            <div ref={listRef} className="max-h-[22rem] overflow-y-auto py-1">
-              {mode === "search" && hits.length === 0 && (
-                <p className="px-4 py-6 text-sm text-base-content/50">
-                  {body.trim() ? t("commandPalette.noResults") : t("commandPalette.searchHint")}
-                </p>
-              )}
-              {mode === "search" &&
-                hits.map((hit, index) => (
-                  <button
-                    key={`${hit.languageId}_${hit.entryId}`}
-                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${
-                      index === activeIndex ? "bg-primary/10" : "hover:bg-base-200"
-                    }`}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => activate(index)}
-                  >
-                    <BookOpen size={14} className="shrink-0 text-base-content/50" />
-                    <span className="font-mono font-semibold shrink-0">{hit.romanized}</span>
-                    {hit.ipa && (
-                      <span className="font-mono text-xs text-success truncate shrink-0">
-                        /{hit.ipa}/
-                      </span>
-                    )}
-                    <span className="truncate text-base-content/60">{hit.gloss}</span>
-                    <span className={`${BADGE} badge-xs badge-ghost ml-auto shrink-0`}>
-                      {hit.languageName}
-                    </span>
-                  </button>
-                ))}
-
-              {mode === "actions" &&
-                filteredActions.map((action, index) => (
-                  <button
-                    key={action.id}
-                    className={`flex w-full items-center gap-2 px-4 py-2 text-left text-sm ${
-                      index === activeIndex ? "bg-primary/10" : "hover:bg-base-200"
-                    }`}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => activate(index)}
-                  >
-                    {action.kind === "language" && <Languages size={14} />}
-                    {action.kind === "route" && <ArrowRight size={14} />}
-                    {action.kind === "create" && <Plus size={14} />}
-                    <span className="truncate">{action.label}</span>
-                  </button>
-                ))}
-
-              {mode === "actions" && filteredActions.length === 0 && (
-                <p className="px-4 py-6 text-sm text-base-content/50">
-                  {t("commandPalette.noResults")}
-                </p>
-              )}
-            </div>
+            <CommandPaletteResults
+              mode={mode}
+              body={body}
+              hits={hits}
+              actions={filteredActions}
+              activeIndex={activeIndex}
+              scopeLabel={t("commandPalette.scopeHint")}
+              onActivate={activate}
+              onHover={setActiveIndex}
+            />
           )}
 
           <div className="flex items-center gap-3 border-t border-base-300 px-4 py-2 text-[11px] text-base-content/50">

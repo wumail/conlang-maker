@@ -126,13 +126,21 @@ export function GlyphGeometryInspector({
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              className={showRulers ? `${BTN_GHOST} btn-active` : BTN_GHOST}
+              className={showRulers ? `${BTN_GHOST} btn-active text-primary` : BTN_GHOST}
               onClick={() => setShowRulers((value) => !value)}
+              disabled={loading || !metrics}
+              title={!metrics ? t("writing.geometry.rulersUnavailable") : undefined}
+              aria-pressed={showRulers}
               data-testid="toggle-glyph-rulers"
             >
               <Ruler className="w-3.5 h-3.5" />
               {t("writing.geometry.showRulers")}
             </button>
+            {showRulers && metrics && (
+              <span className={`${BADGE} badge-primary badge-sm`}>
+                {t("writing.geometry.rulersOn")}
+              </span>
+            )}
             {activeKinds.size > 0 && (
               <button
                 type="button"

@@ -15,6 +15,7 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { useCorpusStore } from "../../store/corpusStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { ModalPortal } from "../common/ModalPortal";
+import { saveTextFile } from "../../utils/fileSave";
 import {
   BADGE,
   BTN_GHOST,
@@ -36,14 +37,8 @@ const SECTION_KEYS: (keyof ReferenceBookSections)[] = [
 
 const EMPTY_CONCEPTS: readonly ConceptDefinition[] = [];
 
-function download(name: string, content: string, type: string): void {
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = name;
-  anchor.click();
-  URL.revokeObjectURL(url);
+function download(name: string, content: string, type: string): Promise<boolean> {
+  return saveTextFile({ defaultName: name, content, mimeType: type });
 }
 
 /** 参考语法弹窗：章节勾选 → 实时 iframe 预览 → 独立 HTML / Typst / 系统打印 */
@@ -52,7 +47,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
   const words = useLexiconStore((state) => state.wordsList);
   const phono = usePhonoStore((state) => state.config);
   const grammar = useGrammarStore((state) => state.config);
-  const activeCorpus = useCorpusStore((state) => state.activeCorpus);
+  const [corpusTexts, setCorpusTexts] = useState<CorpusText[]>([]);
   const { projectPath, conlangFilePath, activeLanguageId, config } = useWorkspaceStore();
   const languageName =
     config.languages.find((language) => language.language_id === activeLanguageId)?.name ??
@@ -95,6 +90,23 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
   }, [open, projectPath, conlangFilePath, activeLanguageId]);
 
   const customConcepts = config.custom_concepts ?? EMPTY_CONCEPTS;
+
+  // 参考语法书的「语料」章节必须覆盖当前语言的全部语料（原先只取 activeCorpus）
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    useCorpusStore
+      .getState()
+      .loadAllCorpusTexts()
+      .then((texts) => {
+        if (!cancelled) setCorpusTexts(texts);
+      })
+      .catch((error) => console.warn(`Failed to load corpus for reference book: ${error}`));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, activeLanguageId]);
+
   const options = useMemo(
     () => ({
       languageName,
@@ -102,14 +114,14 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
       phono,
       grammar,
       words,
-      corpus: activeCorpus ? ([activeCorpus] as CorpusText[]) : [],
+      corpus: corpusTexts,
       sections,
       fontBase64: font?.base64 ?? null,
       fontMime: font?.mime,
       fontFileName: font?.fileName,
       concepts: customConcepts,
     }),
-    [languageName, phono, grammar, words, activeCorpus, sections, font, customConcepts],
+    [languageName, phono, grammar, words, corpusTexts, sections, font, customConcepts],
   );
 
   const html = useMemo(() => (open ? buildReferenceBookHtml(options) : ""), [open, options]);
@@ -171,7 +183,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
             <button className={BTN_GHOST} onClick={onClose}>
               {t("common.close")}
             </button>
-            <button className={BTN_GHOST} onClick={() => download(`${languageName}.typ`, typst, "text/plain")}>
+            <button className={BTN_GHOST} onClick={() => void download(`${languageName}.typ`, typst, "text/plain")}>
               <FileCode className="w-4 h-4" />
               .typ
             </button>
@@ -181,7 +193,7 @@ export function ReferenceBookModal({ open, onClose }: { open: boolean; onClose: 
             </button>
             <button
               className={BTN_PRIMARY}
-              onClick={() => download(`${languageName}-reference.html`, html, "text/html")}
+              onClick={() => void download(`${languageName}-reference.html`, html, "text/html")}
             >
               <Download className="w-4 h-4" />
               {t("export.reference.downloadHtml")}

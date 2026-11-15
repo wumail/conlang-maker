@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { recordConfigChange } from "./configHistory";
 import type { HistoryOpts } from "./undoManager";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AffixSlot,
@@ -433,6 +434,7 @@ export const useGrammarStore = create<GrammarStore>((set, get) => {
               dirty: queued !== undefined || latestVer > next.version,
             });
           }
+          reportSaveSuccess("grammar");
         } catch (err) {
           if (isConflictError(err)) {
             pendingSaves.set(key, next);
@@ -445,6 +447,7 @@ export const useGrammarStore = create<GrammarStore>((set, get) => {
             return;
           }
           console.warn(`语法配置保存失败：${err}`);
+          reportSaveError("grammar", err instanceof Error ? err.message : String(err));
           const latestVersion = saveVersions.get(key) ?? 0;
           if (!pendingSaves.has(key) && latestVersion === next.version) {
             pendingSaves.set(key, next);

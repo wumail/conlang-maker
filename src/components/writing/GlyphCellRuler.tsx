@@ -56,7 +56,7 @@ export const GlyphCellRuler: React.FC<GlyphCellRulerProps> = ({
       width={RULER_WIDTH * scale}
       height={RULER_HEIGHT * scale}
       viewBox={`0 0 ${RULER_WIDTH} ${RULER_HEIGHT}`}
-      className={className ?? "min-h-8 text-base-content/25"}
+      className={className ?? "min-h-8 text-base-content/70"}
       data-testid="glyph-cell-ruler"
       aria-hidden
     >
@@ -65,10 +65,11 @@ export const GlyphCellRuler: React.FC<GlyphCellRulerProps> = ({
         y={Math.min(top, bottom)}
         width={TRACK_WIDTH}
         height={Math.abs(bottom - top)}
-        fill="none"
+        fill="currentColor"
+        fillOpacity={0.04}
         stroke="currentColor"
-        strokeWidth={0.4}
-        strokeOpacity={0.5}
+        strokeWidth={0.7}
+        strokeOpacity={0.45}
       />
       {horizontalLines.map((line) => (
         <line
@@ -78,7 +79,7 @@ export const GlyphCellRuler: React.FC<GlyphCellRulerProps> = ({
           y1={line.y}
           y2={line.y}
           stroke="currentColor"
-          strokeWidth={line.dashed ? 0.6 : 1}
+          strokeWidth={line.dashed ? 0.9 : 1.4}
           strokeDasharray={line.dashed ? "2 2" : undefined}
         />
       ))}

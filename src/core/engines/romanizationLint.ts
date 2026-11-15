@@ -5,6 +5,7 @@ import {
   RomanizationRule,
 } from "../../types";
 import { tokenizePhonemes } from "./phonemeTokenizer";
+import { romanizationToPhonemesTraced } from "./ipaGenerator";
 
 export interface UnreachablePhonemeIssue {
   phoneme: string;
@@ -206,7 +207,84 @@ export function selectRomanizationMaps(
 }
 
 /**
- * 1. Inventory phonemes that are never produced by any rule in `maps`.
+ * 与 `ipaGenerator` 的 `WORD_CHAR_RE` 保持一致：只有「词字符」才会让 `#` 词界失效。
+ * 哨兵必须是词字符，否则 `#_` / `_#` 边界规则仍会在哨兵旁触发（这正是假阳性来源）。
+ */
+const WORD_CHAR_RE = /[\p{L}\p{M}\p{N}]/u;
+
+/** 哨兵候选码位区间：彝文音节区（Unicode Lo 字母），几乎不会被用作罗马化字形 */
+const SENTINEL_RANGE_START = 0xa000;
+const SENTINEL_RANGE_END = 0xa0ff;
+
+/**
+ * 挑选一个「中性」哨兵字符，用于把音素包进词中位置探测：
+ *  - 是词字符（阻断 `#` 边界规则）；
+ *  - 小写化后不变（透传时不会被改变）；
+ *  - 不出现在任何规则的 input / context / output 中（不会被任何规则消费）；
+ *  - 不在音素清单中（不会被误当真实音素）。
+ * 找不到时返回 null，调用方跳过词中探测（宁可漏报也不误报）。
+ */
+function pickNeutralSentinel(
+  inventoryPhonemes: readonly string[],
+  maps: RomanizationMap[],
+): string | null {
+  const claimed = new Set<string>(inventoryPhonemes.map((p) => p.normalize("NFC")));
+  for (const map of maps) {
+    for (const rule of map.rules) {
+      const surfaces = [
+        rule.input ?? "",
+        rule.context_before ?? "",
+        rule.context_after ?? "",
+        rule.output_phoneme ?? "",
+      ];
+      for (const surface of surfaces) {
+        for (const ch of Array.from(surface.normalize("NFC"))) claimed.add(ch);
+        for (const ch of Array.from(surface.normalize("NFC").toLowerCase())) claimed.add(ch);
+      }
+    }
+  }
+
+  for (let code = SENTINEL_RANGE_START; code <= SENTINEL_RANGE_END; code += 1) {
+    const candidate = String.fromCodePoint(code);
+    if (!WORD_CHAR_RE.test(candidate)) continue;
+    if (candidate.toLowerCase() !== candidate) continue;
+    if (claimed.has(candidate)) continue;
+    return candidate;
+  }
+  return null;
+}
+
+/**
+ * 将音素夹在哨兵之间，检测它在「词中位置」能否原样透传。
+ * 返回中间段输出（无法可靠提取时返回 null）。
+ */
+function probePhonemeInsideWord(
+  phoneme: string,
+  map: RomanizationMap,
+  sentinel: string,
+): string | null {
+  const sentinelOutput = romanizationToPhonemesTraced(sentinel, map).output;
+  // 哨兵必须原样透传，否则无法用它定位中间段
+  if (sentinelOutput !== sentinel) return null;
+  const wrapped = romanizationToPhonemesTraced(`${sentinel}${phoneme}${sentinel}`, map).output;
+  if (!wrapped.startsWith(sentinel) || !wrapped.endsWith(sentinel)) return null;
+  if (wrapped.length < sentinel.length * 2) return null;
+  return wrapped.slice(sentinel.length, wrapped.length - sentinel.length);
+}
+
+/**
+ * 1. Inventory phonemes that can never be produced by `maps`.
+ *
+ * 判定必须与 `ipaGenerator` 的实际行为一致：未命中规则的单字符会原样透传
+ * （`kind: "fallback"`，仅小写化）。因此「inventory 里有、但没有规则输出它」
+ * 并不等于「不可达」——直接键入该音素本身即可得到它。
+ *
+ * 真正不可达的情况只有一种：该音素的字形被自己的规则改写（例如 `j → ʒ`），
+ * 且没有任何规则能把它生成回来。此时用户既无法键入、也无法拼写出来。
+ *
+ * 但「单独键入被改写」仍不等于不可达：`a → æ / #_`、`a → ɑ / _#` 这类
+ * **词界变音规则**只在词首/词尾生效，词中的 `a` 依旧原样透传。因此单音素
+ * 探测失败后，再用中性哨兵把它包成词中位置复测，避免词界规则造成的假阳性。
  */
 export function findUnreachablePhonemes(
   inventory: PhonemeInventory,
@@ -226,6 +304,13 @@ export function findUnreachablePhonemes(
   ];
 
   const produced = new Set<string>();
+  // 词中探测哨兵（按需惰性求值：只有单音素探测失败时才会真正用到）
+  let sentinel: string | null | undefined;
+  const neutralSentinel = (): string | null => {
+    if (sentinel === undefined) sentinel = pickNeutralSentinel(allKnownNorm, maps);
+    return sentinel;
+  };
+
   for (const map of maps) {
     for (const rule of map.rules) {
       if (!(rule.input ?? "").normalize("NFC")) continue;
@@ -235,6 +320,24 @@ export function findUnreachablePhonemes(
       produced.add(out);
       for (const tok of tokenizePhonemes(out, allKnownNorm)) {
         if (tok.trim()) produced.add(tok);
+      }
+    }
+    // 逐个音素模拟「直接键入字形」，命中透传即视为可达
+    for (const phoneme of allKnownNorm) {
+      if (!phoneme) continue;
+      if (produced.has(phoneme)) continue;
+      const { output } = romanizationToPhonemesTraced(phoneme, map);
+      if (output.trim() === phoneme) {
+        produced.add(phoneme);
+        continue;
+      }
+      // 单音素探测被改写：可能是词首/词尾变音规则造成的假阳性，
+      // 再用中性哨兵包成词中位置复测，能原样透传即视为可达。
+      const guard = neutralSentinel();
+      if (!guard) continue;
+      const insideOutput = probePhonemeInsideWord(phoneme, map, guard);
+      if (insideOutput !== null && insideOutput.trim() === phoneme) {
+        produced.add(phoneme);
       }
     }
   }

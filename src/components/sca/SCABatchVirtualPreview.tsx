@@ -31,6 +31,7 @@ export const SCABatchVirtualPreview: React.FC<SCABatchVirtualPreviewProps> = ({
     count: rows.length,
     getScrollElement: () => parentRef.current,
     estimateSize: () => 34,
+    initialRect: { width: 640, height: 384 },
     overscan: 10,
   });
 
@@ -53,7 +54,7 @@ export const SCABatchVirtualPreview: React.FC<SCABatchVirtualPreviewProps> = ({
       {rows.length === 0 ? (
         <p className="text-xs text-base-content/50 mt-2">{t("sca.noChanges")}</p>
       ) : (
-        <div ref={parentRef} className="max-h-96 overflow-y-auto contain-strict">
+        <div ref={parentRef} className="max-h-96 overflow-y-auto">
           <div
             style={{
               height: `${virtualizer.getTotalSize()}px`,

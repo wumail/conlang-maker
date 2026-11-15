@@ -168,22 +168,22 @@ export function RuleSetList() {
     );
   };
 
-  const handleDownloadRuleSet = (rulesetId: string) => {
+  const handleDownloadRuleSet = async (rulesetId: string) => {
     const ruleSet = config.rule_sets.find((item) => item.ruleset_id === rulesetId);
     if (!ruleSet) return;
     const displayName = ruleSet.name || t("sca.unnamed");
     const filename = `${safeRuleSetFileName(displayName)}.txt`;
-    downloadTextFile(filename, serializeRuleSet(ruleSet, t("sca.unnamed")));
+    await downloadTextFile(filename, serializeRuleSet(ruleSet, t("sca.unnamed")));
     pushTransferNotice("success", t("sca.downloadRuleSetSuccess", { filename }));
   };
 
-  const handleDownloadAllRuleSets = () => {
+  const handleDownloadAllRuleSets = async () => {
     if (config.rule_sets.length === 0) {
       pushTransferNotice("error", t("sca.exportAllRuleSetsEmpty"));
       return;
     }
     const filename = `sca_rulesets_${new Date().toISOString().slice(0, 10)}.txt`;
-    downloadTextFile(filename, serializeAllRuleSets(config.rule_sets, t("sca.unnamed")));
+    await downloadTextFile(filename, serializeAllRuleSets(config.rule_sets, t("sca.unnamed")));
     pushTransferNotice("success", t("sca.downloadAllRuleSetsSuccess", { filename }));
   };
 

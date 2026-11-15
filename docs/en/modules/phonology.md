@@ -48,6 +48,7 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 - **Rule definition**: Each rule maps input → output phoneme, with optional context
 - **Longest match**: Auto-sorts by input length for greedy matching
 - **Phoneme table integration**: Click phonemes to insert into the editing field
+- **Live static diagnostics**: Real-time lint checks for unreachable inventory phonemes (respecting single-character passthrough and word-medial boundary contexts), non-inventory outputs, conflicting rules, exact duplicates, shadowed rules, and case-coverage gaps
 
 ### Step-by-step: Build a stable mapping table
 
@@ -65,17 +66,19 @@ Auto-detects imbalances: missing voicing contrasts, too few vowels/consonants, u
 | Blacklist | Regex patterns to reject illegal combinations |
 | Vowel harmony | Split vowels into two groups, no mixing within a word |
 | Tone system | Define tone categories (name + diacritic) |
+| Stress system | 5 built-in stress modes: `none`, `initial`, `penultimate`, `ultimate`, and `weight_sensitive` (with prefix-aware `stem_start` offsets) |
 
 ### Step-by-step: Configure legal syllable space
 
 1. Define macros (`C`, `V`, optional `N`).
 2. Set syllable template (for example `(C)V(C)`).
 3. Add blacklist regex for forbidden clusters.
-4. (Optional) enable vowel harmony and define groups.
+4. (Optional) enable vowel harmony, tones, or automatic stress placement.
 
 ## Allophony
 
 - **Rules**: Target phoneme → replacement phoneme, with pre/post context
+- **Bidirectional Rule DSL**: Switch losslessly between structured form fields and single-line linguistic notation (`t -> d / V _ V`)
 - **Priority**: Applied by priority descending, first match stops
 - **Macro references**: Context can reference phoneme class macros
 

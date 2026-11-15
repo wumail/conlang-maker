@@ -26,6 +26,7 @@ const zhSidebar = {
       text: "功能模块",
       items: [
         { text: "音系", link: "/modules/phonology" },
+        { text: "书写系统", link: "/modules/writing" },
         { text: "词典", link: "/modules/lexicon" },
         { text: "造词生成器", link: "/modules/wordgen" },
         { text: "语法", link: "/modules/grammar" },
@@ -66,6 +67,7 @@ const enSidebar = {
       text: "Modules",
       items: [
         { text: "Phonology", link: "/en/modules/phonology" },
+        { text: "Writing System", link: "/en/modules/writing" },
         { text: "Lexicon", link: "/en/modules/lexicon" },
         { text: "Word Generator", link: "/en/modules/wordgen" },
         { text: "Grammar", link: "/en/modules/grammar" },

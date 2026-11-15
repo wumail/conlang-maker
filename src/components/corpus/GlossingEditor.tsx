@@ -1,28 +1,34 @@
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Plus, Wand2 } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import { useCorpusStore } from "../../store/corpusStore";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useSCAStore } from "../../store/scaStore";
-import { CorpusText, WordEntry } from "../../types";
+import type { CorpusText, WordEntry } from "../../types";
 import { GlossLineRow } from "./GlossLineRow";
+import { GlossingToolbar, type LineFilter } from "./GlossingToolbar";
+import { PendingSuggestionsPanel } from "./PendingSuggestionsPanel";
+import { useCorpusLineStats } from "./useCorpusLineStats";
+import { BatchDiffPreviewModal } from "../common/BatchDiffPreviewModal";
 import { CorpusScaDiffPanel } from "./CorpusScaDiffPanel";
 import { buildMacrosFromInventory } from "../../utils/scaEngine";
 import {
   autoGloss,
   applySelectedCorpusScaDiffs,
   applySuggestionToLines,
-  AutoGlossCache,
-  AutoGlossReport,
+  type AutoGlossCache,
+  type AutoGlossReport,
+  type AutoGlossScopeMode,
   collectCorpusScaDiffs,
-  CorpusScaDiffItem,
-  PendingSuggestion,
+  type CorpusScaDiffItem,
+  mergeAutoGlossIntoCorpus,
+  type PendingSuggestion,
   reGlossLineUnresolvedTokens,
   resolveInflectedIpa,
 } from "../../core/workflows/autoGloss";
-import { BTN_PRIMARY, BTN_GHOST, CARD, CARD_BODY } from "../../lib/ui";
+import { CARD, CARD_BODY } from "../../lib/ui";
 
 export function GlossingEditor() {
   const { t } = useTranslation();
@@ -32,10 +38,20 @@ export function GlossingEditor() {
   const grammarConfig = useGrammarStore((s) => s.config);
   const phonoConfig = usePhonoStore((s) => s.config);
   const scaConfig = useSCAStore((s) => s.config);
+  const wordsList = useLexiconStore((s) => s.wordsList);
+  const [params] = useSearchParams();
+  const highlightLineId = params.get("line");
   const [pendingSuggestions, setPendingSuggestions] = useState<PendingSuggestion[]>([]);
   const [lastReport, setLastReport] = useState<AutoGlossReport | null>(null);
+  const [mode, setMode] = useState<AutoGlossScopeMode>("fill_empty");
+  const [filter, setFilter] = useState<LineFilter>("all");
   const [scaDiffItems, setScaDiffItems] = useState<CorpusScaDiffItem[]>([]);
   const [scaPreviewChecked, setScaPreviewChecked] = useState(false);
+  const [pendingMerge, setPendingMerge] = useState<{
+    lines: CorpusText["glossed_lines"];
+    replaced: Array<{ lineId: string; tokenId: string; beforeGloss: string; afterGloss: string; surface: string }>;
+    report: AutoGlossReport;
+  } | null>(null);
   const autoGlossCacheRef = useRef<AutoGlossCache>({});
 
   useEffect(() => {
@@ -46,91 +62,104 @@ export function GlossingEditor() {
     setLastReport(corpus.metadata.auto_gloss_report || null);
   }, [corpus?.corpus_id]);
 
+  const { lineStats, visibleLines, counts } = useCorpusLineStats(corpus, wordsList, filter);
   if (!corpus) return null;
 
   const getEntryIpa = (_entry: WordEntry, form: string, stemStart?: number): string =>
     resolveInflectedIpa(form, stemStart, phonoConfig);
+
+  const commit = (target: CorpusText, lines: CorpusText["glossed_lines"], report?: AutoGlossReport, skipHistory?: boolean) =>
+    upsertCorpus(
+      {
+        ...target,
+        glossed_lines: lines,
+        metadata: { ...target.metadata, updated_at: new Date().toISOString(), ...(report ? { auto_gloss_report: report } : {}) },
+      },
+      skipHistory ? { skipHistory: true } : undefined,
+    );
 
   const closeScaPreview = () => {
     setScaDiffItems([]);
     setScaPreviewChecked(false);
   };
 
-  const handleAddLine = () => {
-    addGlossedLine({
-      line_id: `line_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      original: "",
-      tokens: [],
-      translation: "",
-    });
-  };
+  const handleAddLine = () =>
+    addGlossedLine({ line_id: `line_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, original: "", tokens: [], translation: "" });
 
   const applyAllPending = () => {
     if (!pendingSuggestions.length) return;
     let lines = corpus.glossed_lines;
-    for (const s of pendingSuggestions) {
-      lines = applySuggestionToLines(lines, s, getEntryIpa);
+    for (const suggestion of pendingSuggestions) {
+      lines = applySuggestionToLines(lines, suggestion, getEntryIpa);
     }
-    upsertCorpus({
-      ...corpus,
-      glossed_lines: lines,
-      metadata: { ...corpus.metadata, updated_at: new Date().toISOString() },
-    });
+    commit(corpus, lines);
     setPendingSuggestions([]);
   };
 
   const applySinglePending = (target: PendingSuggestion) => {
-    const lines = applySuggestionToLines(corpus.glossed_lines, target, getEntryIpa);
-    upsertCorpus({
-      ...corpus,
-      glossed_lines: lines,
-      metadata: { ...corpus.metadata, updated_at: new Date().toISOString() },
-    });
+    commit(corpus, applySuggestionToLines(corpus.glossed_lines, target, getEntryIpa));
     setPendingSuggestions((prev) =>
-      prev.filter((s) => !(s.lineId === target.lineId && s.tokenId === target.tokenId)),
+      prev.filter((item) => !(item.lineId === target.lineId && item.tokenId === target.tokenId)),
     );
   };
 
-  const runAutoGloss = (targetCorpus: CorpusText) => {
-    if (!targetCorpus.original_text.trim()) return;
+  /** 三模式非破坏合并：任何模式下都保留 line.translation */
+  const runAutoGloss = (target: CorpusText, scopeMode: AutoGlossScopeMode = mode) => {
+    if (!target.original_text.trim()) return;
     const { lines, pending, report } = autoGloss({
-      originalText: targetCorpus.original_text,
-      // 直接取最新 Store 快照，避免刚建好的词条因闭包滞后而漏标
+      originalText: target.original_text,
       words: useLexiconStore.getState().wordsList,
       grammar: grammarConfig,
       phono: phonoConfig,
       cache: autoGlossCacheRef.current,
+      // 按位置复用旧 line_id：否则新分析结果无法与既有行匹配，会被整体丢弃
+      createLineId: (idx) =>
+        target.glossed_lines[idx]?.line_id ?? `line_${Date.now()}_${idx}`,
     });
-    upsertCorpus({
-      ...targetCorpus,
-      glossed_lines: lines,
-      metadata: { ...targetCorpus.metadata, updated_at: new Date().toISOString(), auto_gloss_report: report },
+    const selectedLineIds = new Set(
+      scopeMode === "reanalyze_selected"
+        ? target.glossed_lines
+            .filter((line) => {
+              const stat = lineStats.get(line.line_id);
+              if (filter === "all") return true;
+              if (!stat) return false;
+              if (filter === "unresolved") return stat.unresolved;
+              if (filter === "multi_candidate") return stat.multi;
+              return stat.broken;
+            })
+            .map((line) => line.line_id)
+        : [
+            ...target.glossed_lines.map((line) => line.line_id),
+            ...lines.map((line) => line.line_id),
+          ],
+    );
+    const merged = mergeAutoGlossIntoCorpus({
+      corpus: target,
+      freshLines: lines,
+      mode: scopeMode,
+      selectedLineIds,
     });
+    if (scopeMode === "reanalyze_selected" && merged.replacedProtectedTokens.length > 0) {
+      setPendingMerge({ lines: merged.nextLines, replaced: merged.replacedProtectedTokens, report });
+      return;
+    }
+    commit(target, merged.nextLines, report);
     setPendingSuggestions(pending);
     setLastReport(report);
   };
 
-  /**
-   * 新建词条后只重标当前行：其余行的手工标注必须原样保留（F1.5）。
-   */
-  const reGlossSingleLine = (targetCorpus: CorpusText, lineId: string) => {
-    const wordsList = useLexiconStore.getState().wordsList;
-    const lines = targetCorpus.glossed_lines.map((line) =>
-      line.line_id === lineId
-        ? reGlossLineUnresolvedTokens(
-            line,
-            wordsList,
-            grammarConfig,
-            phonoConfig,
-            autoGlossCacheRef.current,
-          )
-        : line,
+  const reGlossSingleLine = (targetCorpus: CorpusText, lineId: string, skipHistory?: boolean) => {
+    const words = useLexiconStore.getState().wordsList;
+    commit(
+      targetCorpus,
+      targetCorpus.glossed_lines.map((line) =>
+        line.line_id === lineId
+          ? reGlossLineUnresolvedTokens(line, words, grammarConfig, phonoConfig, autoGlossCacheRef.current)
+          : line,
+      ),
+      undefined,
+      skipHistory,
     );
-    upsertCorpus({
-      ...targetCorpus,
-      glossed_lines: lines,
-      metadata: { ...targetCorpus.metadata, updated_at: new Date().toISOString() },
-    });
   };
 
   const handlePreviewCorpusSCA = () => {
@@ -144,94 +173,62 @@ export function GlossingEditor() {
   };
 
   const toggleAllScaDiffs = (selected: boolean) =>
-    setScaDiffItems((prev) => prev.map((d) => ({ ...d, selected })));
+    setScaDiffItems((prev) => prev.map((item) => ({ ...item, selected })));
 
   const toggleScaDiff = (id: string) =>
-    setScaDiffItems((prev) => prev.map((d) => (d.id === id ? { ...d, selected: !d.selected } : d)));
+    setScaDiffItems((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, selected: !item.selected } : item)),
+    );
 
+  /** 音变改写原文后只重算机器标注，100% 保留所有句译 */
   const applySelectedCorpusSCA = () => {
-    const selected = scaDiffItems.filter((d) => d.selected);
+    const selected = scaDiffItems.filter((item) => item.selected);
     if (selected.length === 0) return;
     const nextCorpus = applySelectedCorpusScaDiffs(corpus, selected, new Date().toISOString());
-    upsertCorpus(nextCorpus);
+    const glossed = autoGloss({
+      originalText: nextCorpus.original_text,
+      words: useLexiconStore.getState().wordsList,
+      grammar: grammarConfig,
+      phono: phonoConfig,
+      cache: autoGlossCacheRef.current,
+      createLineId: (idx) =>
+        nextCorpus.glossed_lines[idx]?.line_id ?? `line_${Date.now()}_${idx}`,
+    });
+    const merged = mergeAutoGlossIntoCorpus({
+      corpus: nextCorpus,
+      freshLines: glossed.lines,
+      mode: "recompute_auto",
+      selectedLineIds: new Set(nextCorpus.glossed_lines.map((line) => line.line_id)),
+    });
+    commit(nextCorpus, merged.nextLines, glossed.report);
+    setLastReport(glossed.report);
     closeScaPreview();
-    runAutoGloss(nextCorpus);
   };
 
-  const selectedScaCount = scaDiffItems.filter((d) => d.selected).length;
+  const selectedScaCount = scaDiffItems.filter((item) => item.selected).length;
+
   return (
     <div className={CARD}>
-      <div className={`${CARD_BODY} p-4 space-y-4`}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold">{t("corpus.glossing")}</h3>
-          <div className="flex gap-2">
-            <button className={BTN_PRIMARY} onClick={() => runAutoGloss(corpus)}>
-              <Wand2 className="w-4 h-4" /> {t("corpus.autoGloss")}
-            </button>
-            <button className={BTN_GHOST} onClick={handlePreviewCorpusSCA}>
-              <Wand2 className="w-4 h-4" /> {t("corpus.applyScaPreview")}
-            </button>
-            <button className={BTN_GHOST} onClick={handleAddLine}>
-              <Plus className="w-4 h-4" /> {t("corpus.addLine")}
-            </button>
-          </div>
-        </div>
-
-        {lastReport && (
-          <div className="text-xs text-base-content/70 bg-base-200 border border-base-300 rounded-lg px-3 py-2">
-            {t("corpus.autoGlossReport", {
-              total: lastReport.total,
-              autoApplied: lastReport.autoApplied,
-              pending: lastReport.pending,
-              unresolved: lastReport.unresolved,
-            })}
-          </div>
-        )}
+      <div className={`${CARD_BODY} space-y-4 p-4`}>
+        <GlossingToolbar
+          mode={mode}
+          onModeChange={setMode}
+          filter={filter}
+          onFilterChange={setFilter}
+          counts={counts}
+          report={lastReport}
+          onRunAutoGloss={() => runAutoGloss(corpus)}
+          onPreviewSca={handlePreviewCorpusSCA}
+          onAddLine={handleAddLine}
+        />
 
         {pendingSuggestions.length > 0 && (
-          <div className="border border-warning/40 bg-warning/10 rounded-lg p-3 space-y-2">
-            <div className="flex items-center justify-between gap-2">
-              <div className="text-sm font-medium">
-                {t("corpus.pendingSuggestionsTitle", { count: pendingSuggestions.length })}
-              </div>
-              <div className="flex gap-2">
-                <button className={BTN_GHOST} onClick={() => setPendingSuggestions([])}>
-                  {t("common.close")}
-                </button>
-                <button className={BTN_PRIMARY} onClick={applyAllPending}>
-                  {t("corpus.applyAllSuggestions")}
-                </button>
-              </div>
-            </div>
-            <div className="max-h-52 overflow-auto border border-base-300 rounded bg-base-100">
-              <table className="table table-xs w-full">
-                <thead>
-                  <tr>
-                    <th>{t("corpus.suggestionToken")}</th>
-                    <th>{t("corpus.suggestionValue")}</th>
-                    <th>{t("corpus.suggestionConfidence")}</th>
-                    <th>{t("corpus.suggestionTrace")}</th>
-                    <th />
-                  </tr>
-                </thead>
-                <tbody>
-                  {pendingSuggestions.map((s) => (
-                    <tr key={`${s.lineId}_${s.tokenId}`}>
-                      <td className="font-mono">{s.surfaceForm}</td>
-                      <td className="font-mono text-xs">{s.suggestion.morphemeBreak}</td>
-                      <td>{Math.round(s.suggestion.confidence * 100)}%</td>
-                      <td className="text-base-content/60">{s.suggestion.trace}</td>
-                      <td>
-                        <button className="btn btn-ghost btn-xs" onClick={() => applySinglePending(s)}>
-                          {t("corpus.applySuggestion")}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          <PendingSuggestionsPanel
+            suggestions={pendingSuggestions}
+            onApplyAll={applyAllPending}
+            onApplyOne={applySinglePending}
+            onDismiss={() => setPendingSuggestions([])}
+          />
         )}
 
         {(scaPreviewChecked || scaDiffItems.length > 0) && (
@@ -245,18 +242,47 @@ export function GlossingEditor() {
           />
         )}
 
-        {corpus.glossed_lines.length === 0 && (
-          <p className="text-base-content/50 text-sm">{t("corpus.noTexts")}</p>
+        {visibleLines.length === 0 && (
+          <p className="text-sm text-base-content/50">{t("corpus.noTexts")}</p>
         )}
 
-        {corpus.glossed_lines.map((line) => (
+        {visibleLines.map((line) => (
           <GlossLineRow
             key={line.line_id}
             line={line}
-            onLexEntryCreated={() => reGlossSingleLine(corpus, line.line_id)}
+            onLexEntryCreated={() => {
+              // 收词/绑定后必须读最新语料且跳过独立历史，由 QuickLex 组合撤销统一回滚整行
+              const latest = useCorpusStore.getState().activeCorpus;
+              if (latest) reGlossSingleLine(latest, line.line_id, true);
+            }}
+            highlight={Boolean(highlightLineId) && line.line_id === highlightLineId}
           />
         ))}
       </div>
+
+      <BatchDiffPreviewModal
+        open={Boolean(pendingMerge)}
+        title={t("corpus.v3.confirmReanalyzeTitle")}
+        summaryText={t("corpus.v3.confirmReanalyzeSummary", {
+          lines: new Set(pendingMerge?.replaced.map((item) => item.lineId) ?? []).size,
+          tokens: pendingMerge?.replaced.length ?? 0,
+        })}
+        rows={(pendingMerge?.replaced ?? []).map((item) => ({
+          id: `${item.lineId}:${item.tokenId}`,
+          label: item.surface,
+          before: item.beforeGloss,
+          after: item.afterGloss,
+          warning: t("corpus.v3.confirmReanalyzeTitle"),
+        }))}
+        onConfirm={() => {
+          if (!pendingMerge) return;
+          const latest = useCorpusStore.getState().activeCorpus ?? corpus;
+          commit(latest, pendingMerge.lines, pendingMerge.report);
+          setLastReport(pendingMerge.report);
+          setPendingMerge(null);
+        }}
+        onCancel={() => setPendingMerge(null)}
+      />
     </div>
   );
 }

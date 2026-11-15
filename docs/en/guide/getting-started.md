@@ -1,162 +1,87 @@
 # Build a Conlang from Scratch
 
-> This guide walks you through the complete workflow of creating a fully functional constructed language from zero.
+> This guide walks you through the end-to-end workflow of creating a complete constructed language — and evolving an entire language family — from zero.
 
 :::tip
-Language creation is an iterative process. You don't need to follow this guide strictly in order — feel free to jump between modules at any time. But if you're a beginner, following the steps below will be the smoothest path.
+Language creation is iterative: feel free to jump between modules anytime. When you create a new project, the **Onboarding Start Modal** also offers three guided entry paths (Start from a Preset, Coin Core Concepts, or Blank Canvas).
 :::
 
 ## Before You Start
 
-### Launch the App
+### Workspace & Proto Language
 
-Conlang Maker is a desktop application. On first launch, you'll need to create a language family project, and the app will automatically generate a **Proto Language** from which all subsequent languages can be derived.
+Conlang Maker is a local-first desktop app. Creating a new family project initializes a **Proto Language** from which any number of daughter languages and dialects can branch.
 
-### Interface Overview
+### Navigation & Global Shortcuts
 
-- **Top navigation bar**: All module entries
-- **⚡ button (top-right)**: Quick entry popup, always available
-- **Language name (top-left)**: Current active language, click to enter the family tree
+- **Compact Language Switcher (top-left)**: Click the active language name to switch across family branches; per-language view memory preserves your place in Lexicon and Corpus.
+- **Top Navigation Bar**: `Phonology` · `Writing` · `Lexicon` · `Word Gen` · `Grammar` · `Corpus` · `Sandbox` · `Family Tree` · `Sound Changes` · `Export / Import`
+- **Command Palette (`⌘K` / `Ctrl+K`)**:
+  - Type keywords to jump to words, grammar rules, or pages
+  - Prefix with `>` to trigger actions (switch language, open Cognate Matrix, run QA)
+  - Prefix with `=` to evaluate IPA, sound changes, or inflections inline
+- **Global Undo / Redo (`⌘Z` / `⇧⌘Z`)**: Safely undo single edits and multi-module batch operations alike
+- **⚡ Quick Entry & Save Status Pill (top-right)**: Rapidly coin words with `Enter` while live persistence status stays visible
 
 ## Step 1: Build Your Sound System
 
 **Navigate**: `Phonology` → `Inventory`
 
-### Using Presets (Recommended for Beginners)
+1. **Load a Preset (great for beginners)**: Browse 12 real-world stylistic presets (Hawaiian, Elvish, Slavic, Arabic, etc.).
+2. **Customize Manually**: Toggle consonants in the IPA chart and vowels in the trapezoid, and click any symbol to hear its reference pronunciation.
 
-1. Click the **"Presets"** button
-2. Browse 12 real language-style presets:
-   - Soft & flowing → **Hawaiian** or **Elvish**
-   - Strong & sharp → **Georgian** or **Slavic**
-   - Exotic → **Arabic** or **Nahuatl**
-3. Click a preset name to load it
+## Step 2: Design Orthography & Allophony
 
-### Manual Selection
+**Navigate**: `Phonology` → `Romanization` / `Phonotactics` / `Allophony`
 
-1. Click consonants in the IPA consonant table (highlighted = selected)
-2. Click vowels in the vowel trapezoid
-3. Click to play the audio for each phoneme
+1. Map spellings to IPA phonemes (e.g., `sh → ʃ`) and review **Orthography Health Checks** for conflicts, shadowed rules, or rewritten-but-unreachable phonemes.
+2. Define phoneme macros (`C`, `V`), syllable templates (`(C)V(C)`), blacklists, and vowel harmony.
+3. Optionally add contextual **Allophony** rules to distinguish phonemic `/…/` from surface `[…]` realizations.
 
-### Tips
+## Step 3 (Optional): Set Up Your Native Script
 
-- **Consonants**: 15–25 is a common range
-- **Vowels**: 5–7 is most common (a, e, i, o, u is the classic five-vowel system)
-- **Symmetry**: If you have /p/, you usually should also have /b/
+**Navigate**: `Writing`
 
-## Step 2: Design Your Orthography
+1. Import a custom `.ttf` or `.otf` font (automatically inherited by daughter languages unless overridden).
+2. Annotate glyphs, test real OpenType shaping (`liga`, `calt`, `mark`) via HarfBuzz Wasm, and run geometry audits.
+3. Once imported, Lexicon, Corpus, Sandbox, and exported HTML Reference Grammar Books render your native script everywhere.
 
-**Navigate**: `Phonology` → `Romanization`
+## Step 4: Coin & Organize the Lexicon
 
-1. Click **"Add Mapping Table"** → enter a name (e.g., "Standard Spelling")
-2. Click **"Add Mapping"** to define spellings for each phoneme
+**Navigate**: `Word Gen` → `Lexicon`
 
-:::tip
-After defining mappings, entering a spelling in the dictionary will **automatically generate IPA**.
-:::
+1. Batch-generate phonotactically valid roots in **Word Gen** and map them to **Swadesh 100 / Leipzig-Jakarta** core concepts.
+2. Refine entries in **Lexicon**, or click the **Table View** button next to the Lexicon header to batch-edit, paste TSV rows, and bind per-sense `concept_id` anchors.
+3. Link morpheme components on derived/compound words to inspect **interactive etymology chains** and word-family DAGs, and run the 11-rule **Quality Check**.
 
-## Step 3: Configure Syllable Structure
-
-**Navigate**: `Phonology` → `Phonotactics`
-
-### Define Phoneme Class Macros
-
-- `C` = all consonants
-- `V` = all vowels
-- `N` = nasals
-
-### Define Syllable Templates
-
-- `CV` — simplest, like Japanese: ka, mi, su
-- `(C)V` — optional onset
-- `(C)V(C)` — optional coda
-- `(C)(C)V(C)(C)` — complex clusters
-
-## Step 4: Generate Initial Vocabulary
-
-**Navigate**: `Word Generator`
-
-1. Set **count** (50–100 recommended) and **syllable range** (1–3)
-2. Click **"Generate"**
-3. Review candidates, delete unwanted ones, assign POS
-4. Select desired words → click **"Import to Lexicon"**
-
-## Step 5: Polish the Lexicon
-
-**Navigate**: `Lexicon`
-
-Edit entries in the split-panel editor: romanization, senses (POS, gloss, definitions, examples), etymology, and tags.
-
-### Quick Entry
-
-Click the ⚡ button anytime: word → gloss → POS → **Enter** to save → auto-clears for the next word.
-
-## Step 6: Build Grammar
+## Step 5: Build Grammar & Morphophonology
 
 **Navigate**: `Grammar`
 
-- Set **word order** (SVO / SOV / VSO etc.)
-- Configure **modifier position** and **adposition type**
-- Define **inflectional dimensions** (Number, Case, Tense, Person)
+1. **Typology & Syntax**: Choose morphological type (isolating / agglutinative / fusional / polysynthetic), alignment (`nom_acc` or `erg_abs`), base word order (`SVO`, `SOV`, `VSO`, etc.), and conjugation classes.
+2. **Inflection**: Define dimensions (with obligatory flags), 6 morphological rule types, and **Irregular Overrides**.
+3. **Morphophonology**: Add cross-boundary (`+`) rules (such as `ev+lar → evler`) and test them in the live bottom bar.
+4. **Paradigm Matrix & Trace**: Audit full paradigms and step-by-step derivation traces.
 
-## Step 7: Define Inflection & Derivation
+## Step 6: Validate in Sandbox & Corpus
 
-Create morphological rules: suffixes (`-en` for plural), prefixes (`na-` for negation), conditional rules, and more.
+**Navigate**: `Sandbox` / `Corpus`
 
-Test inflection with the **Inflection Test** tool. Define derivation rules for word-class conversion (verb→noun: `-er`).
+1. **Translation Sandbox**: Test `gloss-TAG` strings or build nested clauses in the **Recursive Clause Builder** to verify word order, alignment case assignment, and native script shaping.
+2. **Corpus**: Write passages and translations, run **non-destructive Auto-Gloss** (`fill_empty` default protects `edited`/`verified` tokens and line translations), select candidate parses with number keys `1`–`9`, and coin missing words inline via the **`QuickLex` drawer**.
 
-## Step 8: Test in the Sandbox
+## Step 7: Evolve a Language Family
 
-**Navigate**: `Translation Sandbox`
+**Navigate**: `Family Tree` / `Sound Changes`
 
-- **Gloss mode**: Input `star-PL shine-PAST in void` → auto-lookup, auto-inflect, generate interlinear table
-- **Syntax mode**: Add tokens with roles (S/V/O) → auto-reorder by word order setting
+1. Derive daughter languages in **Family Tree**.
+2. Author diachronic sound shifts in **Sound Changes** using the bidirectional single-line DSL and apply them via the virtualized batch diff preview.
+3. Borrow words across branches or external projects (preserving historical donor snapshots) and run Pull Sync.
+4. Click **Cognate Matrix** on the Family Tree header to inspect cross-family cognate sets, borrowings, lexical gaps, and innovations.
 
-## Step 9: Quality Check & Statistics
+## Step 8: Publish & Collaborate with AI
 
-- **QC**: Run automated checks for missing POS, unmapped spellings, empty IPA, duplicates
-- **Statistics**: View word count, POS distribution, phoneme frequency, syllable distribution
+**Navigate**: `Export / Import` / `MCP Settings`
 
-## Step 10: Write a Grammar Manual
-
-**Navigate**: `Grammar` → `Grammar Manual`
-
-Write Markdown chapters. Embed paradigm tables with `{{paradigm:noun:kata}}`.
-
-## Step 11: Write Corpus Texts
-
-**Navigate**: `Corpus`
-
-Write texts in your language with Leipzig-standard interlinear glossing. Use **"Auto-gloss"** to match words from the lexicon.
-
-## Step 12: Derive Child Languages
-
-**Navigate**: `Family Tree`
-
-1. Select parent → **"Derive"** → enter name
-2. Define sound change rules in the child language's SCA
-3. **"Pull"** new words from parent, auto-processed through sound changes
-
-## Step 13: Export & Share
-
-**Navigate**: `Export`
-
-| Goal | Format |
-|------|--------|
-| Print a reference book | **PDF** |
-| Analyze data | **Excel** |
-| Spell-check | **Hunspell** |
-| Backup / other tools | **CSV** |
-| Let AI learn your language | **LLM Prompt** |
-
----
-
-## Creative Templates
-
-### A. Simple Language
-Preset: Hawaiian · Syllable `(C)V` · 5 vowels, 8 consonants · SVO
-
-### B. Complex Language
-Preset: Slavic · Syllable `(C)(C)V(C)(C)` · 8 vowels, 25+ consonants · SOV
-
-### C. Harmonious Language
-Preset: Finnish · Syllable `(C)V(C)` · 8 vowels, 15 consonants · SOV · Vowel harmony
+- Export self-contained **HTML / Typst Reference Grammar Books**, **Excel**, **Hunspell `.dic` + `.aff`**, **LLM Prompts**, or **Workspace Bundles**.
+- Connect **Cursor**, **Claude Code**, or **Claude Desktop** to the built-in **MCP Server** (84 semantic tools) for CAS-safe lexicon auditing, sound-change simulation, and family-wide workflows.

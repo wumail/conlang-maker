@@ -182,14 +182,14 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 
 ### 工具集按需裁剪（`--toolsets` / 令牌 `toolsets`）
 
-为了避免一次性向模型注入过多工具挤占上下文窗口，76 个工具按职责划分为 6 个工具集（写工具需同时满足工具集启用与 `--mode` 权限）：
+为了避免一次性向模型注入过多工具挤占上下文窗口，84 个工具按职责划分为 6 个工具集（写工具需同时满足工具集启用与 `--mode` 权限）：
 
 | 工具集 | 默认启用 | 覆盖范围 |
 |-------|---------|---------|
-| `core` | 是 | 语系发现、谱系树、音系/正字法/词典/语法/SCA/语料/字体读取、快照与回收站列表。 |
-| `audit` | 是 | 单语言与全语系 OpenType 字体覆盖矩阵审计（`font_audit_coverage`、`font_audit_family`）及 HarfBuzz 排版诊断（`font_shape`）。 |
-| `compute` | 是 | 语言学计算与质检：`phono_to_ipa`（含逐段 trace）、`phono_tokenize`、`romanization_analyze`、`lex_stats`、`lex_quality_check`、`wordgen_*`、`gram_inflect`、`gram_paradigm`、`gram_derive`、`gram_analyze_typology`、`sandbox_translate`、`sca_simulate`、`sca_parse_rules_text`、`sca_feature_query`、`sca_export_rules_text`。 |
-| `write` | 否 | 音系、正字法、字形标注、字体导入/批量替换、词典、语法、SCA、语料保存与手动快照创建。 |
+| `core` | 是 | 语系发现、谱系树、音系/正字法/词典/概念库/同源词矩阵/词族与词源链/语法/SCA/语料/语料索引/字体读取、快照与回收站列表。 |
+| `audit` | 是 | 单语言与全语系 OpenType 字体覆盖矩阵审计（`font_audit_coverage`、`font_audit_family`）、字形几何与排版度量审计（`font_audit_geometry`）及 HarfBuzz 排版诊断（`font_shape`）。 |
+| `compute` | 是 | 语言学计算与质检：`phono_to_ipa`（含逐段 trace）、`phono_tokenize`、`romanization_analyze`、`lex_stats`、`lex_quality_check`、`lex_word_family`、`lex_etymology_lineage`、`concept_list`、`family_cognate_matrix`、`wordgen_*`、`gram_inflect`、`gram_paradigm`、`gram_derive`、`gram_analyze_typology`、`gram_pull_sync`（预览）、`sandbox_translate`、`corpus_concordance`、`sca_simulate`、`sca_parse_rules_text`、`sca_feature_query`、`sca_export_rules_text`。 |
+| `write` | 否 | 音系、正字法、字形标注、字体导入/批量替换、词典、自定义概念与词汇缺口/同源主词覆盖（`concept_upsert`）、语法及父语言词缀同步（`gram_pull_sync`）、SCA、语料保存与手动快照创建。 |
 | `evolution` | 否 | 历时演化工作流：`language_fork`、`language_update`、`lex_parent_diff`、`lex_pull_sync`、`lex_borrow`、`lexicon_migrate_inherited_links`。 |
 | `admin` | 否 | 注册表与项目管理（`family_*`、`project_*`）、工作区包/CSV/Hunspell/LLM 简报导入导出、语言删除与回收站恢复、快照对比与回滚。 |
 | `all` | — | 一键启用当前 `--mode` 允许的全部工具集。 |
@@ -198,7 +198,7 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 
 ## 4. 工具、资源与 Prompt 全量目录
 
-`conlang-mcp` 共提供 **10 大领域 76 个工具**、**10 个 `conlang://` 资源模板**与 **4 个引导式 Prompt**。
+`conlang-mcp` 共提供 **10 大领域 84 个工具**、**10 个 `conlang://` 资源模板**与 **4 个引导式 Prompt**。
 
 ### 4.1 系统与语系管理（14 个工具）
 
@@ -235,7 +235,7 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 | `phono_presets_list` | 只读 | `core` | 列出内置音系预设模板。 |
 | `phono_apply_preset` | 写入 | `write` | 将内置音系预设应用到指定语言（支持 `dry_run`）。 |
 
-### 4.3 字体与书写系统（11 个工具）
+### 4.3 字体与书写系统（12 个工具）
 
 | 工具名 | 权限 | 工具集 | 功能说明 |
 |-------|-----|-------|---------|
@@ -244,6 +244,7 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 | `font_shape` | 只读 | `audit` | 使用 HarfBuzz 对样本文本执行真实排版（默认与 GUI `.conlang-script` 一致），输出 `gid`、字形名、cluster、原文码点区间与 `.notdef` 检测。 |
 | `font_audit_coverage` | 只读 | `audit` | 单语言全量字体覆盖与连字/上下文排版审计（横跨正字法、词典、语料、声调四大来源）。 |
 | `font_audit_family` | 只读 | `audit` | 整棵语系树（或子树）覆盖矩阵审计：按字体 SHA-256 去重复用分析，汇总每门语言缺口与全语系并集缺口 `union_missing`。 |
+| `font_audit_geometry` | 只读 | `audit` | 使用 HarfBuzz 提取真实字形轮廓，审计基线/升部对齐、组合音标间距与笔画粗细均匀度。 |
 | `font_import` | 写入 | `write` | 校验（≤ 20 MB、魔数、HarfBuzz 可加载且 `cmap` 非空）并导入 `.ttf`/`.otf` 字体，自动清理旧扩展名副本并生成快照。 |
 | `font_import_batch` | 写入 | `write` | 在单个项目事务内为多门分支语言原子更新字体（`dry_run` 输出每门语言新旧字体及覆盖率前后对比）。 |
 | `font_clear` | 写入 | `write` | 快照后移除语言自有字体，使其恢复继承祖先语言字体。 |
@@ -251,21 +252,26 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 | `glyph_annotations_delete` | 写入 | `write` | 按码位删除本地字符参考标注。 |
 | `glyph_annotations_sync_parent` | 写入 | `write` | 将父语言的字形参考标注同步复制到当前语言本地配置。 |
 
-### 4.4 词典管理与演化（11 个工具）
+### 4.4 词典、概念库与同源演化（16 个工具）
 
 | 工具名 | 权限 | 工具集 | 功能说明 |
 |-------|-----|-------|---------|
-| `lex_search` | 只读 | `core` | 多维检索词条（拼写/释义/定义/例句/标签，支持前缀、精确、子串、正则及 `ipa_fuzzy` 音近搜索），支持词性/词源筛选、排序、分页与字段裁剪。 |
+| `lex_search` | 只读 | `core` | 多维检索词条（拼写/释义/定义/例句/标签，支持前缀、精确、子串、正则及 `ipa_fuzzy` 音近搜索），支持词性/词源/概念筛选、排序、分页与字段裁剪。 |
 | `lex_get` | 只读 | `core` | 按 `entry_id` 列表或精确拼写读取完整词条，可选附带父语言同源词对比（`with_parent: true`）。 |
 | `lex_stats` | 只读 | `compute` | 统计词汇总量、词性分布、音素频率与音节长度分布。 |
-| `lex_quality_check` | 只读 | `compute` | 运行词典质量检查（缺失词性、拼写含未映射字符、空 IPA、违反音位配列、缺少必填项、重复词形）。 |
-| `lex_upsert` | 写入 | `write` | 批量新建或更新词条（≤ 500）：自动补齐 ID/时间戳、自动按音系计算 IPA、自动跨桶搬移与排序，保留未知扩展字段，全量校验无静默丢词。 |
+| `lex_quality_check` | 只读 | `compute` | 运行 11 项词典质量检查（缺失词性、未映射拼写、空 IPA、违反音位配列、黑名单、元音和谐冲突、同音碰撞、复合词读音过期等）。 |
+| `lex_word_family` | 只读 | `core` / `compute` | 查询词条的同族构词有向无环图（上游词素成分、下游派生/复合词、复合读音过期摘要与环路预检）。 |
+| `lex_etymology_lineage` | 只读 | `core` / `compute` | 跨全语系向上追溯词条的完整词源链（历时继承音变/语义演变、共时构词成分、跨语系借词历史快照及断链精确定位）。 |
+| `lex_upsert` | 写入 | `write` | 批量新建或更新词条（≤ 500）：支持按义项 `concept_id` 绑定、结构化构词成分与借词快照，自动计算 IPA 与跨桶排序。 |
 | `lex_delete` | 写入 | `write` | 快照后按 `entry_id` 批量删除词条。 |
 | `lex_regenerate_ipa` | 写入 | `write` | 正字法或音位变体修改后，批量重算所有未开启手动覆盖词条的 IPA（支持 `dry_run` 预览变更列表）。 |
 | `lex_parent_diff` | 只读 | `evolution` | 预演父子语言间的 Pull Sync 差异（套用子语言 SCA 后的新增、待更新与双方冲突明细）。 |
 | `lex_pull_sync` | 写入 | `evolution` | 快照后对全部或指定 `entry_id` 执行父语言同步演化。 |
-| `lex_borrow` | 写入 | `evolution` | 从同语系其他语言借入词条（标记 `borrowed` 并记录来源语言与原词条 ID）。 |
+| `lex_borrow` | 写入 | `evolution` | 从同语系或外部项目语言借入词条（标记 `borrowed` 并保存供词快照与来源 ID）。 |
 | `lex_import_csv` | 写入 | `admin` | CSV 词表列映射预览（`dry_run`）与批量事务导入。 |
+| `concept_list` | 只读 | `core` / `compute` | 检索内置 Swadesh-100 / Leipzig-Jakarta 核心概念库与工作区自定义概念（支持中英释义、别名与语义域过滤）。 |
+| `concept_upsert` | 写入 | `core` / `write` | 新增/修改/删除自定义概念、原子合并重复概念（`merge_from_id` 自动重写全语系绑定义项），以及维护同源词矩阵的词汇缺口（`lexical_gaps`）与主词覆盖（`primary_cognate_overrides`）。 |
+| `family_cognate_matrix` | 只读 | `core` / `compute` | 构建全语系同源词矩阵：区分同源继承组、借词替代与独立构词创新，返回义项级候选、词汇缺口状态与未绑概念词数统计。 |
 
 ### 4.5 造词生成器（2 个工具）
 
@@ -274,16 +280,17 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 | `wordgen_generate` | 只读 | `compute` | 按音位配列、音节模板、黑名单与元音和谐生成候选新词（选定后通过 `lex_upsert` 入库）。 |
 | `wordgen_swadesh_gaps` | 只读 | `compute` | 对照核心 Swadesh 词表，找出当前词典尚未覆盖的基础概念缺口。 |
 
-### 4.6 语法与翻译沙盒（7 个工具）
+### 4.6 语法与翻译沙盒（8 个工具）
 
 | 工具名 | 权限 | 工具集 | 功能说明 |
 |-------|-----|-------|---------|
-| `gram_get` | 只读 | `core` | 按节读取语法配置（`typology`、`syntax`、`pos`、`inflection`、`derivation`、`chapters`）。 |
-| `gram_inflect` | 只读 | `compute` | 按词条或词形执行类型学感知的屈折变形，返回表层词形与命中的词缀/槽位/变位类规则。 |
+| `gram_get` | 只读 | `core` | 按节读取语法配置（`typology`、`syntax`、`pos`、`inflection`、`morphophonology`、`derivation`、`chapters`）。 |
+| `gram_inflect` | 只读 | `compute` | 按词条或词形执行统一 6 步形态变形（不规则覆盖 → 变位类 → 词缀规则 → `+` 形态音位 → IPA），返回逐步推导 trace 与缺失必选特征诊断。 |
 | `gram_paradigm` | 只读 | `compute` | 生成指定词条在多个语法维度组合下的完整变位/变格表。 |
-| `gram_derive` | 只读 | `compute` | 按派生构词规则批量预览派生词形。 |
+| `gram_derive` | 只读 | `compute` | 按派生构词与形态音位规则批量预览派生词形。 |
 | `gram_analyze_typology` | 只读 | `compute` | 基于当前语法规则统计并评估形态类型学指标（综合度、融合度等）。 |
-| `sandbox_translate` | 只读 | `compute` | 调用翻译沙盒管线：执行词汇匹配、形态屈折与句法语序重排（SVO/SOV/VSO 等）。 |
+| `gram_pull_sync` | 只读 / 写入 | `compute` / `write` | 将父语言的屈折/派生词缀与不规则形式套用子语言音变规则演化并检测同形并合（默认 `apply: false` 预览，传 `apply: true` 写入）。 |
+| `sandbox_translate` | 只读 | `compute` | 调用翻译沙盒管线：支持 `gloss-TAG` 与递归小句构建（主宾格/作通格对齐），输出四行对照与推导步骤。 |
 | `gram_update` | 写入 | `write` | 按节更新语法配置（支持 `expected_revision` 与 `dry_run`）。 |
 
 ### 4.7 历时音变引擎 SCA（6 个工具）
@@ -297,15 +304,16 @@ stdio 模式由客户端自行拉起进程，`--mode` / `--toolsets` / `--family
 | `sca_update` | 写入 | `write` | 更新音变规则集（支持结构化 JSON 或纯文本规则输入）。 |
 | `sca_export_rules_text` | 只读 | `compute` | 将结构化音变规则集导出为可往返解析的纯文本格式。 |
 
-### 4.8 语料库与自动标注（5 个工具）
+### 4.8 语料库与自动标注（6 个工具）
 
 | 工具名 | 权限 | 工具集 | 功能说明 |
 |-------|-----|-------|---------|
 | `corpus_list` | 只读 | `core` | 读取 `corpus_index.json` 语料列表与元数据。 |
 | `corpus_get` | 只读 | `core` | 读取单篇语料原文与逐行莱比锡行间注释（支持按行分页）。 |
-| `corpus_save` | 写入 | `write` | 在同一项目事务中原子保存语料正文并同步更新 `corpus_index.json`。 |
+| `corpus_save` | 写入 | `write` | 在同一项目事务中原子保存语料正文并同步更新 `corpus_index.json`（支持词元 `status` 来源锁定状态）。 |
 | `corpus_delete` | 破坏性 | `admin` | 快照后删除指定语料并同步清理索引（需 `confirm: true`）。 |
-| `corpus_auto_gloss` | 只读 / 写入 | `compute` / `write` | 基于词典与形态规则自动生成行间标注；默认 `apply: false` 仅预览，传 `apply: true` 时写入。 |
+| `corpus_auto_gloss` | 只读 / 写入 | `compute` / `write` | 基于词典与统一形态规则执行非破坏性自动标注（支持 `fill_empty` / `recompute_auto` / `reanalyze_selected` 三种范围，100% 保留行译文；默认 `apply: false` 预览）。 |
+| `corpus_concordance` | 只读 | `core` / `compute` | 在全语料库中反向检索指定词条的真实语境例句（支持精确绑定、词干与已知屈折变体匹配及同形异义保护）。 |
 
 ### 4.9 导入与导出（5 个工具）
 

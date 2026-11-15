@@ -2,6 +2,7 @@ import React from "react";
 import { useTranslation } from "react-i18next";
 import { useGrammarStore } from "../../store/grammarStore";
 import type { MorphologicalTypology, HeadMarking } from "../../types";
+import { Info } from "lucide-react";
 import { SELECT, CARD } from "../../lib/ui";
 import {
   useTypologyTypeLabels,
@@ -152,6 +153,20 @@ export const TypologySection: React.FC = () => {
             ))}
           </select>
         </div>
+
+        {/* 手动模式的描述性指标说明徽章（不参与规则执行） */}
+        {!typo.auto_estimated && (
+          <div className="flex items-start gap-1.5 rounded border border-info/40 bg-info/10 px-2 py-1.5 text-[11px] text-base-content/70">
+            <Info size={12} className="mt-0.5 shrink-0" />
+            <span>
+              <span className="font-medium">
+                {t("grammar.morphologyV3.descriptiveBadge")}
+              </span>
+              {" · "}
+              {t("grammar.morphologyV3.descriptiveHint")}
+            </span>
+          </div>
+        )}
 
         {/* 自动/手动 */}
         <div className="text-xs text-base-content/50">

@@ -20,7 +20,7 @@ export function PageHeader({
 
   return (
     <div className="flex items-center justify-between">
-      <Tag className={`${cls} font-bold flex items-center gap-2`}>
+      <Tag className={`${cls} font-bold flex shrink-0 items-center gap-2 whitespace-nowrap`}>
         {icon} {title}
       </Tag>
       {children}

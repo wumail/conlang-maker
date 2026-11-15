@@ -4,6 +4,9 @@ import {
   ConceptDefinition,
   CreateProjectResult,
   LanguageEntry,
+  LexicalGap,
+  PrimaryCognateOverride,
+  SavedLexiconFilter,
   WorkspaceConfig,
   WorkspaceLoadResult,
   WriteResult,
@@ -23,6 +26,8 @@ import {
   useConflictStore,
 } from "./conflictStore";
 import { openPathSafely } from "../utils/safeDialog";
+import i18n from "../i18n";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import {
   DEFAULT_LANGUAGE_ID,
   DEFAULT_LANGUAGE_PATH,
@@ -63,6 +68,22 @@ interface WorkspaceStore {
   renameLanguage: (languageId: string, newName: string) => void;
   /** 追加工作区自定义概念（去重后写回 workspace.conlang） */
   addCustomConcepts: (concepts: ConceptDefinition[]) => void;
+  /** Roadmap v3：单概念 upsert（改名 / 维护别名 / 精确替换） */
+  upsertCustomConcept: (concept: ConceptDefinition) => void;
+  /** Roadmap v3：整体替换自定义概念表（合并/拆分后的落盘） */
+  replaceCustomConcepts: (concepts: ConceptDefinition[]) => void;
+  /** Roadmap v3：upsert 词汇空缺状态 */
+  upsertLexicalGap: (gap: LexicalGap) => void;
+  /** Roadmap v3：移除词汇空缺状态 */
+  removeLexicalGap: (languageId: string, conceptId: string) => void;
+  /** Roadmap v3：设置同源矩阵人工主词 */
+  setPrimaryCognateOverride: (override: PrimaryCognateOverride) => void;
+  /** Roadmap v3：清除同源矩阵人工主词（恢复自动排序） */
+  removePrimaryCognateOverride: (languageId: string, conceptId: string) => void;
+  /** Roadmap v3：upsert 常用筛选预设 */
+  upsertSavedLexiconFilter: (filter: SavedLexiconFilter) => void;
+  /** Roadmap v3：删除常用筛选预设 */
+  deleteSavedLexiconFilter: (filterId: string) => void;
   getLanguageById: (languageId: string) => LanguageEntry | undefined;
   getChildLanguages: (parentId: string) => LanguageEntry[];
   copyProject: (
@@ -244,6 +265,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
               dirty: queued !== undefined || latestVer > next.version,
             });
           }
+          reportSaveSuccess("workspace");
         } catch (err) {
           if (isConflictError(err)) {
             pendingSaves.set(key, next);
@@ -255,6 +277,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
             return;
           }
           console.warn(`工作区配置保存失败：${err}`);
+          reportSaveError("workspace", err instanceof Error ? err.message : String(err));
           const latestVersion = saveVersions.get(key) ?? 0;
           if (!pendingSaves.has(key) && latestVersion === next.version) {
             pendingSaves.set(key, next);
@@ -494,7 +517,7 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
     createRootLanguage: async (name: string) => {
       const selected = await openPathSafely({
         directory: true,
-        title: "Choose project directory",
+        title: i18n.t("dataset.chooseBundleDir"),
       });
       if (!selected) return null;
 
@@ -539,6 +562,98 @@ export const useWorkspaceStore = create<WorkspaceStore>((set, get) => {
       }
       if (merged.length === existing.length) return;
       set({ config: { ...config, custom_concepts: merged }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    // ── Roadmap v3：概念 / 空缺 / 主词覆盖 / 筛选预设写方法（纯业务持久化）──
+
+    upsertCustomConcept: (concept) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.custom_concepts ?? [];
+      const index = existing.findIndex((item) => item.concept_id === concept.concept_id);
+      const next =
+        index >= 0
+          ? existing.map((item, i) => (i === index ? concept : item))
+          : [...existing, concept];
+      set({ config: { ...config, custom_concepts: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    replaceCustomConcepts: (concepts) => {
+      const { config, conlangFilePath } = get();
+      set({ config: { ...config, custom_concepts: concepts }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    upsertLexicalGap: (gap) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.lexical_gaps ?? [];
+      const index = existing.findIndex(
+        (item) => item.language_id === gap.language_id && item.concept_id === gap.concept_id,
+      );
+      const stamped = { ...gap, updated_at: new Date().toISOString() };
+      const next =
+        index >= 0
+          ? existing.map((item, i) => (i === index ? stamped : item))
+          : [...existing, stamped];
+      set({ config: { ...config, lexical_gaps: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    removeLexicalGap: (languageId, conceptId) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.lexical_gaps ?? [];
+      const next = existing.filter(
+        (item) => !(item.language_id === languageId && item.concept_id === conceptId),
+      );
+      if (next.length === existing.length) return;
+      set({ config: { ...config, lexical_gaps: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    setPrimaryCognateOverride: (override) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.primary_cognate_overrides ?? [];
+      const index = existing.findIndex(
+        (item) => item.language_id === override.language_id && item.concept_id === override.concept_id,
+      );
+      const next =
+        index >= 0
+          ? existing.map((item, i) => (i === index ? override : item))
+          : [...existing, override];
+      set({ config: { ...config, primary_cognate_overrides: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    removePrimaryCognateOverride: (languageId, conceptId) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.primary_cognate_overrides ?? [];
+      const next = existing.filter(
+        (item) => !(item.language_id === languageId && item.concept_id === conceptId),
+      );
+      if (next.length === existing.length) return;
+      set({ config: { ...config, primary_cognate_overrides: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    upsertSavedLexiconFilter: (filter) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.saved_lexicon_filters ?? [];
+      const index = existing.findIndex((item) => item.filter_id === filter.filter_id);
+      const next =
+        index >= 0
+          ? existing.map((item, i) => (i === index ? filter : item))
+          : [...existing, filter];
+      set({ config: { ...config, saved_lexicon_filters: next }, dirty: true });
+      if (conlangFilePath) get().saveWorkspace();
+    },
+
+    deleteSavedLexiconFilter: (filterId) => {
+      const { config, conlangFilePath } = get();
+      const existing = config.saved_lexicon_filters ?? [];
+      const next = existing.filter((item) => item.filter_id !== filterId);
+      if (next.length === existing.length) return;
+      set({ config: { ...config, saved_lexicon_filters: next }, dirty: true });
       if (conlangFilePath) get().saveWorkspace();
     },
 

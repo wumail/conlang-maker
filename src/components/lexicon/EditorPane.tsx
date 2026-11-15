@@ -18,6 +18,8 @@ import { WordParadigmCollapsible } from "./WordParadigmCollapsible";
 import { WordConcordanceSection } from "./WordConcordanceSection";
 import { EvolutionChainCards } from "./EvolutionChainCards";
 import { useWordLineage } from "./useWordLineage";
+import { computeCorpusReferenceImpact } from "../../core/engines/concordance";
+import { saveLanguageViewMemory } from "../../lib/languageViewMemory";
 
 export const EditorPane: React.FC = () => {
   const { t } = useTranslation();
@@ -39,6 +41,7 @@ export const EditorPane: React.FC = () => {
   const [confirmDeleteSenseIdx, setConfirmDeleteSenseIdx] = useState<number | null>(null);
 
   const prevRomanizedRef = useRef<string>("");
+  const [corpusHits, setCorpusHits] = useState(0);
   const word = activeWordId ? wordsMap[activeWordId] : null;
   const evolution = word ? getWordEvolution(word) : null;
 
@@ -67,6 +70,13 @@ export const EditorPane: React.FC = () => {
     });
     return Array.from(tagSet).sort();
   }, [wordsList]);
+
+  // 记忆当前语言最近查看的词条，切换语言后可恢复
+  useEffect(() => {
+    if (word && activeLanguageId) {
+      saveLanguageViewMemory(activeLanguageId, { activeWordId: word.entry_id });
+    }
+  }, [word?.entry_id, activeLanguageId]);
 
   // 词形变化且未手动锁定 IPA 时自动重算音位转写
   useEffect(() => {
@@ -150,6 +160,25 @@ export const EditorPane: React.FC = () => {
 
   const { surface } = generateIPA(word.con_word_romanized, phonoConfig);
 
+  /** 删除前预检语料引用，命中时在确认框醒目提示（Roadmap v3 / Pillar 6） */
+  const requestDelete = async (scope: "word" | "sense", senseId?: string) => {
+    let hits = 0;
+    try {
+      const texts = await useCorpusStore.getState().loadAllCorpusTexts();
+      hits = computeCorpusReferenceImpact({
+        corpusTexts: texts,
+        entryId: word.entry_id,
+        senseId,
+      }).totalHits;
+    } catch (err) {
+      console.warn(`Corpus reference impact check failed: ${err}`);
+    }
+    setCorpusHits(hits);
+    if (scope === "word") setConfirmDelete(true);
+  };
+
+  const impactSuffix =
+    corpusHits > 0 ? ` ${t("lexicon.batchV3.corpusImpactWarning", { count: corpusHits })}` : "";
   return (
     <div className="flex-1 p-8 overflow-y-auto bg-base-100">
       <WordHeaderSection
@@ -159,7 +188,8 @@ export const EditorPane: React.FC = () => {
         allTags={allTags}
         onChange={handleChange}
         onTagsChange={(tags) => handleChange("metadata", { ...word.metadata, tags })}
-        onRequestDelete={() => setConfirmDelete(true)}
+        conjugationClasses={grammarConfig.conjugation_classes}
+        onRequestDelete={() => void requestDelete("word")}
       />
 
       <WordSensesSection
@@ -169,7 +199,11 @@ export const EditorPane: React.FC = () => {
         partsOfSpeech={partsOfSpeech}
         onChangeSense={handleSenseChange}
         onAddSense={addSense}
-        onRequestDeleteSense={setConfirmDeleteSenseIdx}
+        conjugationClasses={grammarConfig.conjugation_classes}
+        onRequestDeleteSense={(index) => {
+          setConfirmDeleteSenseIdx(index);
+          void requestDelete("sense", word.senses[index]?.sense_id);
+        }}
       />
 
       <div className="mt-6 space-y-2">
@@ -183,9 +217,9 @@ export const EditorPane: React.FC = () => {
           word={word}
           grammar={grammarConfig}
           phono={phonoConfig}
-          onNavigate={(corpusId) => {
+          onNavigate={(corpusId, lineId) => {
             void loadCorpus(corpusId);
-            navigate("/corpus");
+            navigate(`/corpus?corpus=${encodeURIComponent(corpusId)}&line=${encodeURIComponent(lineId)}`);
           }}
         />
       </div>
@@ -213,25 +247,33 @@ export const EditorPane: React.FC = () => {
       <ConfirmModal
         open={confirmDelete}
         title={t("lexicon.deleteWord")}
-        message={t("lexicon.deleteWordConfirm", { word: word.con_word_romanized })}
+        message={`${t("lexicon.deleteWordConfirm", { word: word.con_word_romanized })}${impactSuffix}`}
         onConfirm={() => {
           deleteWord(word.entry_id);
           setConfirmDelete(false);
+          setCorpusHits(0);
         }}
-        onCancel={() => setConfirmDelete(false)}
+        onCancel={() => {
+          setConfirmDelete(false);
+          setCorpusHits(0);
+        }}
       />
 
       <ConfirmModal
         open={confirmDeleteSenseIdx !== null}
         title={t("common.delete")}
-        message={t("lexicon.deleteMeaningConfirm")}
+        message={`${t("lexicon.deleteMeaningConfirm")}${impactSuffix}`}
         onConfirm={() => {
           if (confirmDeleteSenseIdx !== null) {
             removeSense(confirmDeleteSenseIdx);
             setConfirmDeleteSenseIdx(null);
           }
+          setCorpusHits(0);
         }}
-        onCancel={() => setConfirmDeleteSenseIdx(null)}
+        onCancel={() => {
+          setConfirmDeleteSenseIdx(null);
+          setCorpusHits(0);
+        }}
       />
     </div>
   );

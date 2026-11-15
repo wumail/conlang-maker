@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
   ClauseNode,
@@ -9,7 +9,10 @@ import { linearizeClause, planToTree } from "../../core/engines/phraseSandbox";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
-import { processSandboxText } from "../../utils/sandbox";
+import {
+  buildSampleClauseFromLexicon,
+  processSandboxText,
+} from "../../utils/sandbox";
 import { NPBuilderRow } from "./NPBuilderRow";
 import { SandboxResultCard } from "./SandboxResultCard";
 import { BADGE, BTN_GHOST, INPUT_MONO, SELECT } from "../../lib/ui";
@@ -30,9 +33,21 @@ export function ClauseBuilderCard() {
   const grammarConfig = useGrammarStore((state) => state.config);
   const updateSyntax = useGrammarStore((state) => state.updateSyntax);
 
-  const [clause, setClause] = useState<ClauseNode>(DEFAULT_CLAUSE);
+  const wordCount = Object.keys(wordsMap).length;
+  const seedKey = `${grammarConfig.language_id}:${wordCount > 0 ? "loaded" : "empty"}`;
+  const lastSeedKeyRef = useRef(seedKey);
+
+  const [clause, setClause] = useState<ClauseNode>(() =>
+    buildSampleClauseFromLexicon(wordsMap, grammarConfig, DEFAULT_CLAUSE),
+  );
   const [hasObject, setHasObject] = useState(true);
   const [hasOblique, setHasOblique] = useState(false);
+
+  useEffect(() => {
+    if (lastSeedKeyRef.current === seedKey) return;
+    lastSeedKeyRef.current = seedKey;
+    setClause(buildSampleClauseFromLexicon(wordsMap, grammarConfig, DEFAULT_CLAUSE));
+  }, [seedKey, wordsMap, grammarConfig]);
 
   const activeClause: ClauseNode = useMemo(
     () => ({
@@ -198,6 +213,19 @@ export function ClauseBuilderCard() {
           >
             {hasOblique ? t("sandbox.clause.dropOblique") : t("sandbox.clause.addOblique")}
           </button>
+          {wordCount > 0 && (
+            <button
+              type="button"
+              className={BTN_GHOST}
+              onClick={() =>
+                setClause(
+                  buildSampleClauseFromLexicon(wordsMap, grammarConfig, DEFAULT_CLAUSE),
+                )
+              }
+            >
+              {t("sandbox.clause.loadSample")}
+            </button>
+          )}
         </div>
       </div>
 

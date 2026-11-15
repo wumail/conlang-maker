@@ -21,7 +21,11 @@ export const Sandbox: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <PageHeader icon={<Languages size={24} />} title={t("sandbox.title")} />
+      <PageHeader icon={<Languages size={24} />} title={t("sandbox.title")}>
+        <p className="max-w-2xl text-right text-xs text-base-content/50">
+          {t("sandbox.description")}
+        </p>
+      </PageHeader>
 
       <div className={`${CARD} p-6`}>
         <div role="tablist" className="tabs tabs-border mb-4">

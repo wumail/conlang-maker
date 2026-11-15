@@ -213,7 +213,7 @@ export const GlyphZoomPreview: React.FC<GlyphZoomPreviewProps> = ({
                   lsbRatio={lsbRatio}
                   rsbRatio={rsbRatio}
                   scale={ZOOM_SCALE}
-                  className="text-base-content/40"
+                  className="text-base-content/70"
                 />
               ) : (
                 <span className="conlang-script text-6xl leading-none">{char}</span>

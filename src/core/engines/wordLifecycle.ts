@@ -60,26 +60,26 @@ export function getWordChangeDetails(
   };
 }
 
-/** Resolve direct inheritance while accepting older clones with stable IDs. */
+/**
+ * Resolve the inherited parent entry ID.
+ *
+ * Roadmap v3 / Pillar 1：仅当 `origin_type === "evolved"` 时返回父语言词条 ID；
+ * 借词（borrowed）与共时派生/复合词（derived / compound）一律返回 null，
+ * 绝不被误判为「继承失效」。（fork 路径已统一写入 evolved + parent_entry_id，
+ * 旧版 a_priori 稳定 ID 回退不再需要。）
+ */
 export function getInheritedParentEntryId(
   word: WordEntry,
   parentLanguageId: string,
 ): string | null {
   const source = word.etymology;
-  if (source.origin_type === "evolved") {
-    if (source.source_language_id && source.source_language_id !== parentLanguageId) {
-      return null;
-    }
-    return source.parent_entry_id ?? word.entry_id;
+  if (source.origin_type !== "evolved") {
+    return null;
   }
-  if (
-    source.origin_type === "a_priori" &&
-    !source.parent_entry_id &&
-    !source.source_language_id
-  ) {
-    return word.entry_id;
+  if (source.source_language_id && source.source_language_id !== parentLanguageId) {
+    return null;
   }
-  return null;
+  return source.parent_entry_id ?? word.entry_id;
 }
 
 const DEFAULT_EVOLUTION: WordEvolution = {

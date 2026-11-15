@@ -13,8 +13,8 @@ import {
 const testConfig: PhonologyConfig = {
   language_id: "lang_lint",
   phoneme_inventory: {
-    // `ŋ` is never produced by any rule (issue #1)
-    consonants: ["p", "t", "k", "s", "tʃ", "ŋ"],
+    // `ŋ` 的字形被规则改写且无任何规则生成回来 → 真正不可达（issue #1）
+    consonants: ["p", "t", "k", "s", "tʃ", "n", "ŋ"],
     vowels: ["a", "i"],
   },
   romanization_maps: [
@@ -40,6 +40,8 @@ const testConfig: PhonologyConfig = {
         { rule_id: "r_c_i", input: "c", output_phoneme: "s", context_before: "", context_after: "i" },
         // Case issue (issue #6): uppercase "S" -> s
         { rule_id: "r_upper_s", input: "S", output_phoneme: "s", context_before: "", context_after: "" },
+        // `ŋ` 被改写成 n，且没有规则能生成 ŋ → 键入 ŋ 也拿不到它
+        { rule_id: "r_eng", input: "ŋ", output_phoneme: "n", context_before: "", context_after: "" },
         // Vowels
         { rule_id: "r_a", input: "a", output_phoneme: "a", context_before: "", context_after: "" },
         { rule_id: "r_i", input: "i", output_phoneme: "i", context_before: "", context_after: "" },
@@ -63,6 +65,66 @@ describe("romanizationLint 6 analyses (PRD §5.2 / T2.8)", () => {
       testConfig.romanization_maps,
     );
     expect(unreachable).toEqual([{ phoneme: "ŋ", category: "consonant" }]);
+  });
+
+  test("1b. phonemes without rules stay reachable through generator passthrough", () => {
+    // 用户实际遇到的场景：inventory 里有 ə / ʊ / uˑ，映射表未覆盖，
+    // 但 ipaGenerator 会原样透传，因此键入字形即可写出，不应报「不可达」。
+    const inventory = {
+      consonants: ["p", "t"],
+      vowels: ["a", "ə", "ʊ", "uˑ"],
+    };
+    const maps = [
+      {
+        map_id: "map_pass",
+        name: "Pass",
+        is_default: true,
+        rules: [
+          { rule_id: "p", input: "p", output_phoneme: "p", context_before: "", context_after: "" },
+          { rule_id: "a", input: "a", output_phoneme: "a", context_before: "", context_after: "" },
+        ],
+      },
+    ];
+    expect(findUnreachablePhonemes(inventory, maps)).toEqual([]);
+  });
+
+  test("1c. word-initial / word-final mutations do not fake an unreachable phoneme", () => {
+    // 回归：`a → æ / #_` 与 `a → ɑ / _#` 同时命中单音素探针，
+    // 会让词中的 `a`（原样透传）被误报为不可达。
+    const inventory = { consonants: ["p", "t", "k"], vowels: ["a", "i"] };
+    const maps = [
+      {
+        map_id: "map_boundary",
+        name: "Boundary",
+        is_default: true,
+        rules: [
+          { rule_id: "a_init", input: "a", output_phoneme: "æ", context_before: "#", context_after: "" },
+          { rule_id: "a_final", input: "a", output_phoneme: "ɑ", context_before: "", context_after: "#" },
+          { rule_id: "i", input: "i", output_phoneme: "i", context_before: "", context_after: "" },
+        ],
+      },
+    ];
+    expect(findUnreachablePhonemes(inventory, maps)).toEqual([]);
+  });
+
+  test("1d. a phoneme rewritten in every position is still reported", () => {
+    // 反向保护：词中各位置都被规则改写（哨兵探测也无法透传）时必须继续报不可达，
+    // 修复假阳性不能把真阳性一起吞掉。
+    const inventory = { consonants: ["p", "ŋ"], vowels: ["a"] };
+    const maps = [
+      {
+        map_id: "map_rewrite",
+        name: "Rewrite",
+        is_default: true,
+        rules: [
+          { rule_id: "eng", input: "ŋ", output_phoneme: "n", context_before: "", context_after: "" },
+          { rule_id: "a", input: "a", output_phoneme: "a", context_before: "", context_after: "" },
+        ],
+      },
+    ];
+    expect(findUnreachablePhonemes(inventory, maps)).toEqual([
+      { phoneme: "ŋ", category: "consonant" },
+    ]);
   });
 
   test("2. findUnknownOutputPhonemes detects rule outputs outside phoneme_inventory", () => {

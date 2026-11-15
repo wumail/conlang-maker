@@ -42,7 +42,7 @@ export const InflectionRuleFields: React.FC<InflectionRuleFieldsProps> = ({
   const inflectionKindLabels = useInflectionKindLabels();
 
   return (
-  <div className="grid grid-cols-13 gap-2 items-center flex-1">
+  <div className="grid grid-cols-14 gap-2 items-center flex-1">
     <select
       value={rule.pos_id}
       onChange={(e) =>
@@ -130,6 +130,22 @@ export const InflectionRuleFields: React.FC<InflectionRuleFieldsProps> = ({
         className={CHECKBOX}
       />
     </div>
+
+    <input
+      type="number"
+      value={rule.priority ?? 0}
+      onChange={(e) =>
+        handleChange(
+          rule.rule_id,
+          "priority",
+          Number.parseInt(e.target.value, 10) || 0,
+        )
+      }
+      className={`col-span-1 ${INPUT_MONO}`}
+      title={t("grammar.morphologyV3.priorityLabel")}
+      aria-label={t("grammar.morphologyV3.priorityLabel")}
+      placeholder="0"
+    />
 
     <div className="col-span-1 flex items-center justify-center">
       <input

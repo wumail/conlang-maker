@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useGrammarStore } from "../../store/grammarStore";
 import { ConjugationClass } from "../../types";
-import { Plus, Trash2, Info, GripVertical } from "lucide-react";
+import { Plus, Trash2, Info, GripVertical, Layers } from "lucide-react";
 import {
   INPUT_MONO,
   SELECT,
@@ -98,6 +98,13 @@ export const ConjugationClassEditor: React.FC = () => {
       <p className="text-sm text-base-content/60">
         {t("typology.conjugationClassesHint")}
       </p>
+
+      {config.typology.morphological_type === "fusional" && classes.length > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-info/40 bg-info/10 px-3 py-2 text-xs text-base-content/70">
+          <Layers size={14} className="mt-0.5 shrink-0" />
+          <span>{t("typology.fusionClassHint")}</span>
+        </div>
+      )}
 
       {classes.length === 0 && <EmptyState message={t("typology.noClasses")} />}
 
@@ -216,6 +223,13 @@ export const ConjugationClassEditor: React.FC = () => {
                                       ? `${r.affix}-`
                                       : r.type}
                                   )
+                                  {Object.keys(r.dimension_values).length > 1 && (
+                                    <span className="opacity-70">
+                                      · {t("typology.fusionRuleDims", {
+                                        count: Object.keys(r.dimension_values).length,
+                                      })}
+                                    </span>
+                                  )}
                                 </button>
                               );
                             })}

@@ -101,10 +101,17 @@ describe("wordLifecycle pure synchronous digests (T1.2)", () => {
     expect(getWordChangeDetails({ ...parent, phonetic_override: false }, parent).technical).toBe(true);
   });
 
-  test("inheritance lookup respects origin and source with legacy stable IDs", () => {
+  test("inheritance lookup returns a parent only for evolved origin (Roadmap v3)", () => {
     const word = makeSampleWord();
-    expect(getInheritedParentEntryId(word, "parent")).toBe(word.entry_id);
+    // 仅 evolved 返回 parent_entry_id；借词/派生/复合词绝不被误判为继承词
+    expect(getInheritedParentEntryId(word, "parent")).toBeNull();
     expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "derived", parent_entry_id: "root" } }, "parent")).toBeNull();
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "compound", parent_entry_id: "root" } }, "parent")).toBeNull();
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "borrowed", parent_entry_id: "root", source_language_id: "lang_donor" } }, "parent")).toBeNull();
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "borrowed", parent_entry_id: null, source_language_id: null } }, "parent")).toBeNull();
     expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "evolved", parent_entry_id: "root", source_language_id: "other" } }, "parent")).toBeNull();
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "evolved", parent_entry_id: "root", source_language_id: "parent" } }, "parent")).toBe("root");
+    // 旧版 evolved 稳定 ID 克隆（无 parent_entry_id）仍按自身 ID 解析
+    expect(getInheritedParentEntryId({ ...word, etymology: { ...word.etymology, origin_type: "evolved", parent_entry_id: null, source_language_id: null } }, "parent")).toBe(word.entry_id);
   });
 });

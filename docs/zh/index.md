@@ -12,20 +12,20 @@ hero:
       text: GitHub
       link: https://github.com/wumail/conlang-maker
 features:
-  - title: 🔊 交互式音系设计
-    details: IPA 辅音矩阵与元音梯形图，329 个音素音频，12 种语言风格预设一键加载
-  - title: 📖 智能词典管理
-    details: IPA 自动生成、IPA 模糊搜索、多义项与词源追踪
-  - title: 📝 完整语法建模
-    details: 6 种形态操作类型、条件屈折规则、派生规则引擎、屈折范式矩阵
-  - title: 🧪 翻译沙盒
-    details: 标签屈折模式与句法重排模式，实时验证语法规则和词形变化
-  - title: 🔬 造词生成器
-    details: 基于音位配列自动生成候选词、Swadesh 100 映射、衰减系数控制
-  - title: 🌳 语系树与音变引擎
-    details: 子语言派生、拉取同步、借词管理，支持规则集导入导出与历时音变模拟
-  - title: 📊 语料库与行间标注
-    details: 莱比锡标注规范的行间注释，自动标注与词典联动
-  - title: 📤 多格式导出
-    details: PDF、Excel、Hunspell、CSV、LLM Prompt，让 AI 学会你的语言
+  - title: 🔊 交互式音系与书写系统
+    details: 329 个离线音素音频、罗马音静态诊断、5 种重音模式，支持 OpenType 自造字导入、语系继承与 HarfBuzz 排版检查
+  - title: 📖 高密度词典与溯源链
+    details: 表格编辑弹窗、158 项 CLDF/Concepticon 核心概念、DAG 多词素复合、可点击词源追溯链与 10 维质检
+  - title: 📝 统一六步形态引擎
+    details: 不规则覆盖、变位类、融合特征与优先级、形态音位（+ 边界规则）全模块一致执行，附逐步推导面板
+  - title: 🧪 短语树翻译沙盒
+    details: 标签屈折模式与主宾格/作通格递归短语树句法台，实时渲染本族文字与形态推导步骤
+  - title: 🌳 语系演化与同源矩阵
+    details: 子语言派生、词典/语法拉取同步、跨项目借词快照，以及语系页一键展开的全语系同源词矩阵
+  - title: 📊 非破坏性莱比锡语料库
+    details: 三模式自动标注（100% 保护句译与人工锁定）、同句快速收词抽屉与词典反向索引联动
+  - title: 📤 出版级参考书与备份
+    details: 自包含 HTML（内嵌字体）/ Typst 参考语法与双向词典、PDF、Excel、Hunspell、CSV、LLM Prompt 及工作区包
+  - title: 🤖 内置 MCP AI 协作服务
+    details: 本机 HTTP / stdio 双模式暴露 84 个语言学工具，乐观锁与原子事务保障 AI 与桌面端实时安全共存
 ---

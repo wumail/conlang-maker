@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { pushUndoEntry, type HistoryOpts } from "./undoManager";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import { invoke } from "@tauri-apps/api/core";
 import {
   CorpusIndexEntry,
@@ -46,7 +47,7 @@ interface CorpusStore {
   ) => Promise<void>;
 
   // Gloss editing helpers
-  updateGlossedLine: (lineId: string, line: GlossedLine) => void;
+  updateGlossedLine: (lineId: string, line: GlossedLine, opts?: HistoryOpts) => void;
   addGlossedLine: (line: GlossedLine) => void;
   deleteGlossedLine: (lineId: string) => void;
 }
@@ -350,12 +351,14 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
           tracker.dirtyTexts.delete(corpusId);
         }
         syncActiveState(projectPath, languagePath);
+        reportSaveSuccess("corpus");
       } catch (err) {
         if (isConflictError(err)) {
           await raiseConflict(projectPath, languagePath);
           return;
         }
         console.warn(`语料保存失败：${err}`);
+        reportSaveError("corpus", err instanceof Error ? err.message : String(err));
         if (
           (tracker.corpusVersions.get(corpusId) ?? 0) <= scheduledVersion &&
           !tracker.paused
@@ -530,7 +533,10 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
           undo: () => {
             if (prevSnapshot) {
               get().upsertCorpus(structuredClone(prevSnapshot), { skipHistory: true });
+              return;
             }
+            // 新建语料的撤销：没有前像可恢复，只能把刚创建的语料删掉
+            return get().deleteCorpus(text.corpus_id);
           },
           redo: () => get().upsertCorpus(structuredClone(nextSnapshot), { skipHistory: true }),
         });
@@ -602,6 +608,7 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
             return;
           }
           console.warn(`删除语料失败：${err}`);
+          reportSaveError("corpus", err instanceof Error ? err.message : String(err));
           await get().loadIndex(projectPath, languagePath);
         }
       });
@@ -672,7 +679,7 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
 
     // ── Gloss editing helpers ──
 
-    updateGlossedLine: (lineId, line) => {
+    updateGlossedLine: (lineId, line, opts) => {
       const corpus = get().activeCorpus;
       if (!corpus) return;
       const updated: CorpusText = {
@@ -688,7 +695,7 @@ export const useCorpusStore = create<CorpusStore>((set, get) => {
         ),
         metadata: { ...corpus.metadata, updated_at: new Date().toISOString() },
       };
-      get().upsertCorpus(updated);
+      get().upsertCorpus(updated, opts);
     },
 
     addGlossedLine: (line) => {

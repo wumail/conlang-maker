@@ -4,6 +4,7 @@ import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import type { CorpusText, GrammarConfig, PhonologyConfig, WordEntry } from "../../types";
 import { findWordConcordance } from "../../core/engines/concordance";
 import { useCorpusStore } from "../../store/corpusStore";
+import { SELECT } from "../../lib/ui";
 
 interface WordConcordanceSectionProps {
   word: WordEntry;
@@ -26,32 +27,42 @@ export const WordConcordanceSection: React.FC<WordConcordanceSectionProps> = ({
   const [open, setOpen] = useState(false);
   const [texts, setTexts] = useState<CorpusText[] | null>(null);
   const [loading, setLoading] = useState(false);
+  const [senseId, setSenseId] = useState("");
 
   useEffect(() => {
-    if (!open || texts || loading || corpusCount === 0) return;
+    // 注意：不能把 `loading` 放进依赖。setLoading(true) 会触发重跑并清理上一次 effect，
+    // 令 cancelled 提前变 true，Promise 完成后既不写入 texts 也不关闭 loading（永远加载中）。
+    if (!open || texts !== null || corpusCount === 0) return;
+    let alive = true;
     setLoading(true);
-    let cancelled = false;
     void loadAllCorpusTexts()
       .then((loaded) => {
-        if (!cancelled) setTexts(loaded);
+        if (!alive) return;
+        setTexts(loaded);
+        setLoading(false);
       })
       .catch((error: unknown) => {
         // 读取失败时落空数组，避免 effect 反复重试
         console.warn(`加载语料失败：${String(error)}`);
-        if (!cancelled) setTexts([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
+        if (!alive) return;
+        setTexts([]);
+        setLoading(false);
       });
     return () => {
-      cancelled = true;
+      alive = false;
     };
-  }, [open, texts, loading, corpusCount, loadAllCorpusTexts]);
+  }, [open, texts, corpusCount, loadAllCorpusTexts]);
 
   const result = useMemo(() => {
     if (!texts) return { matches: [], total: 0 };
-    return findWordConcordance({ entry: word, corpusTexts: texts, grammar, phono });
-  }, [texts, word, grammar, phono]);
+    return findWordConcordance({
+      entry: word,
+      corpusTexts: texts,
+      grammar,
+      phono,
+      senseId: senseId || undefined,
+    });
+  }, [texts, word, grammar, phono, senseId]);
 
   return (
     <div className="border border-base-300 rounded-lg bg-base-200/40">
@@ -69,6 +80,20 @@ export const WordConcordanceSection: React.FC<WordConcordanceSectionProps> = ({
 
       {open && (
         <div className="border-t border-base-300 px-3 py-3 space-y-2">
+          {word.senses.length > 1 && (
+            <select
+              className={`${SELECT} select-xs w-full text-xs`}
+              value={senseId}
+              onChange={(event) => setSenseId(event.target.value)}
+            >
+              <option value="">{t("corpus.v3.senseFilterAll")}</option>
+              {word.senses.map((sense) => (
+                <option key={sense.sense_id} value={sense.sense_id}>
+                  {sense.gloss || sense.sense_id}
+                </option>
+              ))}
+            </select>
+          )}
           {loading && (
             <p className="text-xs text-base-content/50">{t("common.loading")}</p>
           )}

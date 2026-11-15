@@ -275,12 +275,13 @@ export interface ConceptSearchOptions {
 export interface ConceptSearchHit {
   concept: ConceptDefinition;
   /** 命中的字段，用于 UI 标注匹配来源 */
-  matchedOn: "id" | "zh" | "en" | "field";
+  matchedOn: "id" | "zh" | "en" | "alias" | "field";
   isCustom: boolean;
 }
 
 /**
- * 概念检索：支持 `concept_id`、中文释义、英文释义与语义域名称/标签。
+ * 概念检索：支持 `concept_id`、中文释义、英文释义、别名（`aliases`，
+ * Roadmap v3 / Pillar 4）与语义域名称/标签。
  * 空查询返回按语义域排序的全量前 `limit` 条。
  */
 export function searchConcepts(
@@ -312,15 +313,18 @@ export function searchConcepts(
     const zh = (concept.gloss_zh ?? "").toLowerCase();
     const en = (concept.gloss_en ?? "").toLowerCase();
     const fld = (concept.semantic_field ?? "").toLowerCase();
+    const aliases = (concept.aliases ?? []).map((alias) => alias.toLowerCase());
 
     let matchedOn: ConceptSearchHit["matchedOn"] | null = null;
     if (id === normalized) matchedOn = "id";
     else if (zh === normalized) matchedOn = "zh";
     else if (en === normalized) matchedOn = "en";
     else if (fld === normalized) matchedOn = "field";
+    else if (aliases.includes(normalized)) matchedOn = "alias";
     else if (id.includes(normalized)) matchedOn = "id";
     else if (zh.includes(normalized)) matchedOn = "zh";
     else if (en.includes(normalized)) matchedOn = "en";
+    else if (aliases.some((alias) => alias.includes(normalized))) matchedOn = "alias";
 
     if (matchedOn) hits.push({ ...item, matchedOn });
   }
@@ -329,7 +333,8 @@ export function searchConcepts(
     id: 0,
     zh: 1,
     en: 2,
-    field: 3,
+    alias: 3,
+    field: 4,
   };
   hits.sort((a, b) => {
     const diff = rank[a.matchedOn] - rank[b.matchedOn];

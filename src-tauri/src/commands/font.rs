@@ -700,6 +700,9 @@ mod tests {
             workspace_version: "3.0".to_string(),
             languages: entries,
             custom_concepts: Vec::new(),
+            lexical_gaps: Vec::new(),
+            primary_cognate_overrides: Vec::new(),
+            saved_lexicon_filters: Vec::new(),
             extra: BTreeMap::new(),
         };
         let conlang = project.join("family.conlang");

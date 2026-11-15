@@ -19,7 +19,7 @@ import {
   writeSettingsFile,
   type McpTokenSettings,
 } from "../http/settings";
-import { EXPECTED_76_TOOLS } from "./expected-tools";
+import { EXPECTED_77_TOOLS } from "./expected-tools";
 
 /**
  * Bun 1.3.x dispatches every in-process `Bun.serve()` request through the handler of the
@@ -425,7 +425,7 @@ describe("HTTP transport (mcp serve)", () => {
     }
   }, 30000);
 
-  test("7. write+destructive token with toolsets all exposes all 76 tools", async () => {
+  test("7. write+destructive token with toolsets all exposes all 77 tools", async () => {
     const token = tokenFor({ name: "Admin", mode: "write+destructive", toolsets: "all" });
     const env = createEnv([token]);
     try {
@@ -433,8 +433,8 @@ describe("HTTP transport (mcp serve)", () => {
         const { client } = await connectClient(server.url, token.token);
         try {
           const names = await listToolNames(client);
-          expect(names.length).toBe(EXPECTED_76_TOOLS.length);
-          for (const expected of EXPECTED_76_TOOLS) {
+          expect(names.length).toBe(EXPECTED_77_TOOLS.length);
+          for (const expected of EXPECTED_77_TOOLS) {
             expect(names).toContain(expected);
           }
         } finally {

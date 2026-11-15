@@ -69,6 +69,7 @@ pub fn run() {
             commands::export_import::export_workspace_bundle,
             commands::export_import::import_workspace_bundle,
             commands::export_import::write_text_file,
+            commands::export_import::write_binary_file_base64,
             commands::export_import::save_text_file_atomic,
             // Global Registry
             commands::registry::load_registry,

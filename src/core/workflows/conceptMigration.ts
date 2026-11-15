@@ -5,7 +5,7 @@
  * 本模块把这些标签解析成标准概念锚点，产出可预览的 dry-run 计划，再由
  * `applyConceptMigration` 纯函数落地——**幂等**：重复执行不会产生新变更。
  */
-import type { ConceptDefinition, WordEntry } from "../../types";
+import type { ConceptDefinition, LanguageEntry, WordEntry } from "../../types";
 import { CORE_CONCEPTS, getCoreConcept } from "../../data/core_concepts";
 import { SWADESH_100 } from "../engines/wordGenerator";
 
@@ -357,4 +357,312 @@ export function applyConceptMigration(
     changedEntries,
     strippedTags,
   };
+}
+
+// ── 全语系概念对齐与概念合并（Roadmap v3 / Pillar 4）──────────────────────
+
+/** 跨语言概念对齐候选：精确到「词条 × 义项」，绝不仅绑首个义项 */
+export interface ConceptSenseCandidate {
+  languageId: string;
+  entryId: string;
+  senseId: string;
+  romanized: string;
+  ipa: string;
+  gloss: string;
+  posId: string;
+  score: number;
+  matchReason: "exact_gloss" | "alias" | "token" | "already_bound";
+}
+
+function tokenizeForMatching(value: string): string[] {
+  return value
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((token) => token.length >= 2);
+}
+
+interface ConceptMatchKeys {
+  conceptId: string;
+  exactGlosses: Set<string>;
+  aliases: Set<string>;
+  tokens: Set<string>;
+}
+
+function buildConceptMatchKeys(concept: ConceptDefinition): ConceptMatchKeys {
+  const exactGlosses = new Set<string>();
+  const aliases = new Set<string>();
+  const tokens = new Set<string>();
+  for (const gloss of [concept.gloss_en, concept.gloss_zh]) {
+    const key = normalizeKey(gloss ?? "");
+    if (key) exactGlosses.add(key);
+  }
+  for (const alias of concept.aliases ?? []) {
+    const key = normalizeKey(alias);
+    if (!key) continue;
+    aliases.add(key);
+    tokens.add(key);
+  }
+  for (const source of [concept.gloss_en, concept.gloss_zh, ...(concept.aliases ?? [])]) {
+    for (const token of tokenizeForMatching(source ?? "")) {
+      tokens.add(token);
+    }
+  }
+  return { conceptId: concept.concept_id, exactGlosses, aliases, tokens };
+}
+
+/**
+ * 全语系概念对齐自动建议（Roadmap v3 / Pillar 4.3）。
+ *
+ * 遍历每门语言每个词条的**每一个义项**（修复旧实现只看 `senses[0]` 的缺陷），
+ * 按「已绑定 → 释义精确命中 → 概念别名命中 → 释义分词命中」四路打分，
+ * 使 `zov` 的「五 / 手 / 拿住」三个义项分别进入 `five` / `hand` / `hold` 的候选。
+ *
+ * 返回 `conceptId → languageId → 候选列表`（按 score 降序，同分按词形稳定排序）。
+ */
+export function suggestCrossLanguageConceptAlignments(params: {
+  concepts: ConceptDefinition[];
+  languages: LanguageEntry[];
+  wordsByLanguage: Record<string, WordEntry[]>;
+  /** 每门语言每个概念最多返回多少条候选（UI 只需前几条，避免上万条候选拖垮渲染） */
+  maxCandidatesPerLanguage?: number;
+}): Record<string, Record<string, ConceptSenseCandidate[]>> {
+  const { concepts, languages, wordsByLanguage, maxCandidatesPerLanguage } = params;
+  const result: Record<string, Record<string, ConceptSenseCandidate[]>> = {};
+  if (concepts.length === 0) return result;
+
+  interface IndexedSense {
+    word: WordEntry;
+    sense: WordEntry["senses"][number];
+    glossNorm: string;
+    defNorms: string[];
+    glossTokens: string[];
+    defTokens: string[];
+  }
+
+  interface LanguageIndex {
+    byConceptId: Map<string, IndexedSense[]>;
+    byGloss: Map<string, IndexedSense[]>;
+    byDef: Map<string, IndexedSense[]>;
+    byGlossToken: Map<string, IndexedSense[]>;
+    byDefToken: Map<string, IndexedSense[]>;
+  }
+
+  const pushTo = <T,>(map: Map<string, T[]>, key: string, value: T): void => {
+    const bucket = map.get(key);
+    if (bucket) bucket.push(value);
+    else map.set(key, [value]);
+  };
+
+  /** 每门语言只建一次倒排索引：按概念 id / 整条释义 / 释义分词 / 定义分词 */
+  const indexes = new Map<string, LanguageIndex>();
+  for (const language of languages) {
+    const index: LanguageIndex = {
+      byConceptId: new Map(),
+      byGloss: new Map(),
+      byDef: new Map(),
+      byGlossToken: new Map(),
+      byDefToken: new Map(),
+    };
+    for (const word of wordsByLanguage[language.language_id] ?? []) {
+      for (const sense of word.senses) {
+        const glossNorm = normalizeKey(sense.gloss ?? "");
+        if (!glossNorm) continue;
+        const defNorms = (sense.definitions ?? []).map((def) => normalizeKey(def));
+        const glossTokens = tokenizeForMatching(sense.gloss ?? "");
+        const defTokens = (sense.definitions ?? []).flatMap((def) => tokenizeForMatching(def));
+        const entry: IndexedSense = { word, sense, glossNorm, defNorms, glossTokens, defTokens };
+        if (sense.concept_id) pushTo(index.byConceptId, sense.concept_id, entry);
+        pushTo(index.byGloss, glossNorm, entry);
+        for (const defNorm of new Set(defNorms)) pushTo(index.byDef, defNorm, entry);
+        for (const token of new Set(glossTokens)) pushTo(index.byGlossToken, token, entry);
+        for (const token of new Set(defTokens)) pushTo(index.byDefToken, token, entry);
+      }
+    }
+    indexes.set(language.language_id, index);
+  }
+
+  for (const concept of concepts) {
+    const keys = buildConceptMatchKeys(concept);
+    const perLanguage: Record<string, ConceptSenseCandidate[]> = {};
+
+    for (const language of languages) {
+      const index = indexes.get(language.language_id);
+      if (!index) continue;
+
+      // 只把「可能命中」的义项取出来复核，避免对全词典做全量扫描
+      const gathered = new Set<IndexedSense>();
+      const collect = (bucket: IndexedSense[] | undefined) => {
+        if (!bucket) return;
+        for (const entry of bucket) gathered.add(entry);
+      };
+      collect(index.byConceptId.get(keys.conceptId));
+      for (const gloss of keys.exactGlosses) collect(index.byGloss.get(gloss));
+      for (const alias of keys.aliases) {
+        collect(index.byGloss.get(alias));
+        collect(index.byDef.get(alias));
+      }
+      for (const token of keys.tokens) {
+        collect(index.byGlossToken.get(token));
+        collect(index.byDefToken.get(token));
+      }
+
+      const limit = maxCandidatesPerLanguage ?? 0;
+      const candidates: ConceptSenseCandidate[] = [];
+      /** 有上限时维持「按分数/词形有序的前 K 条」，避免对上万条候选做全量排序 */
+      const keepCandidate = (candidate: ConceptSenseCandidate) => {
+        if (limit <= 0) {
+          candidates.push(candidate);
+          return;
+        }
+        let index = candidates.length;
+        while (index > 0) {
+          const prev = candidates[index - 1] as ConceptSenseCandidate;
+          const better =
+            candidate.score > prev.score ||
+            (candidate.score === prev.score &&
+              (candidate.romanized < prev.romanized ||
+                (candidate.romanized === prev.romanized && candidate.senseId < prev.senseId)));
+          if (!better) break;
+          index -= 1;
+        }
+        if (index >= limit) return;
+        candidates.splice(index, 0, candidate);
+        if (candidates.length > limit) candidates.length = limit;
+      };
+
+      for (const entry of gathered) {
+        const { word, sense, glossNorm, defNorms, glossTokens, defTokens } = entry;
+        let score = 0;
+        let matchReason: ConceptSenseCandidate["matchReason"] | null = null;
+
+        if (sense.concept_id === keys.conceptId) {
+          score = 100;
+          matchReason = "already_bound";
+        } else if (keys.exactGlosses.has(glossNorm)) {
+          score = 90;
+          matchReason = "exact_gloss";
+        } else if (
+          keys.aliases.has(glossNorm) ||
+          defNorms.some((defNorm) => keys.aliases.has(defNorm))
+        ) {
+          score = 75;
+          matchReason = "alias";
+        } else if (glossTokens.some((token) => keys.tokens.has(token))) {
+          score = 60;
+          matchReason = "token";
+        } else if (defTokens.some((token) => keys.tokens.has(token))) {
+          score = 50;
+          matchReason = "token";
+        }
+
+        if (matchReason === null) continue;
+        keepCandidate({
+          languageId: language.language_id,
+          entryId: word.entry_id,
+          senseId: sense.sense_id,
+          romanized: word.con_word_romanized,
+          ipa: word.phonetic_ipa ?? "",
+          gloss: sense.gloss ?? "",
+          posId: sense.pos_id ?? "",
+          score,
+          matchReason,
+        });
+      }
+
+      if (limit <= 0) {
+        candidates.sort((a, b) => {
+          if (a.score !== b.score) return b.score - a.score;
+          const byForm = a.romanized.localeCompare(b.romanized);
+          if (byForm !== 0) return byForm;
+          return a.senseId.localeCompare(b.senseId);
+        });
+      }
+      if (candidates.length > 0) perLanguage[language.language_id] = candidates;
+    }
+
+    result[concept.concept_id] = perLanguage;
+  }
+
+  return result;
+}
+
+/**
+ * 预览自定义概念合并（Roadmap v3 / Pillar 4.4）。
+ *
+ * 返回合并后的概念表（源概念被移除、别名并入目标概念）与受影响的全部
+ * 词典义项绑定列表（`concept_id === sourceConceptId` 的义项，跨全部语言）。
+ * 纯预览：不修改词条数据；实际重写由调用方（MCP 事务 / UI 批量写）执行。
+ */
+export function previewMergeCustomConcepts(params: {
+  sourceConceptId: string;
+  targetConceptId: string;
+  customConcepts: ConceptDefinition[];
+  wordsByLanguage: Record<string, WordEntry[]>;
+}): {
+  nextConcepts: ConceptDefinition[];
+  affectedBindings: Array<{
+    languageId: string;
+    entryId: string;
+    senseId: string;
+    romanized: string;
+  }>;
+} {
+  const { sourceConceptId, targetConceptId, customConcepts, wordsByLanguage } = params;
+
+  const affectedBindings: Array<{
+    languageId: string;
+    entryId: string;
+    senseId: string;
+    romanized: string;
+  }> = [];
+
+  if (sourceConceptId !== targetConceptId) {
+    for (const [languageId, words] of Object.entries(wordsByLanguage)) {
+      for (const word of words) {
+        for (const sense of word.senses) {
+          if (sense.concept_id !== sourceConceptId) continue;
+          affectedBindings.push({
+            languageId,
+            entryId: word.entry_id,
+            senseId: sense.sense_id,
+            romanized: word.con_word_romanized,
+          });
+        }
+      }
+    }
+  }
+
+  const source = customConcepts.find((concept) => concept.concept_id === sourceConceptId);
+  const target = customConcepts.find((concept) => concept.concept_id === targetConceptId);
+
+  if (!source || !target || sourceConceptId === targetConceptId) {
+    // 源/目标不在自定义概念表（例如目标为核心概念）或本就是同一概念：概念表不变
+    return {
+      nextConcepts: customConcepts.map((concept) => ({ ...concept })),
+      affectedBindings,
+    };
+  }
+
+  const mergedAliases = [...new Set([...(target.aliases ?? []), ...(source.aliases ?? [])])];
+  const mergedLists = [
+    ...new Set([...(target.standard_lists ?? []), ...(source.standard_lists ?? [])]),
+  ];
+
+  const nextConcepts = customConcepts
+    .filter((concept) => concept.concept_id !== sourceConceptId)
+    .map((concept): ConceptDefinition => {
+      if (concept.concept_id !== targetConceptId) return { ...concept };
+      return {
+        ...concept,
+        standard_lists: mergedLists as ConceptDefinition["standard_lists"],
+        ...(concept.concepticon_id
+          ? {}
+          : source.concepticon_id
+            ? { concepticon_id: source.concepticon_id }
+            : {}),
+        ...(mergedAliases.length > 0 ? { aliases: mergedAliases } : {}),
+      };
+    });
+
+  return { nextConcepts, affectedBindings };
 }

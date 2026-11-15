@@ -31,6 +31,7 @@ import { computeWordIpa } from "../../src/core/lexicon/utils";
 import { computePullSync } from "../../src/core/workflows/pullSync";
 import { PHONEME_FEATURES } from "../../src/data/ipa_features";
 import type {
+  BorrowedSourceSnapshot,
   EntryMetadata,
   Etymology,
   OriginType,
@@ -82,10 +83,79 @@ const ORIGIN_TYPES = [
   "a_posteriori",
   "mixed",
   "derived",
+  "compound",
   "borrowed",
   "evolved",
 ] as const;
 
+const SEMANTIC_CHANGE_KINDS = [
+  "unchanged",
+  "narrowing",
+  "broadening",
+  "shift",
+  "metaphor",
+  "added_sense",
+  "replaced_sense",
+] as const;
+
+
+const COMPOUND_RELATIONS = [
+  "root",
+  "modifier",
+  "head",
+  "affix",
+  "reduplicant",
+] as const;
+
+const morphemeComponentInputSchema = z
+  .object({
+    entry_id: z.string().optional(),
+    derivation_rule_id: z.string().optional(),
+    surface_override: z.string().optional(),
+    relation: z.enum(COMPOUND_RELATIONS),
+  })
+  .passthrough();
+
+/** 借入瞬间的供词来源快照（Roadmap v3 / Pillar 1：跨项目借词的历史依据不丢失） */
+const borrowedSourceInputSchema = z
+  .object({
+    source_conlang_path: z
+      .string()
+      .optional()
+      .describe(
+        "Path to the donor project's .conlang workspace file when borrowed cross-project (omit for same-project loans)",
+      ),
+    source_family_name: z
+      .string()
+      .optional()
+      .describe("Display name of the donor family/project recorded at borrow time"),
+    source_language_id: z
+      .string()
+      .describe("Donor language_id recorded at borrow time"),
+    source_language_name: z
+      .string()
+      .optional()
+      .describe("Display name of the donor language recorded at borrow time"),
+    source_entry_id: z
+      .string()
+      .describe("Donor entry_id the word was borrowed from"),
+    source_sense_id: z
+      .string()
+      .optional()
+      .describe("Specific donor sense_id when borrowing is sense-precise"),
+    borrowed_form: z
+      .string()
+      .describe("Donor romanized form snapshot at the moment of borrowing"),
+    borrowed_ipa: z
+      .string()
+      .optional()
+      .describe("Donor IPA snapshot at the moment of borrowing"),
+    borrowed_gloss: z
+      .string()
+      .optional()
+      .describe("Donor gloss snapshot at the moment of borrowing"),
+  })
+  .passthrough();
 
 const senseInputSchema = z
   .object({
@@ -95,16 +165,80 @@ const senseInputSchema = z
     definitions: z.array(z.string()).optional(),
     examples: z.array(z.string()).optional(),
     grammatical_function: z.string().optional(),
+    usage_note: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Sense-level usage/register note (e.g. 'formal', 'only of animals'); pass null or empty to clear",
+      ),
+    inflection_class_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Sense-level inflection class override (GrammarConfig.conjugation_classes[].class_id), e.g. noun sense in declension I vs verb sense in conjugation II; pass null or empty to clear",
+      ),
+    concept_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Concept ID from concept_list (e.g. 'water', 'i') to align this sense in family_cognate_matrix; pass null to clear",
+      ),
   })
   .passthrough();
 
 const etymologyInputSchema = z
   .object({
-    origin_type: z.enum(ORIGIN_TYPES).optional(),
-    parent_entry_id: z.string().nullable().optional(),
-    source_language_id: z.string().nullable().optional(),
-    applied_sound_changes: z.array(z.string()).optional(),
-    semantic_shift_note: z.string().optional(),
+    origin_type: z
+      .enum(ORIGIN_TYPES)
+      .optional()
+      .describe(
+        "Origin type: 'evolved' = diachronic inheritance (requires parent_entry_id + source_language_id); 'derived'/'compound' = synchronic morphology via components (parent_entry_id must be null); 'borrowed' = loanword (parent_entry_id must be null, requires borrowed_source snapshot)",
+      ),
+    parent_entry_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Parent entry_id in the parent language — ONLY for origin_type 'evolved'; must be null for derived/compound/borrowed",
+      ),
+    source_language_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Parent language_id for 'evolved', or donor language_id for 'borrowed'",
+      ),
+    applied_sound_changes: z
+      .array(z.string())
+      .optional()
+      .describe("Sound change rule_ids applied along the inherited chain"),
+    semantic_shift_note: z
+      .string()
+      .optional()
+      .describe("Free-text note explaining the semantic shift"),
+    semantic_change_kind: z
+      .union([z.enum(SEMANTIC_CHANGE_KINDS), z.literal("")])
+      .nullable()
+      .optional()
+      .describe(
+        "Semantic change classification, recorded separately from sound changes: unchanged | narrowing | broadening | shift | metaphor | added_sense | replaced_sense; pass null or empty to clear",
+      ),
+    borrowed_source: borrowedSourceInputSchema
+      .nullable()
+      .optional()
+      .describe(
+        "Donor source snapshot required for origin_type 'borrowed' (cross-project provenance: family path, donor language/entry/sense, and the borrowed form/IPA/gloss at borrow time); pass null to clear, and it is cleared automatically when origin_type moves away from 'borrowed'",
+      ),
+    components: z
+      .array(morphemeComponentInputSchema)
+      .optional()
+      .describe(
+        "Ordered synchronic morpheme components for derived/compound words (relation: root | modifier | head | affix | reduplicant)",
+      ),
+    compounds_stale_digest: z.string().optional(),
   })
   .passthrough();
 
@@ -131,6 +265,13 @@ const wordUpsertItemSchema = z
     con_word_romanized: z.string(),
     phonetic_ipa: z.string().optional(),
     phonetic_override: z.boolean().optional(),
+    inflection_class_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Default inflection class of this entry (GrammarConfig.conjugation_classes[].class_id); sense-level inflection_class_id overrides it. Pass null or empty to clear",
+      ),
     senses: z.array(senseInputSchema).optional(),
     etymology: etymologyInputSchema.optional(),
     metadata: metadataInputSchema.optional(),
@@ -261,6 +402,21 @@ function buildNormalizedWordFromUpsert(
     ) {
       delete senseCopy.grammatical_function;
     }
+    // 显式置空（null / ""）：已有词条时保留 `key: undefined` 这个自有属性，
+    // 让 mergeWordPreservingUnknown 的浅合并能覆盖旧值（否则旧 usage_note 会复活），
+    // 合并完成后再由 mergeWordPreservingUnknown 统一删除值为 undefined 的键。
+    for (const optionalField of ["usage_note", "inflection_class_id", "concept_id"] as const) {
+      if (!(optionalField in senseCopy)) continue;
+      const value = senseCopy[optionalField];
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      if (trimmed) {
+        senseCopy[optionalField] = trimmed;
+      } else if (existing) {
+        senseCopy[optionalField] = undefined;
+      } else {
+        delete senseCopy[optionalField];
+      }
+    }
     return {
       ...(senseCopy as unknown as Sense),
       sense_id: s.sense_id?.trim() || newPrefixedId("sense"),
@@ -283,6 +439,15 @@ function buildNormalizedWordFromUpsert(
     phonoConfig,
   );
 
+  const rawEtymology = rawItem.etymology;
+  // 先把 null 归一成 undefined：Etymology 用「缺省」表达空值，null 只在入参语义里代表置空
+  const incomingEtymology: Partial<Etymology> = rawEtymology
+    ? {
+        ...rawEtymology,
+        semantic_change_kind: rawEtymology.semantic_change_kind || undefined,
+        borrowed_source: rawEtymology.borrowed_source ?? undefined,
+      }
+    : {};
   const etymology: Etymology = {
     origin_type: "a_priori",
     parent_entry_id: null,
@@ -290,8 +455,25 @@ function buildNormalizedWordFromUpsert(
     applied_sound_changes: [],
     semantic_shift_note: "",
     ...(existing?.etymology ?? {}),
-    ...(rawItem.etymology ?? {}),
+    ...incomingEtymology,
   };
+  // 语义变化分类：显式传 null / "" 时置空（已有词条保留 undefined 标记以覆盖旧值）
+  const rawSemanticKind = rawEtymology?.semantic_change_kind;
+  if (rawSemanticKind === null || rawSemanticKind === "") {
+    if (existing) etymology.semantic_change_kind = undefined;
+    else delete etymology.semantic_change_kind;
+  } else if (!etymology.semantic_change_kind) {
+    delete etymology.semantic_change_kind;
+  }
+  // 借入快照：显式 null，或 origin_type 已不是 borrowed 且未给新快照时，旧快照必须清掉，
+  // 否则「borrowed → a_priori」会残留过期的供语来源信息。
+  const rawBorrowedSource = rawEtymology?.borrowed_source;
+  if (rawBorrowedSource === null || (etymology.origin_type !== "borrowed" && !rawBorrowedSource)) {
+    if (existing) etymology.borrowed_source = undefined;
+    else delete etymology.borrowed_source;
+  } else if (!etymology.borrowed_source) {
+    delete etymology.borrowed_source;
+  }
 
   const metadata: EntryMetadata = {
     tags: [],
@@ -328,6 +510,16 @@ function buildNormalizedWordFromUpsert(
     etymology,
     metadata,
   };
+  const rawInflectionClass = rawItem.inflection_class_id?.trim() ?? "";
+  if (rawInflectionClass) {
+    candidate.inflection_class_id = rawInflectionClass;
+  } else if (rawItem.inflection_class_id !== undefined && existing) {
+    // 显式 null / 空串：保留 undefined 标记，合并时覆盖掉旧值
+    candidate.inflection_class_id = undefined;
+  } else {
+    // 未传该字段 = 保留 existing 原值（candidate 不含该键，浅合并不会丢）
+    delete candidate.inflection_class_id;
+  }
   if (evolution !== undefined) {
     candidate.evolution = evolution;
   } else {
@@ -1884,7 +2076,7 @@ export function registerLexiconTools(
     name: "lex_borrow",
     title: "Borrow Words from Another Language",
     description:
-      "Borrow 1..500 lexicon entries from a source language in the same family into the target language, recording origin_type = 'borrowed', source_language_id, and parent_entry_id.",
+      "Borrow 1..500 lexicon entries from a source language into the target language, recording origin_type = 'borrowed' with parent_entry_id = null and a full borrowed_source snapshot (donor language/entry/sense, borrowed form/IPA/gloss at borrow time). Same-family donors are linked live; cross-project provenance can be recorded via source_family_path.",
     toolsets: ["write", "evolution"],
     access: "write",
     idempotent: true,
@@ -1900,6 +2092,18 @@ export function registerLexiconTools(
         .min(1)
         .max(500)
         .describe("Source language entry_ids to borrow"),
+      source_sense_id: z
+        .string()
+        .optional()
+        .describe(
+          "Specific donor sense_id to record in the borrowed_source snapshot (sense-precise borrowing); must exist in every borrowed donor entry",
+        ),
+      source_family_path: z
+        .string()
+        .optional()
+        .describe(
+          "Donor project's .conlang workspace path when borrowing across projects (recorded into borrowed_source.source_conlang_path for provenance)",
+        ),
       adapt_with_sca: z
         .boolean()
         .optional()
@@ -1969,6 +2173,23 @@ export function registerLexiconTools(
             );
           }
 
+          if (args.source_sense_id) {
+            const senseMissing = args.entry_ids.filter(
+              (id) =>
+                !sourceById
+                  .get(id)!
+                  .senses.some((s) => s.sense_id === args.source_sense_id),
+            );
+            if (senseMissing.length > 0) {
+              throw new McpError(
+                "NOT_FOUND",
+                `source_sense_id "${args.source_sense_id}" not found in ${senseMissing.length} donor entry/entries.`,
+                undefined,
+                { entries_without_sense: senseMissing },
+              );
+            }
+          }
+
           const targetPhono = readPhonologyUnlocked(
             family.project_dir,
             family.conlang_file_path,
@@ -2003,10 +2224,13 @@ export function registerLexiconTools(
                 if (
                   word.etymology.origin_type === "borrowed" &&
                   word.etymology.source_language_id ===
-                    sourceResolved.language.language_id &&
-                  word.etymology.parent_entry_id
+                    sourceResolved.language.language_id
                 ) {
-                  existingLoansBySrc.set(word.etymology.parent_entry_id, word);
+                  // Roadmap v3：优先用 borrowed_source 快照定位既有借词，兼容旧版 parent_entry_id 引用
+                  const srcId =
+                    word.etymology.borrowed_source?.source_entry_id ??
+                    word.etymology.parent_entry_id;
+                  if (srcId) existingLoansBySrc.set(srcId, word);
                 }
               }
 
@@ -2059,6 +2283,29 @@ export function registerLexiconTools(
                   ]),
                 );
 
+                const donorSense = args.source_sense_id
+                  ? srcWord.senses.find(
+                      (s) => s.sense_id === args.source_sense_id,
+                    )
+                  : undefined;
+                const borrowedSource: BorrowedSourceSnapshot = {
+                  ...(args.source_family_path
+                    ? { source_conlang_path: args.source_family_path }
+                    : {}),
+                  source_language_id: sourceResolved.language.language_id,
+                  source_language_name: sourceResolved.language.name,
+                  source_entry_id: srcWord.entry_id,
+                  ...(args.source_sense_id
+                    ? { source_sense_id: args.source_sense_id }
+                    : {}),
+                  borrowed_form: srcWord.con_word_romanized,
+                  ...(srcWord.phonetic_ipa
+                    ? { borrowed_ipa: srcWord.phonetic_ipa }
+                    : {}),
+                  borrowed_gloss:
+                    donorSense?.gloss ?? srcWord.senses[0]?.gloss ?? "",
+                };
+
                 const loanEntry: WordEntry = mergeWordPreservingUnknown(
                   priorLoan,
                   {
@@ -2075,13 +2322,15 @@ export function registerLexiconTools(
                     })),
                     etymology: {
                       origin_type: "borrowed",
-                      parent_entry_id: srcWord.entry_id,
+                      // Roadmap v3 / Pillar 1：供语词条严禁写入 parent_entry_id，完整信息走 borrowed_source 快照
+                      parent_entry_id: null,
                       source_language_id: sourceResolved.language.language_id,
                       applied_sound_changes: appliedRuleIds,
                       semantic_shift_note:
                         args.semantic_shift_note ??
                         priorLoan?.etymology.semantic_shift_note ??
                         "",
+                      borrowed_source: borrowedSource,
                     },
                     metadata: {
                       tags: mergedTags,

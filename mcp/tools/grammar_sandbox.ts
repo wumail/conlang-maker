@@ -8,8 +8,9 @@ import {
   applyAgglutinativeChain,
   applyFusionalInflection,
   applyInflection,
-  applyInflectionTypologyAware,
+  findBestIrregularOverride,
   generateParadigm,
+  inflectWord,
 } from "../../src/core/engines/morphologyEngine";
 import {
   type AnnotatedToken,
@@ -210,6 +211,13 @@ const inflectionRuleInputSchema = z
     slot_id: z.string().optional(),
     conjugation_class_id: z.string().optional(),
     fused_dimensions: z.array(z.record(z.string(), z.string())).optional(),
+    priority: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        "Explicit rule priority (ascending: smaller wins; default 0). Ties within the same slot/dimension set are reported as conflicts and resolved by rule_id lexicographic order.",
+      ),
     sca_mutable: z.boolean().optional(),
   })
   .passthrough();
@@ -336,9 +344,9 @@ function resolveDimensionValues(
 }
 
 function resolveWordAndPos(
-  args: { word?: string; entry_id?: string; pos_id?: string },
+  args: { word?: string; entry_id?: string; pos_id?: string; sense_id?: string },
   words: readonly WordEntry[],
-): { word: string; entry_id: string; pos_id: string } {
+): { word: string; entry_id: string; pos_id: string; entry: WordEntry | undefined } {
   let entry: WordEntry | undefined;
   if (args.entry_id) {
     entry = words.find((w) => w.entry_id === args.entry_id);
@@ -360,11 +368,15 @@ function resolveWordAndPos(
       "Provide either a non-empty word or an existing entry_id.",
     );
   }
-  const posId = args.pos_id?.trim() || entry?.senses[0]?.pos_id || "";
+  const matchedSense = args.sense_id
+    ? entry?.senses.find((s) => s.sense_id === args.sense_id)
+    : undefined;
+  const posId = args.pos_id?.trim() || matchedSense?.pos_id || entry?.senses[0]?.pos_id || "";
   return {
     word,
     entry_id: args.entry_id?.trim() || entry?.entry_id || "",
     pos_id: posId,
+    entry,
   };
 }
 
@@ -493,6 +505,10 @@ export function registerGrammarSandboxTools(
         .optional()
         .describe("Optional lexicon entry_id (looks up stem, POS, and irregular overrides)"),
       pos_id: z.string().optional().describe("Part of speech ID"),
+      sense_id: z
+        .string()
+        .optional()
+        .describe("Optional sense_id of the entry (enables sense-level inflection_class_id overrides)"),
       dimension_values: z
         .record(z.string(), z.string())
         .optional()
@@ -504,13 +520,14 @@ export function registerGrammarSandboxTools(
       mode: z
         .enum(["typology_aware", "slot_chain", "fusional", "single_rule"])
         .optional()
-        .describe("Inflection strategy (default: typology_aware, or single_rule when rule_id is set)"),
+        .describe("Inflection strategy (default: typology_aware via the unified 6-step engine, or single_rule when rule_id is set)"),
       items: z
         .array(
           z.object({
             word: z.string().optional(),
             entry_id: z.string().optional(),
             pos_id: z.string().optional(),
+            sense_id: z.string().optional(),
             dimension_values: z.record(z.string(), z.string()).optional(),
             rule_id: z.string().optional(),
           }),
@@ -546,6 +563,7 @@ export function registerGrammarSandboxTools(
                 word: args.word,
                 entry_id: args.entry_id,
                 pos_id: args.pos_id,
+                sense_id: args.sense_id,
                 dimension_values: args.dimension_values,
                 rule_id: args.rule_id,
               },
@@ -606,6 +624,49 @@ export function registerGrammarSandboxTools(
           snapshot.gram.config.inflection_dimensions,
         );
 
+        if (effectiveMode === "typology_aware") {
+          // 统一 6 步形态引擎：变位类解析 + 融合维度 + 优先级/冲突 + 推导链
+          const unified = inflectWord({
+            stem: target.word,
+            posId: target.pos_id,
+            dimensions: resolvedDims,
+            grammar: snapshot.gram.config,
+            phono: snapshot.phono.config,
+            entry: target.entry,
+            senseId: req.sense_id ?? args.sense_id,
+          });
+          const ipa = generateIPA(unified.surface_form, snapshot.phono.config, {
+            stem_start: unified.stem_start,
+          });
+          const log = unified.steps
+            .map((step) => step.label)
+            .filter(Boolean)
+            .join(" | ");
+          return {
+            input: target.word,
+            entry_id: target.entry_id || null,
+            pos_id: target.pos_id,
+            dimension_values: resolvedDims,
+            mode: effectiveMode,
+            result: unified.surface_form,
+            surface_form: unified.surface_form,
+            morpheme_break: unified.morpheme_break,
+            gloss_labels: unified.gloss_labels,
+            phonemic_ipa: ipa.phonemic,
+            surface_ipa: ipa.surface || null,
+            phonetic_ipa: unified.phonetic_ipa,
+            stem_start: unified.stem_start,
+            applied:
+              unified.applied_rule_ids.length > 0 || unified.used_irregular,
+            applied_rule_ids: unified.applied_rule_ids,
+            used_irregular: unified.used_irregular,
+            log,
+            diagnosis: unified.diagnosis,
+            conflicts: unified.conflicts,
+            steps: unified.steps,
+          };
+        }
+
         const inf =
           effectiveMode === "slot_chain"
             ? applyAgglutinativeChain(
@@ -615,23 +676,14 @@ export function registerGrammarSandboxTools(
                 snapshot.gram.config,
                 snapshot.phono.config,
               )
-            : effectiveMode === "fusional"
-              ? applyFusionalInflection(
-                  target.word,
-                  target.entry_id,
-                  target.pos_id,
-                  resolvedDims,
-                  snapshot.gram.config,
-                  snapshot.phono.config,
-                )
-              : applyInflectionTypologyAware(
-                  target.word,
-                  target.entry_id,
-                  target.pos_id,
-                  resolvedDims,
-                  snapshot.gram.config,
-                  snapshot.phono.config,
-                );
+            : applyFusionalInflection(
+                target.word,
+                target.entry_id,
+                target.pos_id,
+                resolvedDims,
+                snapshot.gram.config,
+                snapshot.phono.config,
+              );
 
         const ipa = generateIPA(inf.result, snapshot.phono.config, { stem_start: inf.stem_start });
         return {
@@ -676,6 +728,12 @@ export function registerGrammarSandboxTools(
       ...languageInputFields,
       word: z.string().optional().describe("Romanized stem"),
       entry_id: z.string().optional().describe("Lexicon entry_id"),
+      sense_id: z
+        .string()
+        .optional()
+        .describe(
+          "Lexicon sense_id; selects the sense-level inflection_class_id so the paradigm matches gram_inflect",
+        ),
       pos_id: z
         .string()
         .optional()
@@ -713,21 +771,27 @@ export function registerGrammarSandboxTools(
         target.pos_id,
         snapshot.gram.config.inflection_rules,
         snapshot.phono.config,
-        target.entry_id ? { entryId: target.entry_id, grammar: snapshot.gram.config } : undefined,
+        target.entry
+          ? {
+              entryId: target.entry.entry_id,
+              grammar: snapshot.gram.config,
+              entry: target.entry,
+              // 与 gram_inflect 保持 100% 一致：只有显式传入 sense_id 时才按义项级变位类解析
+              ...(args.sense_id ? { senseId: args.sense_id } : {}),
+            }
+          : target.entry_id
+            ? { entryId: target.entry_id, grammar: snapshot.gram.config }
+            : undefined,
       );
 
-      const overrides = target.entry_id
-        ? snapshot.gram.config.irregular_overrides.filter(
-            (ov) => ov.entry_id === target.entry_id,
-          )
-        : [];
-
       const cells = rawCells.map((cell) => {
-        const matchedOverride = overrides.find((ov) =>
-          Object.entries(ov.dimension_values).every(
-            ([k, v]) => cell.dimensionValues[k] === v,
-          ),
-        );
+        const matchedOverride = target.entry_id
+          ? findBestIrregularOverride(
+              snapshot.gram.config.irregular_overrides,
+              target.entry_id,
+              cell.dimensionValues,
+            )
+          : undefined;
         const surfaceForm = matchedOverride
           ? matchedOverride.surface_form
           : cell.result;

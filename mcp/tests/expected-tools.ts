@@ -1,5 +1,5 @@
-// Shared PRD coverage fixture: the 76 tools listed in design/mcp/PRD.md §5.
-export const EXPECTED_76_TOOLS: readonly string[] = [
+// Shared PRD coverage fixture: the 77 tools listed in design/mcp/PRD.md §5.
+export const EXPECTED_77_TOOLS: readonly string[] = [
   // §5.1 System & Family (14)
   "server_info",
   "family_list",
@@ -81,6 +81,7 @@ export const EXPECTED_76_TOOLS: readonly string[] = [
   "concept_upsert",
   "family_cognate_matrix",
   "lex_word_family",
+  "lex_etymology_lineage",
   "gram_pull_sync",
   // §5.9 Export & Import (5)
   "export_llm_brief",

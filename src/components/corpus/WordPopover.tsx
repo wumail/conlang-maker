@@ -13,8 +13,8 @@ export function WordPopover({ entry, position }: WordPopoverProps) {
 
   return (
     <div
-      className="fixed z-50 bg-base-100 border border-base-300 rounded-lg shadow-lg p-3 w-64 text-xs pointer-events-none"
-      style={{ left: position.x, top: position.y + 20 }}
+      className="pointer-events-none fixed z-50 max-h-[60vh] w-64 overflow-hidden rounded-lg border border-base-300 bg-base-100 p-3 text-xs shadow-lg"
+      style={{ left: position.x, top: position.y }}
     >
       <div className="flex items-center gap-2 mb-1">
         <div className="min-w-0">

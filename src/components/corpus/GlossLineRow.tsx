@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 import { useCorpusStore } from "../../store/corpusStore";
@@ -12,11 +12,17 @@ import { ScriptText } from "../writing/ScriptText";
 
 interface GlossLineRowProps {
   line: GlossedLine;
-  /** 新建词条后由语料页重跑当前句 autoGloss */
+  /** 由语料页重跑当前句 autoGloss */
   onLexEntryCreated?: () => void;
+  /** 从词条跳转过来时高亮并滚动定位 */
+  highlight?: boolean;
 }
 
-export function GlossLineRow({ line, onLexEntryCreated }: GlossLineRowProps) {
+export function GlossLineRow({ line, onLexEntryCreated, highlight = false }: GlossLineRowProps) {
+  const rowRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (highlight) rowRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlight]);
   const { t } = useTranslation();
   const updateGlossedLine = useCorpusStore((s) => s.updateGlossedLine);
   const deleteGlossedLine = useCorpusStore((s) => s.deleteGlossedLine);
@@ -64,7 +70,12 @@ export function GlossLineRow({ line, onLexEntryCreated }: GlossLineRowProps) {
   };
 
   return (
-    <div className="border border-base-200 rounded-lg p-3 space-y-2">
+    <div
+      ref={rowRef}
+      className={`rounded-lg border p-3 space-y-2 ${
+        highlight ? "border-primary ring-2 ring-primary/30" : "border-base-200"
+      }`}
+    >
       {/* Interlinear display: 4-row aligned grid */}
       <div className="overflow-x-auto">
         <div className="inline-flex gap-4 min-w-0">
@@ -88,13 +99,44 @@ export function GlossLineRow({ line, onLexEntryCreated }: GlossLineRowProps) {
               onClick={() => setEditingTokenId(token.token_id)}
               onMouseEnter={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
-                const x = Math.min(rect.right + 8, window.innerWidth - 280);
-                const y = Math.min(rect.top, window.innerHeight - 180);
-                setHoverPosition({ x: Math.max(8, x), y: Math.max(8, y) });
+                // 词卡宽 264：优先放右侧；右侧空间不足则翻到左侧，避免遮住后一个词
+                const width = 264;
+                const gap = 8;
+                const margin = 8;
+                const fitsRight = rect.right + gap + width <= window.innerWidth - margin;
+                const x = fitsRight
+                  ? rect.right + gap
+                  : Math.max(margin, rect.left - width - gap);
+                const y = Math.min(
+                  Math.max(margin, rect.top),
+                  window.innerHeight - 200,
+                );
+                setHoverPosition({ x, y });
                 setHoverTokenId(token.token_id);
               }}
               onMouseLeave={() => setHoverTokenId(null)}
             >
+              {(token.status || (token.linked_entry_id && !wordsMap.has(token.linked_entry_id))) && (
+                <span className="absolute -top-0.5 right-0 flex items-center gap-0.5">
+                  {token.status && (
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        token.status === "verified"
+                          ? "bg-success"
+                          : token.status === "edited"
+                            ? "bg-warning"
+                            : "bg-info"
+                      }`}
+                      title={token.status}
+                    />
+                  )}
+                  {token.linked_entry_id && !wordsMap.has(token.linked_entry_id) && (
+                    <span className="text-[9px] text-error" title={t("lexicon.family.missing")}>
+                      !
+                    </span>
+                  )}
+                </span>
+              )}
               {/* Row 1: Surface form */}
               <ScriptText
                 text={token.surface_form || "—"}

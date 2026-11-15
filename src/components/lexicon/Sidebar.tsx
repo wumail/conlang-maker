@@ -5,12 +5,12 @@ import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
 import { createDraftWord, isDraftWord } from "../../utils/lexiconDraft";
-import { useLineageLexicon } from "../../store/lineageLexiconStore";
 import { exportToCSV } from "../../utils/exportCSV";
+import { pushUndoEntry } from "../../store/undoManager";
 import { buildConceptOptions } from "../../lib/lexiconConcepts";
 import { ConceptMigrationButton } from "./ConceptMigrationButton";
-import { ipaFuzzySearch } from "../../utils/ipaSearch";
-import type { WordEntry } from "../../types";
+import { filterAndSearchWords } from "../../core/lexicon/searchLexicon";
+import type { BuiltinQuickFilterKind, OriginType, WordEntry } from "../../types";
 import { BatchEditPanel } from "./BatchEditPanel";
 import { ConfirmModal } from "../common/ConfirmModal";
 import {
@@ -19,16 +19,15 @@ import {
   type LexiconSortMode,
 } from "./LexiconFilterBar";
 import { LexiconVirtualList } from "./LexiconVirtualList";
-import {
-  getWordEvolution,
-  getInheritedParentEntryId,
-  getWordChangeDetails,
-  type WordLifecycleFlags,
-} from "../../utils/wordLifecycle";
+import { HiddenSelectionBanner } from "./HiddenSelectionBanner";
+import { useWordLifecycleFlags } from "./useWordLifecycleFlags";
 
-const EMPTY_WORDS: Record<string, WordEntry> = {};
+interface SidebarProps {
+  /** 打开右侧表格视图弹窗（由词典页承载） */
+  onOpenTable: () => void;
+}
 
-export const Sidebar: React.FC = () => {
+export const Sidebar: React.FC<SidebarProps> = ({ onOpenTable }) => {
   const { t } = useTranslation();
   const projectPath = useWorkspaceStore((s) => s.projectPath);
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
@@ -55,6 +54,7 @@ export const Sidebar: React.FC = () => {
   const [filterConcept, setFilterConcept] = useState("");
   const [filterOrigin, setFilterOrigin] = useState("");
   const [filterLifecycle, setFilterLifecycle] = useState<LexiconLifecycleFilter>("");
+  const [quickKind, setQuickKind] = useState<BuiltinQuickFilterKind | "">("");
   const [batchMode, setBatchMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false);
@@ -63,110 +63,66 @@ export const Sidebar: React.FC = () => {
     () => workspaceLanguages.find((lang) => lang.language_id === activeLanguageId),
     [workspaceLanguages, activeLanguageId],
   );
-
-  const parentLanguage = useMemo(() => {
-    if (!activeLanguage?.parent_id) return null;
-    return (
-      workspaceLanguages.find((lang) => lang.language_id === activeLanguage.parent_id) ??
-      null
-    );
-  }, [workspaceLanguages, activeLanguage]);
-
-  // 父语言词表统一走谱系缓存：同一父语言只 IPC 拉取一次，切换词条不再重复请求
-  const { snapshot: parentSnapshot, loading: parentLoading } = useLineageLexicon(
-    parentLanguage ? projectPath : null,
-    parentLanguage?.path ?? null,
-  );
-  const parentWordsById = parentSnapshot?.wordsById ?? EMPTY_WORDS;
-  const parentPhonoConfig = parentSnapshot?.phonoConfig ?? null;
-  const parentWordsLoaded = parentLanguage ? !parentLoading && !!parentSnapshot : true;
-
-  const lifecycleMap = useMemo<Record<string, WordLifecycleFlags>>(() => {
-    if (parentLanguage && !parentWordsLoaded) return {};
-    const result: Record<string, WordLifecycleFlags> = {};
-
-    wordsList.forEach((word) => {
-      const parentEntryId = parentLanguage
-        ? getInheritedParentEntryId(word, parentLanguage.language_id)
-        : null;
-      const parentWord = parentEntryId ? parentWordsById[parentEntryId] : null;
-      const evolution = getWordEvolution(word);
-      const isNew = !!parentLanguage && !parentWord;
-      const changes = parentWord
-        ? getWordChangeDetails(word, parentWord, config, parentPhonoConfig)
-        : undefined;
-      const isChanged = changes ? Object.values(changes).some(Boolean) : false;
-      const isDeprecated = evolution.is_deprecated;
-      result[word.entry_id] = {
-        isNew,
-        isDeprecated,
-        isChanged: isDeprecated ? false : isChanged,
-        changes,
-      };
-    });
-
-    return result;
-  }, [wordsList, parentLanguage, parentWordsById, parentPhonoConfig, config, parentWordsLoaded]);
-
-  const inventory = useMemo(
-    () => [...config.phoneme_inventory.consonants, ...config.phoneme_inventory.vowels],
-    [config.phoneme_inventory],
-  );
+  const lifecycleMap = useWordLifecycleFlags({
+    wordsList, activeLanguage, workspaceLanguages, projectPath, phonoConfig: config,
+  });
 
   const conceptOptions = useMemo(
     () => buildConceptOptions(wordsList, workspaceConfig.custom_concepts ?? []),
     [wordsList, workspaceConfig],
   );
-
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
-    wordsList.forEach((word) => {
-      word.metadata?.tags?.forEach((tag) => tagSet.add(tag));
-    });
+    wordsList.forEach((word) => word.metadata?.tags?.forEach((tag) => tagSet.add(tag)));
     return Array.from(tagSet).sort();
   }, [wordsList]);
 
   const filteredWords = useMemo<WordEntry[]>(() => {
-    let result: WordEntry[];
-    if (!searchTerm.trim()) {
-      result = [...wordsList];
-    } else if (ipaMode) {
-      result = ipaFuzzySearch(searchTerm, wordsList, inventory, 0.6).map((hit) => hit.entry);
-    } else {
-      const query = searchTerm.toLowerCase();
-      result = wordsList.filter(
-        (word) =>
-          word.con_word_romanized.toLowerCase().includes(query) ||
-          word.senses.some((sense) => sense.gloss.toLowerCase().includes(query)),
+    const conceptsMap = new Map(
+      (workspaceConfig.custom_concepts ?? []).map((concept) => [concept.concept_id, concept]),
+    );
+    let result = filterAndSearchWords(
+      wordsList,
+      {
+        searchTerm,
+        ipaMode,
+        posId: filterPos,
+        originType: filterOrigin as OriginType | "",
+        quickKind,
+      },
+      conceptsMap,
+    );
+    if (filterTags.length > 0) {
+      result = result.filter((word) =>
+        word.metadata?.tags?.some((tag) =>
+          filterTags.some((needle) => tag.toLowerCase().includes(needle.toLowerCase())),
+        ),
       );
-    }
-
-    if (filterPos) {
-      result = result.filter((word) => word.senses.some((sense) => sense.pos_id === filterPos));
-    }
-    if (filterOrigin) {
-      result = result.filter((word) => word.etymology?.origin_type === filterOrigin);
     }
     if (filterConcept) {
       result = result.filter((word) =>
         word.senses.some((sense) => sense.concept_id === filterConcept),
       );
     }
-    if (filterTags.length > 0) {
-      result = result.filter((word) =>
-        word.metadata?.tags?.some((tag) =>
-          filterTags.some((ft) => tag.toLowerCase().includes(ft.toLowerCase())),
-        ),
-      );
-    }
-
-    if (sortMode === "az") {
-      result.sort((a, b) => a.con_word_romanized.localeCompare(b.con_word_romanized));
-    } else {
-      result.sort((a, b) => b.con_word_romanized.localeCompare(a.con_word_romanized));
-    }
-    return result;
-  }, [searchTerm, wordsList, ipaMode, inventory, sortMode, filterPos, filterOrigin, filterTags, filterConcept]);
+    const sorted = [...result];
+    sorted.sort((a, b) =>
+      sortMode === "az"
+        ? a.con_word_romanized.localeCompare(b.con_word_romanized)
+        : b.con_word_romanized.localeCompare(a.con_word_romanized),
+    );
+    return sorted;
+  }, [
+    wordsList,
+    searchTerm,
+    ipaMode,
+    filterPos,
+    filterOrigin,
+    filterTags,
+    filterConcept,
+    quickKind,
+    sortMode,
+    workspaceConfig.custom_concepts,
+  ]);
 
   const displayWords = useMemo(() => {
     if (!filterLifecycle) return filteredWords;
@@ -179,13 +135,23 @@ export const Sidebar: React.FC = () => {
     });
   }, [filteredWords, lifecycleMap, filterLifecycle]);
 
+  const hiddenSelectedCount = useMemo(() => {
+    const visible = new Set(displayWords.map((word) => word.entry_id));
+    return [...selectedIds].filter((id) => !visible.has(id)).length;
+  }, [displayWords, selectedIds]);
+
+  /** 确认弹窗与实际删除集合必须完全一致：只删「当前筛选后可见」的选中项 */
+  const deleteTargetIds = useMemo(
+    () => displayWords.filter((word) => selectedIds.has(word.entry_id)).map((word) => word.entry_id),
+    [displayWords, selectedIds],
+  );
+
   const cleanupEmptyWord = () => {
     if (!activeWordId) return;
     const prev = wordsMap[activeWordId];
     if (prev && isDraftWord(prev)) deleteWord(prev.entry_id);
   };
 
-  // 卸载时清理未成形的空词条（例如直接切页离开）
   React.useEffect(() => {
     return () => {
       const store = useLexiconStore.getState();
@@ -217,14 +183,33 @@ export const Sidebar: React.FC = () => {
     });
   };
 
-  const handleDeleteSelected = () => {
-    Array.from(selectedIds).forEach((id) => deleteWord(id));
+  const clearHiddenSelection = () => {
+    const visible = new Set(displayWords.map((word) => word.entry_id));
+    setSelectedIds((prev) => new Set([...prev].filter((id) => visible.has(id))));
+  };
+
+  /** 批量删除：单次 deleteWordsBatch 落盘 + 单条撤销记录（前像为被删词条快照） */
+  const handleDeleteSelected = async () => {
+    const store = useLexiconStore.getState();
+    const snapshots = deleteTargetIds
+      .map((id) => store.wordsMap[id])
+      .filter((word): word is WordEntry => Boolean(word))
+      .map((word) => structuredClone(word));
+    if (snapshots.length === 0) return;
+    const deletedIds = snapshots.map((word) => word.entry_id);
+    await store.deleteWordsBatch(deletedIds);
+    pushUndoEntry({
+      languageId: store.languagePath,
+      domain: "lexicon",
+      labelKey: "lexicon.deleteSelected",
+      undo: () => useLexiconStore.getState().importWords(snapshots),
+      redo: () => useLexiconStore.getState().deleteWordsBatch(deletedIds),
+    });
     setSelectedIds(new Set());
-    setBatchMode(false);
   };
 
   return (
-    <div className="w-64 border-r border-base-300 h-full flex flex-col bg-base-200">
+    <div className="flex h-full w-64 flex-col border-r border-base-300 bg-base-200">
       <LexiconFilterBar
         ipaMode={ipaMode}
         onToggleIpaMode={() => setIpaMode(!ipaMode)}
@@ -244,6 +229,8 @@ export const Sidebar: React.FC = () => {
         onFilterTagsChange={setFilterTags}
         filterConcept={filterConcept}
         onFilterConceptChange={setFilterConcept}
+        quickKind={quickKind}
+        onQuickKindChange={setQuickKind}
         conceptOptions={conceptOptions}
         conceptMigrationSlot={<ConceptMigrationButton />}
         allTags={allTags}
@@ -254,10 +241,17 @@ export const Sidebar: React.FC = () => {
         onToggleBatchMode={() => setBatchMode(!batchMode)}
         onSelectAll={() => setSelectedIds(new Set(displayWords.map((word) => word.entry_id)))}
         onClearSelection={() => setSelectedIds(new Set())}
-        onRequestDeleteSelected={() => setShowDeleteSelectedConfirm(true)}
+        onRequestDeleteSelected={() => {
+          if (deleteTargetIds.length > 0) setShowDeleteSelectedConfirm(true);
+        }}
         onAddWord={handleAddWord}
-        onExportCsv={() => exportToCSV(wordsList)}
+        onExportCsv={() => void exportToCSV(wordsList)}
+        onOpenTable={onOpenTable}
       />
+
+      {batchMode && (
+        <HiddenSelectionBanner selectedCount={selectedIds.size} hiddenCount={hiddenSelectedCount} onClearHidden={clearHiddenSelection} />
+      )}
 
       <LexiconVirtualList
         entries={displayWords}
@@ -274,6 +268,7 @@ export const Sidebar: React.FC = () => {
       {batchMode && selectedIds.size > 0 && (
         <BatchEditPanel
           selectedIds={selectedIds}
+          hiddenSelectedCount={hiddenSelectedCount}
           onClose={() => {
             setBatchMode(false);
             setSelectedIds(new Set());
@@ -284,9 +279,9 @@ export const Sidebar: React.FC = () => {
       <ConfirmModal
         open={showDeleteSelectedConfirm}
         title={t("lexicon.deleteSelected")}
-        message={t("lexicon.deleteSelectedConfirm", { count: selectedIds.size })}
+        message={t("lexicon.deleteSelectedConfirm", { count: deleteTargetIds.length })}
         onConfirm={() => {
-          handleDeleteSelected();
+          void handleDeleteSelected();
           setShowDeleteSelectedConfirm(false);
         }}
         onCancel={() => setShowDeleteSelectedConfirm(false)}

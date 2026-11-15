@@ -1,26 +1,31 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Save, Wand2, X } from "lucide-react";
-import type { GlossedLine, PartOfSpeech, WordEntry } from "../../types";
+import { Save, X } from "lucide-react";
+import type { GlossedLine, GlossToken, Sense, WordEntry } from "../../types";
+import { useCorpusStore } from "../../store/corpusStore";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { useGrammarStore } from "../../store/grammarStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useWorkspaceStore } from "../../store/workspaceStore";
-import { generateIPA } from "../../utils/ipaGenerator";
 import { normalizeToken } from "../../core/workflows/autoGloss";
+import { pushCompositeUndoEntry } from "../../store/undoManager";
 import { ModalPortal } from "../common/ModalPortal";
-import { INPUT, INPUT_MONO, SELECT, BTN_PRIMARY, BTN_GHOST, BTN_LINK } from "../../lib/ui";
-import { ScriptPreview } from "../writing/ScriptText";
+import { BTN_PRIMARY, BTN_GHOST, CHECKBOX } from "../../lib/ui";
+import { QuickLexExistingPicker } from "./QuickLexExistingPicker";
+import { QuickLexEntryForm, buildQuickLexEntry } from "./QuickLexEntryForm";
+
+type QuickLexMode = "link" | "new_sense" | "new_entry";
 
 interface CorpusQuickLexDrawerProps {
   open: boolean;
-  /** 语料原文中的表层词形（自动预填） */
   surfaceForm: string;
-  /** 当前行（用于展示上下文并触发重标注） */
   line: GlossedLine | null;
+  /** 当前语料 token（用于绑定与组合撤销） */
+  token?: GlossToken | null;
   onClose: () => void;
-  /** 建词成功后回调：由语料页重跑当前句 autoGloss */
   onCreated: (entry: WordEntry) => void;
+  /** 绑定 token 到词条义项（由语料行回写） */
+  onBindToken?: (entryId: string, senseId: string) => void;
 }
 
 export interface StemSuggestion {
@@ -50,86 +55,141 @@ export function suggestStems(
   return suggestions.slice(0, 3);
 }
 
-/** 语料三行标注旁的「侧边快建词条」抽屉（经 ModalPortal 挂载） */
+/** 语料三行标注旁的「收词」抽屉：关联已有义项 / 同形词加义项 / 新建词条 */
 export const CorpusQuickLexDrawer: React.FC<CorpusQuickLexDrawerProps> = ({
   open,
   surfaceForm,
   line,
+  token = null,
   onClose,
   onCreated,
+  onBindToken,
 }) => {
   const { t } = useTranslation();
   const wordsList = useLexiconStore((s) => s.wordsList);
-  const upsertWord = useLexiconStore((s) => s.upsertWord);
+  const importWords = useLexiconStore((s) => s.importWords);
+  const languagePath = useLexiconStore((s) => s.languagePath);
   const partsOfSpeech = useGrammarStore((s) => s.config.parts_of_speech);
   const inflectionRules = useGrammarStore((s) => s.config.inflection_rules);
   const phonoConfig = usePhonoStore((s) => s.config);
 
+  const [mode, setMode] = useState<QuickLexMode>("link");
   const [lemma, setLemma] = useState(normalizeToken(surfaceForm) || surfaceForm);
   const [posId, setPosId] = useState(partsOfSpeech[0]?.pos_id ?? "");
   const [gloss, setGloss] = useState("");
   const [tagsInput, setTagsInput] = useState("");
+  const [addExample, setAddExample] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const suggestions = useMemo(
     () => suggestStems(surfaceForm || lemma, inflectionRules),
     [surfaceForm, lemma, inflectionRules],
   );
+  const homographs = useMemo(
+    () =>
+      wordsList.filter(
+        (word) =>
+          lemma.trim().length > 0 &&
+          word.con_word_romanized.trim().toLowerCase() === lemma.trim().toLowerCase(),
+      ),
+    [wordsList, lemma],
+  );
 
-  const duplicate = useMemo(() => {
-    const needle = lemma.trim().toLowerCase();
-    if (!needle) return null;
-    return wordsList.find((word) => word.con_word_romanized.trim().toLowerCase() === needle) ?? null;
-  }, [wordsList, lemma]);
+  const exampleText = line
+    ? `${line.original}${line.translation ? ` — ${line.translation}` : ""}`
+    : "";
 
-  const handleSave = () => {
-    const romanized = lemma.trim();
-    if (!romanized) {
-      setError(t("corpus.quickLex.lemmaRequired"));
-      return;
-    }
-    if (!gloss.trim()) {
-      setError(t("corpus.quickLex.glossRequired"));
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const { phonemic } = generateIPA(romanized, phonoConfig);
-    const entry: WordEntry = {
-      entry_id: crypto.randomUUID(),
-      language_id: useWorkspaceStore.getState().activeLanguageId || "",
-      con_word_romanized: romanized,
-      phonetic_ipa: phonemic.replace(/^\/|\/$/g, ""),
-      phonetic_override: false,
-      senses: [
+  /** 组合撤销：一次 ⌘Z 同时回滚词典词条与整行语料 token 状态（含同句自动重算） */
+  const commit = (original: WordEntry | null, updated: WordEntry, entryId: string, senseId: string) => {
+    const lineId = line?.line_id;
+    const readLiveLine = () =>
+      lineId
+        ? structuredClone(
+            useCorpusStore.getState().activeCorpus?.glossed_lines.find((l) => l.line_id === lineId) ?? null,
+          )
+        : null;
+    const beforeLine = readLiveLine();
+    const prevEntry = token?.linked_entry_id ?? "";
+    const prevSense = token?.linked_sense_id ?? "";
+    importWords([updated]);
+    onBindToken?.(entryId, senseId);
+    onCreated(updated);
+    const afterLine = readLiveLine();
+    pushCompositeUndoEntry({
+      languageId: languagePath,
+      labelKey: "corpus.quickLex.title",
+      steps: [
         {
-          sense_id: crypto.randomUUID(),
-          pos_id: posId,
-          gloss: gloss.trim(),
-          definitions: [],
-          examples: [],
+          undo: () =>
+            original
+              ? useLexiconStore.getState().importWords([original])
+              : useLexiconStore.getState().deleteWord(updated.entry_id, { skipHistory: true }),
+          redo: () => useLexiconStore.getState().importWords([updated]),
+        },
+        {
+          undo: () =>
+            lineId && beforeLine
+              ? useCorpusStore.getState().updateGlossedLine(lineId, structuredClone(beforeLine), { skipHistory: true })
+              : onBindToken?.(prevEntry, prevSense),
+          redo: () =>
+            lineId && afterLine
+              ? useCorpusStore.getState().updateGlossedLine(lineId, structuredClone(afterLine), { skipHistory: true })
+              : onBindToken?.(entryId, senseId),
         },
       ],
-      etymology: {
-        origin_type: "a_priori",
-        parent_entry_id: null,
-        source_language_id: null,
-        applied_sound_changes: [],
-        semantic_shift_note: "",
-      },
-      metadata: {
-        tags: tagsInput
-          .split(",")
-          .map((tag) => tag.trim())
-          .filter(Boolean),
-        created_at: now,
-        updated_at: now,
-      },
-      evolution: { is_deprecated: false, deprecated_since_language_id: null },
-    };
+    });
+  };
 
-    upsertWord(entry);
-    onCreated(entry);
+  const withExample = (sense: Sense): Sense => {
+    if (!addExample || !exampleText) return sense;
+    if ((sense.examples ?? []).includes(exampleText)) return sense;
+    return { ...sense, examples: [...(sense.examples ?? []), exampleText] };
+  };
+
+  const linkExisting = (word: WordEntry, senseId: string) => {
+    const sense = word.senses.find((item) => item.sense_id === senseId);
+    if (!sense) return;
+    const updated: WordEntry = {
+      ...word,
+      senses: word.senses.map((item) => (item.sense_id === senseId ? withExample(item) : item)),
+    };
+    commit(word, updated, word.entry_id, senseId);
+    onClose();
+  };
+
+  const addSenseToHomograph = (word: WordEntry) => {
+    if (!gloss.trim()) return setError(t("corpus.quickLex.glossRequired"));
+    const sense: Sense = withExample({
+      sense_id: crypto.randomUUID(),
+      pos_id: posId,
+      gloss: gloss.trim(),
+      definitions: [],
+      examples: [],
+    });
+    const updated: WordEntry = { ...word, senses: [...word.senses, sense] };
+    commit(word, updated, word.entry_id, sense.sense_id);
+    onClose();
+  };
+
+  const handleCreate = () => {
+    const romanized = lemma.trim();
+    if (!romanized) return setError(t("corpus.quickLex.lemmaRequired"));
+    if (!gloss.trim()) return setError(t("corpus.quickLex.glossRequired"));
+    const sense = withExample({
+      sense_id: crypto.randomUUID(),
+      pos_id: posId,
+      gloss: gloss.trim(),
+      definitions: [],
+      examples: [],
+    });
+    const entry = buildQuickLexEntry({
+      lemma: romanized,
+      tags: tagsInput.split(",").map((tag) => tag.trim()).filter(Boolean),
+      sense,
+      languageId: useWorkspaceStore.getState().activeLanguageId || "",
+      phono: phonoConfig,
+    });
+    commit(null, entry, entry.entry_id, sense.sense_id);
     onClose();
   };
 
@@ -139,7 +199,7 @@ export const CorpusQuickLexDrawer: React.FC<CorpusQuickLexDrawerProps> = ({
         <div className="modal-box absolute right-0 top-0 h-full max-h-full w-[26rem] max-w-full rounded-none rounded-l-xl">
           <div className="flex items-start justify-between gap-2">
             <div>
-              <h3 className="font-bold text-lg">{t("corpus.quickLex.title")}</h3>
+              <h3 className="text-lg font-bold">{t("corpus.quickLex.title")}</h3>
               <p className="text-xs text-base-content/60">{t("corpus.quickLex.hint")}</p>
             </div>
             <button className={BTN_GHOST} onClick={onClose} title={t("common.close")}>
@@ -147,105 +207,79 @@ export const CorpusQuickLexDrawer: React.FC<CorpusQuickLexDrawerProps> = ({
             </button>
           </div>
 
+          <div className="mt-2 flex flex-wrap gap-1">
+            {(["link", "new_sense", "new_entry"] as QuickLexMode[]).map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={`btn btn-xs ${mode === item ? "btn-primary" : "btn-ghost"}`}
+                onClick={() => setMode(item)}
+              >
+                {item === "link"
+                  ? t("corpus.quickLex.modeLink")
+                  : item === "new_sense"
+                    ? t("corpus.quickLex.modeNewSense")
+                    : t("corpus.quickLex.modeNewEntry")}
+              </button>
+            ))}
+          </div>
+
           {line && (
             <div className="mt-3 rounded border border-base-300 bg-base-200/50 px-2 py-1.5 text-xs">
               <div className="text-base-content/50">{t("corpus.quickLex.context")}</div>
-              <div className="font-mono truncate">{line.original}</div>
+              <div className="truncate font-mono">{line.original}</div>
             </div>
           )}
 
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="block text-xs text-base-content/60 mb-1">
-                {t("corpus.quickLex.lemma")}
-              </label>
-              <input
-                className={`${INPUT_MONO} w-full`}
-                value={lemma}
-                onChange={(event) => {
-                  setLemma(event.target.value);
-                  setError(null);
-                }}
-              />
-              <ScriptPreview text={lemma} className="text-lg mt-1" />
+          <label className="mt-3 flex cursor-pointer items-center gap-1.5 text-xs text-base-content/70">
+            <input
+              type="checkbox"
+              className={CHECKBOX}
+              checked={addExample}
+              onChange={(event) => setAddExample(event.target.checked)}
+            />
+            {t("corpus.quickLex.addExample")}
+          </label>
+
+          {mode === "link" && (
+            <div className="mt-3">
+              <QuickLexExistingPicker words={wordsList} onPick={linkExisting} />
             </div>
+          )}
 
-            {suggestions.length > 0 && (
-              <div className="rounded border border-warning/40 bg-warning/10 px-2 py-1.5 space-y-1">
-                <div className="flex items-center gap-1 text-xs text-base-content/70">
-                  <Wand2 size={12} /> {t("corpus.quickLex.stemSuggestion")}
-                </div>
-                <div className="flex flex-wrap gap-1">
-                  {suggestions.map((suggestion) => (
-                    <button
-                      key={`${suggestion.stem}_${suggestion.affix}`}
-                      className={`${BTN_LINK} text-xs font-mono`}
-                      onClick={() => setLemma(suggestion.stem)}
-                      title={t("corpus.quickLex.stemHint", { affix: suggestion.affix })}
-                    >
-                      {suggestion.stem} (−{suggestion.ruleLabel})
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
+          {mode !== "link" && (
+            <QuickLexEntryForm
+              mode={mode === "new_sense" ? "new_sense" : "new_entry"}
+              lemma={lemma}
+              onLemmaChange={(value) => {
+                setLemma(value);
+                setError(null);
+              }}
+              suggestions={suggestions}
+              onPickStem={setLemma}
+              partsOfSpeech={partsOfSpeech}
+              posId={posId}
+              onPosChange={setPosId}
+              gloss={gloss}
+              onGlossChange={(value) => {
+                setGloss(value);
+                setError(null);
+              }}
+              tagsInput={tagsInput}
+              onTagsChange={setTagsInput}
+              homographs={homographs}
+              onAddSenseTo={addSenseToHomograph}
+            />
+          )}
 
-            <div>
-              <label className="block text-xs text-base-content/60 mb-1">
-                {t("lexicon.pos")}
-              </label>
-              <select
-                className={`${SELECT} w-full`}
-                value={posId}
-                onChange={(event) => setPosId(event.target.value)}
-              >
-                {partsOfSpeech.map((pos: PartOfSpeech) => (
-                  <option key={pos.pos_id} value={pos.pos_id}>
-                    {pos.name || pos.pos_id}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs text-base-content/60 mb-1">
-                {t("lexicon.gloss")}
-              </label>
-              <input
-                className={`${INPUT} w-full`}
-                value={gloss}
-                placeholder={t("corpus.quickLex.glossPlaceholder")}
-                onChange={(event) => {
-                  setGloss(event.target.value);
-                  setError(null);
-                }}
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs text-base-content/60 mb-1">
-                {t("lexicon.tags")}
-              </label>
-              <input
-                className={`${INPUT} w-full`}
-                value={tagsInput}
-                placeholder={t("corpus.quickLex.tagsPlaceholder")}
-                onChange={(event) => setTagsInput(event.target.value)}
-              />
-            </div>
-
-            {duplicate && (
-              <p className="text-xs text-warning">
-                {t("corpus.quickLex.duplicateHint", { word: duplicate.con_word_romanized })}
-              </p>
-            )}
-            {error && <p className="text-xs text-error">{error}</p>}
-          </div>
+          {error && <p className="mt-2 text-xs text-error">{error}</p>}
 
           <div className="modal-action">
-            <button className={BTN_PRIMARY} onClick={handleSave}>
-              <Save size={14} /> {t("corpus.quickLex.save")}
-            </button>
+            {mode === "new_entry" && (
+              <button className={BTN_PRIMARY} onClick={handleCreate}>
+                <Save size={14} /> {t("corpus.quickLex.save")}
+              </button>
+            )}
             <button className={BTN_GHOST} onClick={onClose}>
               {t("common.cancel")}
             </button>

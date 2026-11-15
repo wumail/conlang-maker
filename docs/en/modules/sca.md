@@ -1,8 +1,12 @@
 # Sound Change Applier (SCA)
 
-Define and preview diachronic sound change rules to simulate historical language evolution.
+Define, bidirectionally edit, and preview diachronic sound change rules to simulate historical vocabulary and affix evolution.
 
-**Navigate**: click `Sound Changes` in the sidebar.
+**Navigate**: click `Sound Changes` in the top navigation bar.
+
+## Bidirectional Single-Line Rule DSL & Structured Form
+
+Every sound change rule supports seamless switching between **compact single-line DSL notation** (e.g., `p t k -> b d g / V _ V ! pata`) and the **structured multi-field form**, plus suprasegmental tone/stress rules.
 
 ## Character Mode
 
@@ -90,9 +94,9 @@ Typical uses:
 ## Preview
 
 - **Single word test**: Input a word → see sound change result + step-by-step log
-- **Batch preview**: Changed-only table with pagination over all changed items
-- **Apply to lexicon**: Write back changed lexicon forms
-- **Apply to grammar rules**: Optional (per-rule toggle) for inflection/derivation fields
+- **Virtualized batch diff preview**: Smoothly inspect thousands of changed lexicon forms and grammar affixes in a virtualized diff workbench (`BatchDiffPreviewModal`) with concurrency conflict checks and single-step `⌘Z` undo
+- **Apply to lexicon**: Write back selected lexicon forms atomically
+- **Apply to grammar rules**: Optional (per-rule toggle) for inflection/derivation fields, plus dedicated `gram_pull_sync` parent-affix evolution
 
 ### Batch table columns
 

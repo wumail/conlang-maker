@@ -1,5 +1,5 @@
 /**
- * word_family.ts — 词族图谱只读工具（T2.4）
+ * word_family.ts — 词族图谱只读工具（T2.4）+ 词源追溯链（Roadmap v3 / Pillar 1）
  */
 import { z } from "zod";
 import {
@@ -8,12 +8,14 @@ import {
   hasUnresolvedComponents,
   wouldIntroduceCycle,
 } from "../../src/core/engines/wordFamily";
+import { buildEtymologyLineage } from "../../src/core/engines/etymologyLineage";
 import { McpError } from "../errors";
 import { readLexiconUnlocked } from "../storage/read";
 import { registerDefinedTool } from "../toolRegistry";
 import {
   familyInputFields,
   languageInputFields,
+  readAllLexiconsByLanguageUnlocked,
   resolveFamilyFromArgs,
   resolveLanguageUnlocked,
 } from "./_helpers";
@@ -83,6 +85,66 @@ export function registerWordFamilyTools(
             }
           : {}),
         dependencies: { lexicon: lex.revision },
+      };
+    },
+  });
+
+  registerDefinedTool(server, config, {
+    name: "lex_etymology_lineage",
+    title: "Trace the Full Etymology Lineage of an Entry",
+    description:
+      "Read-only. Walk the complete etymology chain of a lexicon entry upward across the whole family: diachronic inheritance steps (evolved, with applied sound changes and semantic change kinds), synchronic morpheme components (derived/compound), and loanword snapshots (borrowed, keeping the historical snapshot even after the donor entry was deleted). Reports broken links with precise missing IDs (parent / component / borrowed).",
+    toolsets: ["core", "compute"],
+    access: "read",
+    idempotent: true,
+    inputSchema: {
+      ...familyInputFields,
+      ...languageInputFields,
+      entry_id: z.string().describe("Lexicon entry whose etymology chain to trace"),
+    },
+    handler: async (args) => {
+      const family = resolveFamilyFromArgs(config, args);
+      const resolved = resolveLanguageUnlocked(family, args);
+      const lex = readLexiconUnlocked(family.project_dir, resolved.language);
+
+      const entry = lex.words.find((word) => word.entry_id === args.entry_id);
+      if (!entry) {
+        throw new McpError(
+          "NOT_FOUND",
+          `Entry "${args.entry_id}" not found in ${resolved.language.language_id}.`,
+        );
+      }
+
+      // 读取全语系词典：继承链需要沿 parent 语言向上追溯
+      const { wordsByLanguage, revisions } = readAllLexiconsByLanguageUnlocked(
+        family.project_dir,
+        resolved.workspace.languages,
+      );
+
+      const lineage = buildEtymologyLineage({
+        word: entry,
+        activeLanguageId: resolved.language.language_id,
+        languages: resolved.workspace.languages,
+        wordsByLanguage,
+      });
+
+      return {
+        family_id: family.family_id,
+        language_id: resolved.language.language_id,
+        entry_id: entry.entry_id,
+        word: entry.con_word_romanized,
+        nodes: lineage.nodes,
+        has_broken_links: lineage.hasBrokenLinks,
+        broken_links: lineage.brokenLinks,
+        dependencies: {
+          workspace: resolved.workspace_revision,
+          ...Object.fromEntries(
+            Object.entries(revisions).map(([langId, rev]) => [
+              `lexicon:${langId}`,
+              rev,
+            ]),
+          ),
+        },
       };
     },
   });

@@ -10,6 +10,7 @@ import type {
   GrammarChapter,
   GrammarConfig,
   PhonologyConfig,
+  SemanticChangeKind,
   WordEntry,
 } from "../../types";
 import { getCoreConcept } from "../../data/core_concepts";
@@ -225,13 +226,22 @@ function buildParadigms(options: ReferenceBookOptions): ParadigmTable[] {
   const tables: ParadigmTable[] = [];
   for (const pos of grammar.parts_of_speech) {
     const sample = words.find((word) => word.senses.some((sense) => sense.pos_id === pos.pos_id));
+    const matchedSense = sample?.senses.find((sense) => sense.pos_id === pos.pos_id);
     const testWord = sample?.con_word_romanized ?? "tami";
+    // 样词存在时传入真实词条与匹配义项：范式与词典页/变位矩阵共享同一套变位类解析
     const rows = generateParadigm(
       testWord,
       pos.pos_id,
       grammar.inflection_rules,
       phono,
-      { entryId: sample?.entry_id ?? "reference", grammar },
+      sample
+        ? {
+            entryId: sample.entry_id,
+            grammar,
+            entry: sample,
+            ...(matchedSense ? { senseId: matchedSense.sense_id } : {}),
+          }
+        : { entryId: "reference", grammar },
     );
     if (rows.length === 0) continue;
     tables.push({
@@ -361,22 +371,53 @@ function conceptLabel(concept: ConceptDefinition): string {
   return parts.length > 0 ? parts.join(" · ") : concept.concept_id;
 }
 
-/** 简要词源：优先显示构词成分，其次显示派生母词 */
+/** 语义变化分类（与音变分离记录，Roadmap v3 / Pillar 1）的展示标签 */
+const SEMANTIC_CHANGE_LABELS: Record<SemanticChangeKind, string> = {
+  unchanged: "unchanged",
+  narrowing: "semantic narrowing",
+  broadening: "semantic broadening",
+  shift: "semantic shift",
+  metaphor: "metaphor",
+  added_sense: "added sense",
+  replaced_sense: "replaced sense",
+};
+
+/** 简要词源：复合词成分 / 派生成分 / 继承母词 / 借词快照，附语义变化分类 */
 function etymologyNote(word: WordEntry, context: RenderContext): string {
-  const components = (word.etymology.components ?? [])
+  const etym = word.etymology;
+  const semanticKind =
+    etym.semantic_change_kind && etym.semantic_change_kind !== "unchanged"
+      ? ` <span class="sem-change">(${escapeHtml(SEMANTIC_CHANGE_LABELS[etym.semantic_change_kind])})</span>`
+      : "";
+
+  const components = (etym.components ?? [])
     .map((component) =>
       component.entry_id ? context.wordsById.get(component.entry_id)?.con_word_romanized : undefined,
     )
     .filter((form): form is string => Boolean(form));
   if (components.length > 0) {
-    return `<div class="etym">&lt; ${escapeHtml(components.join(" + "))}</div>`;
+    const compoundLabel = etym.origin_type === "compound" ? "compound " : "";
+    return `<div class="etym">&lt; ${escapeHtml(compoundLabel)}${escapeHtml(components.join(" + "))}${semanticKind}</div>`;
   }
-  const parent = word.etymology.parent_entry_id
-    ? context.wordsById.get(word.etymology.parent_entry_id)
+  const parent = etym.parent_entry_id
+    ? context.wordsById.get(etym.parent_entry_id)
     : undefined;
-  if (parent) return `<div class="etym">&lt; ${escapeHtml(parent.con_word_romanized)}</div>`;
-  if (word.etymology.origin_type === "borrowed") return `<div class="etym">borrowed</div>`;
-  return "";
+  if (parent) {
+    return `<div class="etym">&lt; ${escapeHtml(parent.con_word_romanized)}${semanticKind}</div>`;
+  }
+  if (etym.origin_type === "borrowed") {
+    const snapshot = etym.borrowed_source;
+    if (snapshot) {
+      const sourceName =
+        snapshot.source_language_name ?? snapshot.source_language_id;
+      return `<div class="etym">&lt; borrowed from ${escapeHtml(sourceName)} ${escapeHtml(snapshot.borrowed_form)}${semanticKind}</div>`;
+    }
+    return `<div class="etym">borrowed</div>`;
+  }
+  if (etym.origin_type === "evolved" && semanticKind) {
+    return `<div class="etym">inherited${semanticKind}</div>`;
+  }
+  return semanticKind ? `<div class="etym">${semanticKind}</div>` : "";
 }
 
 function firstExample(word: WordEntry): string {

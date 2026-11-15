@@ -1,4 +1,13 @@
 import { WordEntry, PhonologyConfig } from '../types';
+import { isDesktopRuntime, saveBinaryFile, saveTextFile } from './fileSave';
+
+/** SheetJS 工作簿句柄（`xlsx` 的类型声明已提供，无需 any） */
+type XlsxWorkbook = ReturnType<typeof import('xlsx').utils.book_new>;
+
+/** CSV 字段转义：双引号按 RFC 4180 翻倍 */
+function csvField(value: string): string {
+    return `"${value.replace(/"/g, '""')}"`;
+}
 
 /**
  * Export data as an Excel file with multiple sheets.
@@ -10,10 +19,9 @@ export async function exportExcel(
     phonoConfig: PhonologyConfig,
 ): Promise<void> {
     try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const XLSX = await import('xlsx' as any);
+        const XLSX = await import('xlsx');
 
-        const wb = XLSX.utils.book_new();
+        const wb: XlsxWorkbook = XLSX.utils.book_new();
 
         // Sheet 1: Phoneme Inventory
         const phonemeData = [
@@ -55,29 +63,40 @@ export async function exportExcel(
         const wsLexicon = XLSX.utils.aoa_to_sheet(lexiconData);
         XLSX.utils.book_append_sheet(wb, wsLexicon, 'Lexicon');
 
+        if (isDesktopRuntime()) {
+            const base64 = String(
+                XLSX.write(wb, { bookType: 'xlsx', type: 'base64' }),
+            );
+            await saveBinaryFile({
+                defaultName: `${languageName}.xlsx`,
+                base64,
+                mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                filters: [{ name: 'Excel workbook', extensions: ['xlsx'] }],
+            });
+            return;
+        }
         XLSX.writeFile(wb, `${languageName}.xlsx`);
     } catch (err) {
         // Fallback: CSV export
         console.warn('xlsx not available, falling back to CSV:', err);
-        exportCSVFallback(languageName, words);
+        await exportCSVFallback(languageName, words);
     }
 }
 
-function exportCSVFallback(languageName: string, words: WordEntry[]) {
+async function exportCSVFallback(languageName: string, words: WordEntry[]) {
     const sorted = [...words].sort((a, b) =>
         a.con_word_romanized.localeCompare(b.con_word_romanized),
     );
     const header = 'Word,IPA,POS,Gloss\n';
     const rows = sorted.map((w) =>
-        `"${w.con_word_romanized}","${w.phonetic_ipa}","${w.senses.map((s) => s.pos_id).join('/')}","${w.senses.map((s) => s.gloss).join('; ')}"`,
+        [
+            csvField(w.con_word_romanized),
+            csvField(w.phonetic_ipa),
+            csvField(w.senses.map((s) => s.pos_id).join('/')),
+            csvField(w.senses.map((s) => s.gloss).join('; ')),
+        ].join(','),
     ).join('\n');
     const csv = header + rows;
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `${languageName}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await saveTextFile({ defaultName: `${languageName}.csv`, content: csv, mimeType: 'text/csv;charset=utf-8;' });
 }

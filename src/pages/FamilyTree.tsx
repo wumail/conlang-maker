@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { GitFork, Plus } from "lucide-react";
+import { GitFork, Plus, Table2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import {
   ReactFlow,
@@ -28,6 +28,7 @@ import {
   FamilyManager,
 } from "../components/tree/FamilyManager";
 import { FamilyTreeModals } from "../components/tree/FamilyTreeModals";
+import { CognateMatrixModal } from "../components/tree/CognateMatrixModal";
 import { useTreeLayout, type TreeFlowNode } from "../utils/useTreeLayout";
 import { useTheme } from "../lib/useTheme";
 import { PageHeader } from "../components/common/PageHeader";
@@ -63,6 +64,7 @@ export function FamilyTree() {
   const [deleteTarget, setDeleteTarget] = useState<LanguageEntry | null>(null);
   const [showCreateRoot, setShowCreateRoot] = useState(false);
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showCognateMatrix, setShowCognateMatrix] = useState(false);
   const [newRootName, setNewRootName] = useState("");
   const { theme } = useTheme();
 
@@ -189,22 +191,16 @@ export function FamilyTree() {
 
   return (
     <div className="space-y-6 flex-1 flex flex-col min-h-0">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3 flex-1">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-3">
           <PageHeader icon={<GitFork size={24} />} title={t("tree.title")} />
           <FamilySelector />
         </div>
-        <div className="flex gap-2">
-          <button
-            className={BTN_PRIMARY}
-            onClick={() => setShowCreateRoot(true)}
-          >
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={BTN_PRIMARY} onClick={() => setShowCreateRoot(true)}>
             <Plus className="w-4 h-4" /> {t("tree.createRoot")}
           </button>
-          <button
-            className={BTN_GHOST}
-            onClick={() => setShowPullSync(!showPullSync)}
-          >
+          <button className={BTN_GHOST} onClick={() => setShowPullSync(!showPullSync)}>
             {t("tree.pullSync")}
           </button>
           <button
@@ -212,6 +208,13 @@ export function FamilyTree() {
             onClick={() => setShowBorrowing(!showBorrowing)}
           >
             {t("tree.borrowing")}
+          </button>
+          <button
+            className={BTN_GHOST}
+            onClick={() => setShowCognateMatrix(true)}
+            data-testid="open-cognate-matrix-btn"
+          >
+            <Table2 className="w-4 h-4" /> {t("cognate.title")}
           </button>
           <button
             className={BTN_GHOST}
@@ -262,6 +265,10 @@ export function FamilyTree() {
           />
         </ReactFlow>
       </div>
+
+      {showCognateMatrix && (
+        <CognateMatrixModal open onClose={() => setShowCognateMatrix(false)} />
+      )}
 
       <FamilyTreeModals
         languages={config.languages}

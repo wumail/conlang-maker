@@ -42,6 +42,7 @@ export const LexiconVirtualList: React.FC<LexiconVirtualListProps> = ({
     getScrollElement: () => parentRef.current,
     estimateSize: () => 68,
     overscan: 8,
+    initialRect: { width: 320, height: 520 },
   });
 
   if (entries.length === 0) {
@@ -53,7 +54,7 @@ export const LexiconVirtualList: React.FC<LexiconVirtualListProps> = ({
   }
 
   return (
-    <div ref={parentRef} className="flex-1 overflow-y-auto contain-strict px-2">
+    <div ref={parentRef} className="min-h-0 flex-1 overflow-y-auto px-2">
       <div
         style={{
           height: `${virtualizer.getTotalSize()}px`,

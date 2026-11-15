@@ -574,6 +574,9 @@ mod tests {
                 },
             ],
             custom_concepts: Vec::new(),
+            lexical_gaps: Vec::new(),
+            primary_cognate_overrides: Vec::new(),
+            saved_lexicon_filters: Vec::new(),
             extra: BTreeMap::new(),
         };
         fs::write(

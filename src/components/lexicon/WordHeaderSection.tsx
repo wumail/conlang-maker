@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Trash2, Lock, Unlock, Tag } from "lucide-react";
-import type { WordEntry } from "../../types";
+import type { ConjugationClass, WordEntry } from "../../types";
 import type { WordLifecycleFlags } from "../../utils/wordLifecycle";
-import { BTN_GHOST_SQ, BADGE } from "../../lib/ui";
+import { BTN_GHOST_SQ, BADGE, SELECT } from "../../lib/ui";
 import { TagsInput } from "../common/TagsInput";
 import { ScriptPreview } from "../writing/ScriptText";
 import { WordChangeBadges } from "./WordChangeBadges";
@@ -15,6 +15,8 @@ interface WordHeaderSectionProps {
   onChange: (field: keyof WordEntry, value: WordEntry[keyof WordEntry]) => void;
   onTagsChange: (tags: string[]) => void;
   onRequestDelete: () => void;
+  /** 变位类（融合语且有变位类时显示词条级选择） */
+  conjugationClasses?: readonly ConjugationClass[];
 }
 
 /** 词头区：词形 / 本族文字预览 / IPA 与手改开关 / 生命周期徽章 / 标签 */
@@ -26,6 +28,7 @@ export const WordHeaderSection: React.FC<WordHeaderSectionProps> = ({
   onChange,
   onTagsChange,
   onRequestDelete,
+  conjugationClasses = [],
 }) => {
   const { t } = useTranslation();
 
@@ -75,6 +78,25 @@ export const WordHeaderSection: React.FC<WordHeaderSectionProps> = ({
               {word.phonetic_override ? <Unlock size={16} /> : <Lock size={16} />}
             </button>
           </div>
+          {conjugationClasses.length > 0 && (
+            <div className="mt-2 flex items-center gap-2 text-xs">
+              <span className="text-base-content/60">{t("lexicon.table.inflectionClass")}</span>
+              <select
+                className={`${SELECT} select-xs`}
+                value={word.inflection_class_id ?? ""}
+                onChange={(event) =>
+                  onChange("inflection_class_id", event.target.value || undefined)
+                }
+              >
+                <option value="">—</option>
+                {conjugationClasses.map((cls) => (
+                  <option key={cls.class_id} value={cls.class_id}>
+                    {cls.name || cls.class_id}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           {lifecycleFlags &&
             (lifecycleFlags.isNew ||
               lifecycleFlags.isDeprecated ||

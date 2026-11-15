@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import { pushUndoEntry, type HistoryOpts } from "./undoManager";
 import { invalidateLineageLexicon } from "./lineageLexiconStore";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import { invoke } from "@tauri-apps/api/core";
 import {
   LexiconLoadResult,
+  Sense,
   WordEntry,
   WriteResult,
 } from "../types";
@@ -121,21 +123,83 @@ function hasPendingWork(projectPath: string, languagePath: string): boolean {
   return writeChains.has(makeLangKey(projectPath, languagePath));
 }
 
+/**
+ * 已知标准字段集合。
+ *
+ * 合并 `existing` 与 `incoming` 时只有**不在这些集合中的未知扩展字段**才从旧值保留；
+ * 已知可选字段（`inflection_class_id`、`usage_note`、`concept_id`、`semantic_change_kind`、
+ * `borrowed_source`、`components` …）一律以 `incoming` 为准，避免「置空后又复活」。
+ */
+const KNOWN_WORD_KEYS = new Set<string>([
+  "entry_id",
+  "language_id",
+  "con_word_romanized",
+  "phonetic_ipa",
+  "phonetic_override",
+  "inflection_class_id",
+  "senses",
+  "etymology",
+  "metadata",
+  "evolution",
+]);
+
+const KNOWN_ETYMOLOGY_KEYS = new Set<string>([
+  "origin_type",
+  "parent_entry_id",
+  "source_language_id",
+  "applied_sound_changes",
+  "semantic_shift_note",
+  "semantic_change_kind",
+  "borrowed_source",
+  "components",
+  "compounds_stale_digest",
+]);
+
+const KNOWN_SENSE_KEYS = new Set<string>([
+  "sense_id",
+  "pos_id",
+  "gloss",
+  "definitions",
+  "examples",
+  "grammatical_function",
+  "concept_id",
+  "usage_note",
+  "inflection_class_id",
+]);
+
+const KNOWN_METADATA_KEYS = new Set<string>(["tags", "created_at", "updated_at"]);
+
+/** 只挑出 `source` 中不属于标准字段的未知扩展字段（用于向后兼容外部写入） */
+function pickUnknown<T extends object>(source: T, known: Set<string>): Partial<T> {
+  const extra: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(source)) {
+    if (!known.has(key)) extra[key] = value;
+  }
+  return extra as Partial<T>;
+}
+
+function mergeSenseEntry(existing: Sense, incoming: Sense): Sense {
+  return {
+    ...pickUnknown(existing, KNOWN_SENSE_KEYS),
+    ...incoming,
+  };
+}
+
 function mergeWordEntry(
   existing: WordEntry | undefined,
   incoming: WordEntry,
 ): WordEntry {
   if (!existing) return incoming;
   return {
-    ...existing,
+    ...pickUnknown(existing, KNOWN_WORD_KEYS),
     ...incoming,
-    senses: mergeById(existing.senses, incoming.senses, "sense_id"),
+    senses: mergeById(existing.senses, incoming.senses, "sense_id", mergeSenseEntry),
     etymology: {
-      ...existing.etymology,
+      ...pickUnknown(existing.etymology, KNOWN_ETYMOLOGY_KEYS),
       ...incoming.etymology,
     },
     metadata: {
-      ...existing.metadata,
+      ...pickUnknown(existing.metadata, KNOWN_METADATA_KEYS),
       ...incoming.metadata,
     },
     evolution: incoming.evolution
@@ -347,21 +411,16 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
         syncActiveFlags(projectPath, languagePath);
         // 落盘成功：谱系词库缓存（跨语言检索/推演的数据源）已过期
         invalidateLineageLexicon(projectPath, languagePath);
+        reportSaveSuccess("lexicon");
       } catch (err) {
         if (isConflictError(err)) {
           await raiseConflict(projectPath, languagePath);
           return;
         }
         console.warn(`保存词条失败：${err}`);
-        // Retry support: keep word in dirtyWords and reschedule with SAME operationId if not superseded
-        if ((tracker.wordVersions.get(entryId) ?? 0) <= scheduledVersion && !tracker.paused) {
-          scheduleDebouncedWordSave(
-            projectPath,
-            languagePath,
-            entryId,
-            operationId,
-          );
-        }
+        reportSaveError("lexicon", err instanceof Error ? err.message : String(err));
+        // 词条保留在 tracker.dirtyWords 中，由 flushSaves()／顶栏「重试」统一重试。
+        // 严禁在此处再次 scheduleDebouncedWordSave：那会形成每秒 2 次的无限重试死循环。
       }
     });
   };
@@ -398,6 +457,75 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
       operationId,
       version,
       timer,
+    });
+  };
+
+  /**
+   * 把某语言下滞留的「脏词条 / 待删除词条」合并成一次批量落盘。
+   *
+   * 供 `flushSaves()` 复用：单条保存失败后词条只留在 `dirtyWords` 中、
+   * 不再自动重排定时器，因此顶栏「重试」必须走这里才能真正重新写盘。
+   */
+  const retryPendingWrites = (
+    projectPath: string,
+    languagePath: string,
+  ): Promise<void> => {
+    const tracker = getTracker(projectPath, languagePath);
+    if (tracker.paused) return Promise.resolve();
+
+    const words = Array.from(tracker.dirtyWords.values()).filter(isValidWordEntry);
+    const deletedIds = Array.from(tracker.deletedWords.keys());
+    if (words.length === 0 && deletedIds.length === 0) return Promise.resolve();
+
+    const versions = new Map<string, number>();
+    words.forEach((word) => {
+      versions.set(word.entry_id, tracker.wordVersions.get(word.entry_id) ?? 0);
+    });
+    const operationId = generateOperationId();
+
+    return enqueueLangWrite(projectPath, languagePath, async () => {
+      if (tracker.paused) return;
+      recordGuiOperationId(operationId);
+      try {
+        let revision = tracker.revision;
+        if (words.length > 0) {
+          const saved = await invoke<WriteResult>("save_words_batch", {
+            projectPath,
+            languagePath,
+            words,
+            expectedRevision: revision,
+            operationId,
+          });
+          revision = saved.revision;
+          words.forEach((word) => {
+            if ((tracker.wordVersions.get(word.entry_id) ?? 0) <= (versions.get(word.entry_id) ?? 0)) {
+              tracker.dirtyWords.delete(word.entry_id);
+            }
+          });
+        }
+        if (deletedIds.length > 0) {
+          const removed = await invoke<WriteResult>("delete_words_batch", {
+            projectPath,
+            languagePath,
+            entryIds: deletedIds,
+            expectedRevision: revision,
+            operationId,
+          });
+          revision = removed.revision;
+          deletedIds.forEach((id) => tracker.deletedWords.delete(id));
+        }
+        tracker.revision = revision;
+        syncActiveFlags(projectPath, languagePath);
+        invalidateLineageLexicon(projectPath, languagePath);
+        reportSaveSuccess("lexicon");
+      } catch (err) {
+        if (isConflictError(err)) {
+          await raiseConflict(projectPath, languagePath);
+          return;
+        }
+        console.warn(`重试保存词条失败：${err}`);
+        reportSaveError("lexicon", err instanceof Error ? err.message : String(err));
+      }
     });
   };
 
@@ -580,12 +708,14 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           });
           syncActiveFlags(projectPath, languagePath);
           invalidateLineageLexicon(projectPath, languagePath);
+          reportSaveSuccess("lexicon");
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);
             return;
           }
           console.warn(`批量保存词条失败：${err}`);
+          reportSaveError("lexicon", err instanceof Error ? err.message : String(err));
         }
       });
     },
@@ -654,12 +784,14 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           }
           syncActiveFlags(projectPath, languagePath);
           invalidateLineageLexicon(projectPath, languagePath);
+          reportSaveSuccess("lexicon");
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);
             return;
           }
           console.warn(`删除失败：${err}`);
+          reportSaveError("lexicon", err instanceof Error ? err.message : String(err));
         }
       });
     },
@@ -728,12 +860,14 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           });
           syncActiveFlags(projectPath, languagePath);
           invalidateLineageLexicon(projectPath, languagePath);
+          reportSaveSuccess("lexicon");
         } catch (err) {
           if (isConflictError(err)) {
             await raiseConflict(projectPath, languagePath);
             return;
           }
           console.warn(`批量删除词条失败：${err}`);
+          reportSaveError("lexicon", err instanceof Error ? err.message : String(err));
         }
       });
     },
@@ -743,9 +877,17 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
 
     flushSaves: async () => {
       const due = Array.from(saveTimers.entries());
+      const { projectPath, languagePath } = get();
+      const targets = new Map<string, { projectPath: string; languagePath: string }>();
+      targets.set(makeLangKey(projectPath, languagePath), { projectPath, languagePath });
+
       for (const [key, item] of due) {
         clearTimeout(item.timer);
         saveTimers.delete(key);
+        targets.set(makeLangKey(item.projectPath, item.languagePath), {
+          projectPath: item.projectPath,
+          languagePath: item.languagePath,
+        });
         void executeWordSave(
           item.projectPath,
           item.languagePath,
@@ -753,6 +895,12 @@ export const useLexiconStore = create<LexiconStore>((set, get) => {
           item.operationId,
           item.version,
         );
+      }
+      await Promise.all(Array.from(writeChains.values()));
+
+      // 单条保存失败的词条只留在 dirtyWords / deletedWords 中：此处必须真正重试落盘一次
+      for (const target of targets.values()) {
+        await retryPendingWrites(target.projectPath, target.languagePath);
       }
       await Promise.all(Array.from(writeChains.values()));
     },

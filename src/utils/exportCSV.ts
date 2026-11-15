@@ -1,6 +1,7 @@
 import { WordEntry } from '../types';
+import { saveTextFile } from './fileSave';
 
-export const exportToCSV = (words: WordEntry[]): void => {
+export const exportToCSV = async (words: WordEntry[]): Promise<void> => {
   const headers = ['entry_id', 'con_word_romanized', 'phonetic_ipa', 'pos_id', 'gloss', 'definitions', 'examples'];
   const rows = words.flatMap(w =>
     w.senses.map(s => [
@@ -14,11 +15,10 @@ export const exportToCSV = (words: WordEntry[]): void => {
     ])
   );
   const csv = [headers, ...rows].map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' }); // BOM 头保证 Excel 中文兼容
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'lexicon_export.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  // BOM 头保证 Excel 中文兼容
+  await saveTextFile({
+    defaultName: 'lexicon_export.csv',
+    content: '\ufeff' + csv,
+    mimeType: 'text/csv;charset=utf-8;',
+  });
 };

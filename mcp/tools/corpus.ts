@@ -3,7 +3,11 @@ import path from "node:path";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { newPrefixedId, nowIso } from "../../src/core/lexicon/ids";
-import { autoGloss } from "../../src/core/workflows/autoGloss";
+import {
+  autoGloss,
+  mergeAutoGlossIntoCorpus,
+  type AutoGlossScopeMode,
+} from "../../src/core/workflows/autoGloss";
 import { findWordConcordance } from "../../src/core/engines/concordance";
 import type {
   CorpusIndexEntry,
@@ -76,6 +80,82 @@ function isRecord(val: unknown): val is Record<string, unknown> {
   return typeof val === "object" && val !== null && !Array.isArray(val);
 }
 
+/** reanalyze_selected 下被重算的人工 token 预览项（Roadmap v3 / Pillar 2） */
+interface ReplacedProtectedToken {
+  line_id: string;
+  token_id: string;
+  surface: string;
+  before_gloss: string;
+  after_gloss: string;
+}
+
+/**
+ * 将最新 autoGloss 结果非破坏性合并回语料（与 UI 侧 `mergeAutoGlossIntoCorpus` 同一不变量）：
+ * 任何模式下 100% 保留既有 `line.translation`；新行（全新语料 / 追加句子）完整生成；磁盘未知字段原样保留。
+ */
+function mergeFreshGlossLines(params: {
+  corpus: CorpusText | null;
+  freshLines: GlossedLine[];
+  mode: AutoGlossScopeMode;
+  selectedLineIds: Set<string>;
+  preserveTranslations: boolean;
+  rawPrevLines: Record<string, unknown>[];
+}): { nextLines: GlossedLine[]; replacedProtectedTokens: ReplacedProtectedToken[] } {
+  const { corpus, freshLines, mode, selectedLineIds, preserveTranslations } = params;
+  const freshById = new Map(freshLines.map((line) => [line.line_id, line]));
+  const stampAutoTokens = (line: GlossedLine): GlossedLine => ({
+    ...line,
+    tokens: line.tokens.map((token) => ({
+      ...token,
+      status:
+        token.status ??
+        (token.gloss_labels.trim() || token.linked_entry_id.trim() ? "auto" : undefined),
+    })),
+  });
+
+  if (!corpus) {
+    return {
+      nextLines: freshLines.map(stampAutoTokens),
+      replacedProtectedTokens: [],
+    };
+  }
+
+  const merged = mergeAutoGlossIntoCorpus({
+    corpus,
+    freshLines,
+    mode,
+    selectedLineIds,
+  });
+
+  const rawById = new Map(
+    params.rawPrevLines.map((raw) => [String(raw.line_id ?? ""), raw]),
+  );
+
+  // 新行（含 original_text 追加的句子行）已由 mergeAutoGlossIntoCorpus 以 freshLines 为主序列生成
+  const nextLines = merged.nextLines.map((line) => {
+    const raw = rawById.get(line.line_id) ?? {};
+    const translation = preserveTranslations
+      ? line.translation
+      : (freshById.get(line.line_id)?.translation ?? "");
+    return {
+      ...raw,
+      ...line,
+      translation,
+    } as unknown as GlossedLine;
+  });
+
+  return {
+    nextLines,
+    replacedProtectedTokens: merged.replacedProtectedTokens.map((item) => ({
+      line_id: item.lineId,
+      token_id: item.tokenId,
+      surface: item.surface,
+      before_gloss: item.beforeGloss,
+      after_gloss: item.afterGloss,
+    })),
+  };
+}
+
 const autoGlossReportSchema = z
   .object({
     total: z.number().int().nonnegative(),
@@ -92,6 +172,20 @@ const glossTokenInputSchema = z
     morpheme_break: z.string().optional(),
     gloss_labels: z.string().optional(),
     linked_entry_id: z.string().optional(),
+    linked_sense_id: z
+      .string()
+      .nullable()
+      .optional()
+      .describe(
+        "Exact sense binding inside the linked entry (disambiguates polysemy). Pass null or \"\" to clear the binding.",
+      ),
+    status: z
+      .union([z.enum(["auto", "edited", "verified"]), z.literal("")])
+      .nullable()
+      .optional()
+      .describe(
+        "Annotation provenance: auto = machine-produced, edited = human-modified, verified = explicitly locked against auto-overwrite. Pass null or \"\" to clear the status.",
+      ),
     ipa: z.string().optional(),
   })
   .passthrough();
@@ -143,10 +237,12 @@ function mergeTokensPreservingUnknown(
       morpheme_break,
       gloss_labels,
       linked_entry_id,
+      linked_sense_id,
+      status,
       ipa,
       ...extra
     } = tok;
-    return {
+    const merged: Record<string, unknown> = {
       ...prev,
       ...extra,
       token_id: tokenId,
@@ -175,8 +271,41 @@ function mergeTokensPreservingUnknown(
           : typeof prev.ipa === "string"
             ? prev.ipa
             : "",
-    } as unknown as GlossToken;
+    };
+
+    // 显式传 null / "" 表示清空旧值；完全省略则沿用磁盘上的旧值
+    const nextSenseId =
+      linked_sense_id === undefined
+        ? prevSenseId(prev)
+        : linked_sense_id === null || linked_sense_id === ""
+          ? undefined
+          : linked_sense_id;
+    if (nextSenseId === undefined) {
+      delete merged.linked_sense_id;
+    } else {
+      merged.linked_sense_id = nextSenseId;
+    }
+
+    const nextStatus =
+      status === undefined
+        ? typeof prev.status === "string"
+          ? prev.status
+          : undefined
+        : status === null || status === ""
+          ? undefined
+          : status;
+    if (nextStatus === undefined) {
+      delete merged.status;
+    } else {
+      merged.status = nextStatus;
+    }
+
+    return merged as unknown as GlossToken;
   });
+}
+
+function prevSenseId(prev: Record<string, unknown>): string | undefined {
+  return typeof prev.linked_sense_id === "string" ? prev.linked_sense_id : undefined;
 }
 
 function mergeLinesPreservingUnknown(
@@ -781,7 +910,7 @@ export function registerCorpusTools(
     name: "corpus_auto_gloss",
     title: "Auto-Gloss Corpus Text",
     description:
-      "Run automatic morphological & lexical interlinear glossing on raw text or an existing corpus_id. Defaults to read-only preview (apply: false); when apply: true, writes updated glossed_lines and auto_gloss_report to <corpus_id>.json and corpus_index.json.",
+      "Run automatic morphological & lexical interlinear glossing on raw text or an existing corpus_id. Merging is non-destructive: mode fill_empty (default) only fills blank tokens, recompute_auto refreshes machine tokens, reanalyze_selected force-recomputes selected_line_ids and reports replaced_protected_tokens. line.translation is always preserved. Defaults to read-only preview (apply: false); when apply: true, writes updated glossed_lines and auto_gloss_report to <corpus_id>.json and corpus_index.json.",
     toolsets: ["compute", "write"],
     access: "write",
     inputSchema: {
@@ -808,11 +937,23 @@ export function registerCorpusTools(
         .boolean()
         .optional()
         .describe("Preserve existing per-line free translations when line text matches (default true)"),
+      mode: z
+        .enum(["fill_empty", "recompute_auto", "reanalyze_selected"])
+        .optional()
+        .describe(
+          "Non-destructive merge scope: fill_empty (default) only fills blank tokens, recompute_auto also refreshes auto tokens but never touches edited/verified ones, reanalyze_selected force-recomputes only selected_line_ids and reports replaced protected tokens.",
+        ),
+      selected_line_ids: z
+        .array(z.string())
+        .optional()
+        .describe("Line ids targeted by mode: reanalyze_selected (ignored by other modes)."),
     },
     handler: async (args) => {
       const apply = Boolean(args.apply);
       const dryRun = Boolean(args.dry_run);
       const preserveTranslations = args.preserve_line_translations ?? true;
+      const mode: AutoGlossScopeMode = args.mode ?? "fill_empty";
+      const selectedLineIds = new Set(args.selected_line_ids ?? []);
 
       if (!args.corpus_id?.trim() && args.text === undefined) {
         throw new McpError(
@@ -871,23 +1012,15 @@ export function registerCorpusTools(
           createTokenId: () => newPrefixedId("tok"),
         });
 
-        const mergedLines = result.lines.map((line, idx) => {
-          if (!preserveTranslations) return line;
-          const prevSameIndex = prevLines[idx];
-          if (
-            prevSameIndex &&
-            prevSameIndex.original.trim() === line.original.trim() &&
-            prevSameIndex.translation
-          ) {
-            return { ...line, translation: prevSameIndex.translation };
-          }
-          const byText = prevLines.find(
-            (pl) =>
-              pl.original.trim() === line.original.trim() &&
-              Boolean(pl.translation),
-          );
-          return byText ? { ...line, translation: byText.translation } : line;
+        const merged = mergeFreshGlossLines({
+          corpus: snapshot.existingCorpus?.corpus ?? null,
+          freshLines: result.lines,
+          mode,
+          selectedLineIds,
+          preserveTranslations,
+          rawPrevLines: [],
         });
+        const mergedLines = merged.nextLines;
 
         const pendingFormatted = result.pending.map((p) => ({
           line_id: p.lineId,
@@ -908,7 +1041,9 @@ export function registerCorpusTools(
           family_id: family.family_id,
           language_id: snapshot.languageId,
           corpus_id: corpusId,
+          mode,
           glossed_lines: mergedLines,
+          replaced_protected_tokens: merged.replacedProtectedTokens,
           pending_suggestions: pendingFormatted,
           report: result.report,
           revision: snapshot.existingCorpus?.revision ?? null,
@@ -999,33 +1134,16 @@ export function registerCorpusTools(
             createTokenId: () => newPrefixedId("tok"),
           });
 
-          const nextLines: GlossedLine[] = glossed.lines.map((line, idx) => {
-            const rawPrevLine =
-              prevRawLines.find((rl) => rl.line_id === line.line_id) ?? {};
-            let translation = line.translation;
-            if (preserveTranslations) {
-              const prevSameIdx = prevLines[idx];
-              if (
-                prevSameIdx &&
-                prevSameIdx.original.trim() === line.original.trim() &&
-                prevSameIdx.translation
-              ) {
-                translation = prevSameIdx.translation;
-              } else {
-                const byText = prevLines.find(
-                  (pl) =>
-                    pl.original.trim() === line.original.trim() &&
-                    Boolean(pl.translation),
-                );
-                if (byText) translation = byText.translation;
-              }
-            }
-            return {
-              ...rawPrevLine,
-              ...line,
-              translation,
-            } as unknown as GlossedLine;
+          const mergedGloss = mergeFreshGlossLines({
+            corpus: loaded.corpus,
+            freshLines: glossed.lines,
+            mode,
+            selectedLineIds,
+            preserveTranslations,
+            rawPrevLines: prevRawLines,
           });
+          const nextLines: GlossedLine[] = mergedGloss.nextLines;
+          const replacedProtectedTokens = mergedGloss.replacedProtectedTokens;
 
           const isoNow = nowIso();
           const prevMeta = isRecord(rawPrevCorpus.metadata)
@@ -1138,9 +1256,11 @@ export function registerCorpusTools(
               family_id: family.family_id,
               language_id: lang.language_id,
               corpus_id: corpusId,
+              mode,
               report: glossed.report,
               pending_suggestions: pendingFormatted,
               glossed_lines: nextLines,
+              replaced_protected_tokens: replacedProtectedTokens,
               would_snapshot: needSnap,
               base_revisions: {
                 ...baseRevisions,
@@ -1162,8 +1282,10 @@ export function registerCorpusTools(
                 family_id: family.family_id,
                 language_id: lang.language_id,
                 corpus_id: corpusId,
+                mode,
                 report: glossed.report,
                 pending_suggestions: pendingFormatted,
+                replaced_protected_tokens: replacedProtectedTokens,
                 revision:
                   newRevisions[corpusLabel] ??
                   newRevisions[fileRel] ??
@@ -1389,11 +1511,24 @@ export function registerCorpusTools(
           );
           const grammar = readGrammarUnlocked(family.project_dir, resolved.language);
           const idx = readCorpusIndexUnlocked(family.project_dir, resolved.language);
-          const texts = idx.entries
-            .map((entry) =>
-              readCorpusTextUnlocked(family.project_dir, resolved.language, entry.corpus_id),
-            )
-            .map((loaded) => loaded.corpus);
+          const texts: CorpusText[] = [];
+          for (const entry of idx.entries) {
+            // 索引里可能存在孤立项（<corpus_id>.json 已被删/改名）：跳过而不是让整次查询崩溃
+            try {
+              texts.push(
+                readCorpusTextUnlocked(
+                  family.project_dir,
+                  resolved.language,
+                  entry.corpus_id,
+                ).corpus,
+              );
+            } catch (err) {
+              console.warn(
+                `Skipping unreadable corpus "${entry.corpus_id}" in corpus_concordance:`,
+                err,
+              );
+            }
+          }
           return { resolved, lex, phono, grammar, idx, texts };
         },
       );

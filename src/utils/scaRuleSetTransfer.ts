@@ -5,6 +5,7 @@
  */
 import type { SCARuleSet } from "../types";
 import { serializeSCARuleSetForImport } from "./scaImportParser";
+import { saveTextFile } from "./fileSave";
 
 export interface RuleSetTransferNotice {
   type: "success" | "error";
@@ -20,15 +21,13 @@ export function safeRuleSetFileName(name: string): string {
   return normalized || "sca_ruleset";
 }
 
-/** 触发浏览器下载纯文本文件 */
-export function downloadTextFile(filename: string, content: string): void {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+/** 保存纯文本文件（桌面端走原生保存面板） */
+export async function downloadTextFile(filename: string, content: string): Promise<void> {
+  await saveTextFile({
+    defaultName: filename,
+    content,
+    filters: [{ name: "Text", extensions: ["txt"] }],
+  });
 }
 
 /** 单个规则集的导入格式文本 */
@@ -48,7 +47,8 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     return true;
-  } catch {
+  } catch (err) {
+    console.warn(`Clipboard write failed: ${err}`);
     return false;
   }
 }

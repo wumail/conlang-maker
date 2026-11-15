@@ -40,6 +40,12 @@ export interface ConcordanceOptions {
   extraForms?: string[];
   /** 返回条数上限，默认 200（total 仍返回全量计数） */
   limit?: number;
+  /**
+   * 精确到义项筛选（Roadmap v3 / Pillar 6）：
+   * 优先匹配 token.linked_sense_id === senseId；未绑 linked_sense_id 的 token
+   * 仅在「单义项词条且 entry_id 匹配」时计入。
+   */
+  senseId?: string;
 }
 
 const DEFAULT_LIMIT = 200;
@@ -68,16 +74,25 @@ export function buildAcceptedForms(
     if (normalized) forms.add(normalized);
   }
 
-  const posIds = new Set(
-    entry.senses.map((sense) => sense.pos_id).filter((posId) => Boolean(posId)),
-  );
-  for (const posId of posIds) {
+  // 按 (pos_id, sense 级 inflection_class_id) 去重遍历：同一词性下若不同义项拥有不同变位类，
+  // 每个变位类的屈折形都应纳入反向索引匹配池。
+  const seenSenseKeys = new Set<string>();
+  for (const sense of entry.senses) {
+    if (!sense.pos_id) continue;
+    const senseKey = `${sense.pos_id}::${sense.inflection_class_id ?? ""}`;
+    if (seenSenseKeys.has(senseKey)) continue;
+    seenSenseKeys.add(senseKey);
     const cells = generateParadigm(
       entry.con_word_romanized,
-      posId,
+      sense.pos_id,
       grammar.inflection_rules,
       phono,
-      { entryId: entry.entry_id, grammar },
+      {
+        entryId: entry.entry_id,
+        grammar,
+        entry,
+        senseId: sense.sense_id,
+      },
     );
     for (const cell of cells) {
       const normalized = normalizeToken(cell.result);
@@ -89,13 +104,14 @@ export function buildAcceptedForms(
 }
 
 export function findWordConcordance(options: ConcordanceOptions): ConcordanceResult {
-  const { entry, corpusTexts, grammar, phono, extraForms, limit = DEFAULT_LIMIT } = options;
+  const { entry, corpusTexts, grammar, phono, extraForms, limit = DEFAULT_LIMIT, senseId } = options;
   if (corpusTexts.length === 0) return { matches: [], total: 0 };
 
   const acceptedForms = buildAcceptedForms(entry, grammar, phono, extraForms);
   const baseForm = normalizeToken(entry.con_word_romanized);
   const fallbackGloss =
     entry.senses.map((sense) => sense.gloss).filter(Boolean).join("; ") || "";
+  const singleSense = entry.senses.length === 1;
 
   let total = 0;
   const matches: ConcordanceHit[] = [];
@@ -119,6 +135,15 @@ export function findWordConcordance(options: ConcordanceOptions): ConcordanceRes
 
         if (!linked && !stemMatch && !surfaceMatch) continue;
 
+        // 义项级筛选：显式绑定的义项必须命中；未绑 sense 的 token 仅单义项词条可用
+        if (senseId) {
+          const tokenSense = token.linked_sense_id;
+          const senseOk = tokenSense
+            ? tokenSense === senseId
+            : singleSense && linked;
+          if (!senseOk) continue;
+        }
+
         total += 1;
         if (matches.length >= limit) continue;
 
@@ -136,4 +161,39 @@ export function findWordConcordance(options: ConcordanceOptions): ConcordanceRes
   }
 
   return { matches, total };
+}
+
+// ── Roadmap v3 / Pillar 6：删除词条/义项前的引用影响预检 ──────────────
+
+/**
+ * 统计删除某词条（或义项）会影响的语料引用：
+ * 精准命中 token.linked_entry_id（指定 senseId 时再按义项过滤）。
+ */
+export function computeCorpusReferenceImpact(params: {
+  corpusTexts: CorpusText[];
+  entryId: string;
+  senseId?: string;
+}): { totalHits: number; verifiedHits: number; affectedCorpusTitles: string[] } {
+  const { corpusTexts, entryId, senseId } = params;
+  let totalHits = 0;
+  let verifiedHits = 0;
+  const titles = new Set<string>();
+
+  for (const text of corpusTexts) {
+    for (const line of text.glossed_lines) {
+      for (const token of line.tokens) {
+        if (token.linked_entry_id !== entryId) continue;
+        if (senseId && token.linked_sense_id && token.linked_sense_id !== senseId) continue;
+        totalHits += 1;
+        if (token.status === "verified") verifiedHits += 1;
+        if (text.title || text.corpus_id) titles.add(text.title || text.corpus_id);
+      }
+    }
+  }
+
+  return {
+    totalHits,
+    verifiedHits,
+    affectedCorpusTitles: [...titles],
+  };
 }

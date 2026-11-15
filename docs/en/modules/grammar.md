@@ -1,8 +1,16 @@
 # Grammar
 
-8 sub-sections managing the full lifecycle of grammar rules.
+7 workspaces (**Typology**, **Syntax**, **Parts of Speech**, **Inflection**, **Morphophonology**, **Derivation**, and **Reference Manual**) managing the full lifecycle of grammar from typological profile to step-by-step morphological derivation.
 
-**Navigate**: click `Grammar` in the sidebar.
+**Navigate**: click `Grammar` in the top navigation bar.
+
+## Typology & Conjugation Classes
+
+Configure your language's morphological architecture and inflectional class routing:
+
+- **Morphological Type**: Isolating / Agglutinative (ordered affix slots) / Fusional (multi-feature portmanteau rules & conjugation classes) / Polysynthetic
+- **Morphosyntactic Alignment**: Nominative-Accusative (`nom_acc`) or Ergative-Absolutive (`erg_abs`), wired directly into the Translation Sandbox clause builder
+- **Conjugation / Declension Classes**: Define multiple inflectional classes per POS (e.g., Class I `-ar` verbs vs. Class II `-ir` verbs) with stem pattern hints or explicit per-entry bindings. Rule selection strictly respects class membership so reordering rules of another class never alters outputs
 
 ## Syntax Configuration
 
@@ -10,161 +18,83 @@
 - **Modifier position**: Before head / after head
 - **Adposition type**: Preposition / postposition
 
-### Step-by-step: Set a minimal syntax profile
-
-1. Open `Grammar -> Syntax`.
-2. Choose a base word order (for example `SOV`).
-3. Set modifier position (`before head` or `after head`).
-4. Set adposition type (`preposition` or `postposition`).
-5. Save and switch to `Sandbox -> Syntax mode` to verify ordering behavior.
-
 ## Parts of Speech
 
-Customize POS to define your language's word classes:
+Customize word classes for your language:
 
-- Name, abbreviation (for glossing)
-- Word-form pattern (regex)
-- Whether gloss/pronunciation is required
+- Name and Leipzig gloss abbreviation
+- Word-form regex pattern
+- Whether definition or pronunciation is required during lexicon QA
 
 Defaults: Noun, Verb, Adjective, Adverb, Pronoun, Adposition, Conjunction, Interjection.
 
-### Step-by-step: Add a custom POS
+## Inflection System
 
-1. Open `Grammar -> POS`.
-2. Click `Add POS`.
-3. Fill `Name` and `Abbr` (used in gloss labels).
-4. Optionally add a regex word pattern.
-5. Set whether definition/pronunciation is required.
+### Inflectional Dimensions
 
-## Inflectional Dimensions
+Define grammatical dimensions, their values, and whether each dimension is **obligatory** for a given POS:
 
 | Dimension | Example Values |
 |-----------|---------------|
-| Number | Singular SG / Plural PL |
-| Case | Nominative NOM / Accusative ACC / Genitive GEN / Dative DAT |
-| Tense | Past PAST / Present PRES / Future FUT |
-| Person | 1st 1 / 2nd 2 / 3rd 3 |
+| Number | Singular `SG` / Plural `PL` |
+| Case | Nominative `NOM` / Accusative `ACC` / Genitive `GEN` / Dative `DAT` |
+| Tense | Past `PST` / Present `PRS` / Future `FUT` |
+| Person | 1st `1` / 2nd `2` / 3rd `3` |
 
-Each dimension can be associated with specific POS (e.g., Case applies only to nouns and pronouns).
+When an inflection request omits an obligatory dimension (for instance, requesting `PST` on a finite verb without `Person` or `Number`), the engine surfaces explicit missing-feature diagnostics.
 
-### Step-by-step: Build two core dimensions
+### Inflection Rules & Unified 6-Step Pipeline
 
-1. Open `Grammar -> Dimensions`.
-2. Add `Number` with values `SG`, `PL`.
-3. Add `Tense` with values `PRES`, `PAST`.
-4. Bind `Number` to nouns and `Tense` to verbs.
-5. Save and continue to inflection rules.
-
-## Inflection Rules
-
-6 morphological operation types:
+6 morphological operation types are supported, each with optional IF/ELSE phonological/regex conditioning:
 
 | Type | Description | Example |
 |------|------------|---------|
-| Prefix | Added before | un- + happy |
-| Suffix | Added after | cat + -s |
-| Infix | Inserted within | After the Nth phoneme |
-| Circumfix | Added to both ends | ge- ... -t |
-| Reduplication | Full/partial repeat | Full or first N phonemes |
-| Ablaut | Vowel alternation | sing → sang |
+| Prefix | Added before stem | `un- + happy` |
+| Suffix | Added after stem | `cat + -s` |
+| Infix | Inserted inside stem | After the Nth phoneme |
+| Circumfix | Wraps stem on both sides | `ge- ... -t` |
+| Reduplication | Full or partial copy | Full or first N phonemes |
+| Ablaut | Stem vowel alternation | `sing → sang` |
 
-**Conditional logic**: Each rule supports IF/ELSE branching based on word-final/initial phoneme class or regex match.
+Every module in Conlang Maker (**Paradigm Matrix**, **Translation Sandbox**, **Corpus Auto-Gloss**, and **Hunspell `.dic/.aff` Export**) shares the exact same **6-step morphological pipeline**:
 
-### Step-by-step: Add production-ready inflection rules
+1. **Irregular Overrides**: Checks entry-specific suppletive/irregular overrides first, preferring the override with the highest feature specificity.
+2. **Conjugation Class Filtering**: Restricts candidate rules to the word's assigned conjugation class (or class-neutral rules).
+3. **Condition, Slot & Priority Resolution**: Evaluates phonological conditions, slot ordering, feature coverage, and explicit priority — surfacing rule-conflict warnings if multiple rules tie.
+4. **Morpheme Concatenation**: Assembles stems and affixes with explicit `+` morpheme boundaries (e.g., `ev+lar`).
+5. **Morphophonology**: Applies ordered cross-boundary (`+`) phonological rules (assimilation, epenthesis, deletion, vowel harmony) and strips `+`.
+6. **Surface Phonetics**: Runs romanization-to-IPA and allophony rules to produce `/…/` and `[…]` IPA.
 
-1. Open `Grammar -> Inflection`.
-2. Add `PL` suffix rule with `affix = en`.
-3. Add `PAST` suffix rule with `affix = ka`.
-4. (Optional) add a conditional variant for vowel-final stems.
-5. Use `Grammar -> Inflection Test` to validate outputs.
+### Irregular Overrides
 
-### SCA integration toggle (advanced)
+Bind suppletive or irregular surface forms directly to a lexicon entry and feature bundle (e.g., `be + 1.SG.PST → was`). When multiple overrides match subsets of a feature request, the most specific bundle automatically wins.
 
-Each inflection rule has an `SCA` toggle (`Allow SCA edits`):
+### Paradigm Matrix & Derivation Trace
 
-- OFF (default): the rule is protected from SCA batch rewrite.
-- ON: the rule is eligible for SCA rewrite (affix/infix/circumfix/ablaut fields as applicable).
+- **Inflection Matrix**: Inspect full POS × dimension paradigms in a grid to spot empty cells or overlapping rules.
+- **Step-by-Step Derivation Trace (`InflectionTracePanel`)**: Test any lexicon entry or custom stem and expand the trace to inspect rule selection, `+`-bounded intermediate forms, morphophonological rewrites, final IPA, and missing obligatory feature warnings.
 
-Recommended rollout:
+### SCA Toggle & Parent Affix Sync
 
-1. Keep all toggles OFF.
-2. Enable only high-confidence historical rules.
-3. Run SCA batch preview and review changes.
-4. Expand scope gradually.
+- Each inflection rule has an `Allow SCA edits` toggle so diachronic sound changes only rewrite historically inherited affixes.
+- Daughter languages can also run **Grammar Pull Sync** (`gram_pull_sync`) to evolve parent affixes and irregular overrides through child sound changes while flagging **syncretism** collisions.
 
-## Inflection Matrix
+## Morphophonology
 
-Grid view of all POS × dimension values, allowing quick coverage checks.
+Manage phonological alternations triggered across morpheme boundaries (`+`):
 
-### Step-by-step: Coverage audit
-
-1. Open `Grammar -> Matrix`.
-2. Scan for empty intersections (POS × value).
-3. Add missing rules and re-check matrix until no critical gaps remain.
-
-## Inflection Test
-
-Input a test word + select POS → instantly see all applicable inflection rules applied with detailed logs.
-
-### Step-by-step: Regression test after rule edits
-
-1. Prepare 5-10 representative stems.
-2. Test each stem in the panel after rule changes.
-3. Confirm expected forms for all major dimensions.
-4. If any form regresses, adjust rule ordering or regex constraints.
+- **Execution order**: Runs in ascending priority order immediately after affix concatenation; if empty, affixes concatenate verbatim.
+- **Bidirectional Single-Line DSL & Form Editor**: Write rules such as `n -> m / _ + p` using `V` (vowels), `C` (consonants), `#` (word boundary), and `+` (morpheme boundary).
+- **Live Test Bar**: Enter any `+`-segmented string (e.g., `ev+lar`) at the bottom of the panel to preview instant boundary rewrites (`ev+lar → evler`) and reset anytime.
 
 ## Derivation Rules
 
-- **POS conversion**: Source → target POS (e.g., verb→noun: `-er` for agent)
-- **Reuses morphology engine**: All 6 operation types available
-- **Semantic notes**: Annotate semantic shift
-- **Batch preview**: Preview derivations for all matching lexicon entries
-- **Selective import**: Select all / deselect / per-row checkbox before import
-- **One-click import**: Import selected derived words into the lexicon
+Define word-formation rules that derive new lexicon entries:
 
-### Step-by-step: Derive verbs into agent nouns
+- **POS conversion**: Source → target POS (e.g., `Verb → Noun` agentive `-er`)
+- **Shared morphology & morphophonology**: Uses all 6 operation types plus cross-boundary `+` morphophonological rules
+- **Batch preview & provenance**: Preview candidates across the lexicon and import selected words with structured derivation provenance and morpheme component links
 
-1. Open `Grammar -> Derivation`.
-2. Add a rule: source `Verb`, target `Noun`, type `Suffix`, affix `-er`.
-3. Click `Preview` to generate batch candidates.
-4. Deselect noisy candidates.
-5. Click `Import` to write selected entries to lexicon.
+## Reference Manual
 
-### SCA integration toggle (advanced)
-
-Each derivation rule also supports `Allow SCA edits`:
-
-- OFF (default): derivation rule surface remains unchanged by SCA.
-- ON: derivation affix structures can evolve under SCA batch apply.
-
-## Grammar Manual
-
-Write readable reference documentation in Markdown chapters. Embed paradigm tables with `{{paradigm:pos_id:test_word}}`. Drag to reorder chapters.
-
-### Step-by-step: Create a publishable grammar chapter
-
-1. Open `Grammar -> Manual`.
-2. Add chapter `Noun Morphology`.
-3. Write rules in Markdown.
-4. Insert a paradigm marker with a test stem.
-5. Reorder chapters for final reading flow.
-
-## Advanced examples
-
-### Example A: Conditional plural allomorphy
-
-- Rule 1: if stem ends with vowel, plural suffix = `-n`
-- Rule 2: else plural suffix = `-en`
-
-Validation steps:
-
-1. Test `kala` -> `kala-n`.
-2. Test `mart` -> `mart-en`.
-3. Confirm matrix still covers all noun-number combinations.
-
-### Example B: Safe historical grammar evolution
-
-1. Enable `Allow SCA edits` only on two noun suffix rules.
-2. Run SCA batch preview.
-3. Check scope and field columns.
-4. Apply changes and re-run inflection tests.
+Author publishable grammar documentation in re-orderable Markdown chapters. Embed live paradigm tables anywhere with `{{paradigm:pos_id:test_word}}` — included automatically when exporting a Reference Grammar Book.

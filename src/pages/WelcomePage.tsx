@@ -5,9 +5,9 @@ import { Plus, FolderOpen, Trash2 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { useRegistryStore } from "../store/registryStore";
 import { useWorkspaceStore } from "../store/workspaceStore";
-import { BTN_PRIMARY, BTN_GHOST, BTN_ERROR, BTN_PRIMARY_MD } from "../lib/ui";
+import { BTN_ERROR, BTN_PRIMARY_MD } from "../lib/ui";
 import { ConfirmModal } from "../components/common/ConfirmModal";
-import { ModalPortal } from "../components/common/ModalPortal";
+import { OnboardingStartModal, type OnboardingPath } from "../components/common/OnboardingStartModal";
 import { openPathSafely, messageSafely } from "../utils/safeDialog";
 
 import type { FamilyEntry } from "../types";
@@ -20,7 +20,6 @@ export function WelcomePage() {
   const { loadWorkspace, createRootLanguage } = useWorkspaceStore();
 
   const [showCreate, setShowCreate] = useState(false);
-  const [newName, setNewName] = useState("");
   const [creating, setCreating] = useState(false);
   const [deleteIdx, setDeleteIdx] = useState<number | null>(null);
 
@@ -64,23 +63,19 @@ export function WelcomePage() {
   };
 
   /** Create a new language family */
-  const handleCreate = async () => {
-    if (!newName.trim()) return;
+  const handleCreate = async (name: string, path: OnboardingPath) => {
+    if (!name) return;
     setCreating(true);
     try {
-      const result = await createRootLanguage(newName.trim());
+      const result = await createRootLanguage(name);
       if (result) {
-        const reg = await registerFamily(
-          newName.trim(),
-          result.conlang_file_path,
-        );
+        const reg = await registerFamily(name, result.conlang_file_path);
         const idx = reg.families.findIndex(
           (f) => f.conlang_file_path === result.conlang_file_path,
         );
         if (idx >= 0) await setActiveFamily(idx);
         setShowCreate(false);
-        setNewName("");
-        navigate("/tree");
+        navigate(`/${path}`);
       }
     } catch (err) {
       console.warn(`Failed to create: ${err}`);
@@ -179,41 +174,13 @@ export function WelcomePage() {
         )}
       </div>
 
-      {/* Create modal */}
-      <ModalPortal open={showCreate}>
-        <div className="modal modal-open">
-          <div className="modal-box">
-            <h3 className="font-bold text-lg">{t("welcome.createTitle")}</h3>
-            <div className="form-control mt-3">
-              <label className="label mb-2">
-                <span className="label-text">{t("welcome.familyName")}</span>
-              </label>
-              <input
-                className="input input-md w-full"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder={t("welcome.familyNamePlaceholder")}
-                onKeyDown={(e) => e.key === "Enter" && handleCreate()}
-              />
-            </div>
-            <div className="modal-action">
-              <button
-                className={BTN_GHOST}
-                onClick={() => setShowCreate(false)}
-              >
-                {t("common.close")}
-              </button>
-              <button
-                className={BTN_PRIMARY}
-                onClick={handleCreate}
-                disabled={!newName.trim() || creating}
-              >
-                <Plus className="w-4 h-4" /> {t("welcome.create")}
-              </button>
-            </div>
-          </div>
-        </div>
-      </ModalPortal>
+      {/* Create modal: three onboarding paths */}
+      <OnboardingStartModal
+        open={showCreate}
+        creating={creating}
+        onCreate={(name, path) => void handleCreate(name, path)}
+        onCancel={() => setShowCreate(false)}
+      />
 
       {/* Delete confirm */}
       <ConfirmModal

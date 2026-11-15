@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Plus, Trash2, RefreshCw, AlertTriangle } from "lucide-react";
 import type { CompoundRelation, Etymology, WordEntry } from "../../types";
 import { computeComponentsDigest, wouldIntroduceCycle } from "../../core/engines/wordFamily";
+import { useGrammarStore } from "../../store/grammarStore";
 import { INPUT, SELECT, BTN_LINK, BTN_GHOST_SQ, BTN_ERROR, BADGE } from "../../lib/ui";
 import { useCompoundRelationLabels } from "../../lib/labelMaps";
 
@@ -24,6 +25,12 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
   const relationLabels = useCompoundRelationLabels();
   const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [affixRuleId, setAffixRuleId] = useState("");
+  const derivationRules = useGrammarStore((s) => s.config.derivation_rules);
+  const affixRules = useMemo(
+    () => derivationRules.filter((rule) => rule.affix.trim().length > 0),
+    [derivationRules],
+  );
   const components = word.etymology?.components ?? [];
 
   const candidates = useMemo(() => {
@@ -88,6 +95,25 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
       components: components.map((component, i) =>
         i === index ? { ...component, relation } : component,
       ),
+    });
+  };
+
+  /** 追加词缀成分：记录派生规则 ID 与其表层形式，供词源链展示 */
+  const addAffixComponent = (ruleId: string) => {
+    const rule = affixRules.find((candidate) => candidate.rule_id === ruleId);
+    if (!rule) return;
+    setAffixRuleId("");
+    commit({
+      ...(word.etymology as Etymology),
+      origin_type: word.etymology?.origin_type ?? "derived",
+      components: [
+        ...components,
+        {
+          relation: "affix",
+          derivation_rule_id: rule.rule_id,
+          surface_override: rule.affix,
+        },
+      ],
     });
   };
 
@@ -190,6 +216,32 @@ export const WordComponentsEditor: React.FC<WordComponentsEditorProps> = ({
       </div>
 
       {error && <p className="text-xs text-error">{error}</p>}
+
+      {affixRules.length > 0 && (
+        <div className="flex items-center gap-1">
+          <select
+            className={`${SELECT} select-xs flex-1`}
+            value={affixRuleId}
+            onChange={(event) => setAffixRuleId(event.target.value)}
+          >
+            <option value="">{t("lexicon.family.addAffixPlaceholder")}</option>
+            {affixRules.map((rule) => (
+              <option key={rule.rule_id} value={rule.rule_id}>
+                {rule.affix} · {rule.name || rule.rule_id}
+              </option>
+            ))}
+          </select>
+          <button
+            className={BTN_GHOST_SQ}
+            type="button"
+            disabled={!affixRuleId}
+            title={t("lexicon.family.components")}
+            onClick={() => addAffixComponent(affixRuleId)}
+          >
+            <Plus size={12} />
+          </button>
+        </div>
+      )}
 
       {components.length > 0 && (
         <p className="flex items-center gap-1 text-[10px] text-base-content/40">

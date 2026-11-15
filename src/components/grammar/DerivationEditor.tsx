@@ -8,6 +8,8 @@ import {
   generateDerivedWords,
   type DerivedWordPreview,
 } from "../../utils/derivationEngine";
+import { computeComponentsDigest } from "../../core/engines/wordFamily";
+import { pushUndoEntry } from "../../store/undoManager";
 import type { DerivationRule, WordEntry } from "../../types";
 import { DEFAULT_LANGUAGE_ID } from "../../constants";
 import { BTN_PRIMARY } from "../../lib/ui";
@@ -31,7 +33,7 @@ export const DerivationEditor: React.FC = () => {
     deleteDerivation,
     setDerivations,
   } = useGrammarStore();
-  const { wordsMap, upsertWord } = useLexiconStore();
+  const { wordsMap, importWords } = useLexiconStore();
   const phonoConfig = usePhonoStore((s) => s.config);
   const rules = config.derivation_rules;
   const partsOfSpeech = config.parts_of_speech;
@@ -92,8 +94,18 @@ export const DerivationEditor: React.FC = () => {
     const toImport = previews.filter((p) =>
       selectedPreviewIds.has(p.source.entry_id),
     );
-    toImport.forEach((p) => {
-      const entry: WordEntry = {
+    if (toImport.length === 0) return;
+    const now = new Date().toISOString();
+    const entries: WordEntry[] = toImport.map((p) => {
+      const components = [
+        { entry_id: p.source.entry_id, relation: "root" as const },
+        {
+          relation: "affix" as const,
+          derivation_rule_id: rule.rule_id,
+          surface_override: rule.affix,
+        },
+      ];
+      return {
         entry_id: crypto.randomUUID(),
         language_id: config.language_id || DEFAULT_LANGUAGE_ID,
         con_word_romanized: p.derived,
@@ -110,19 +122,37 @@ export const DerivationEditor: React.FC = () => {
         ],
         etymology: {
           origin_type: "derived",
-          parent_entry_id: p.source.entry_id,
+          parent_entry_id: null,
           source_language_id: null,
           applied_sound_changes: [],
           semantic_shift_note: rule.semantic_note,
+          semantic_change_kind: "unchanged",
+          components,
+          compounds_stale_digest: computeComponentsDigest(components, wordsMap),
         },
-        metadata: {
-          tags: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        },
+        metadata: { tags: [], created_at: now, updated_at: now },
       };
-      upsertWord(entry);
     });
+
+    // 批量落盘走单次 IPC，并记录一条可整体撤销的历史
+    importWords(entries);
+    const createdIds = entries.map((entry) => entry.entry_id);
+    pushUndoEntry({
+      // 撤销栈按 languagePath 隔离（与 performUndo 的匹配键一致），
+      // 用 language_id 会让 ⌘Z 永远找不到这条批量导入记录。
+      languageId: useLexiconStore.getState().languagePath,
+      domain: "lexicon",
+      labelKey: "grammar.derivation.import",
+      undo: () => {
+        for (const entryId of createdIds) {
+          useLexiconStore.getState().deleteWord(entryId, { skipHistory: true });
+        }
+      },
+      redo: () => {
+        useLexiconStore.getState().importWords(entries);
+      },
+    });
+
     setPreviews([]);
     setPreviewRuleId(null);
     setSelectedPreviewIds(new Set());

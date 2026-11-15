@@ -10,12 +10,17 @@ import {
   Wand2,
   Dna,
   GitFork,
-  Table2,
   FileDown,
   BookOpen,
   MoreHorizontal,
+  ChevronDown,
+  Check,
 } from "lucide-react";
 import { useWorkspaceStore } from "../../store/workspaceStore";
+import { useLexiconStore } from "../../store/lexiconStore";
+import { useCorpusStore } from "../../store/corpusStore";
+import { useRegistryStore } from "../../store/registryStore";
+import { saveLanguageViewMemory } from "../../lib/languageViewMemory";
 import { NAV_ACTIVE, NAV_INACTIVE } from "../../lib/ui";
 
 export function AppNav() {
@@ -24,6 +29,13 @@ export function AppNav() {
   const activeLanguageId = useWorkspaceStore((s) => s.activeLanguageId);
   const languages = useWorkspaceStore((s) => s.config.languages);
   const activeLang = languages.find((l) => l.language_id === activeLanguageId);
+  const setActiveLanguage = useWorkspaceStore((s) => s.setActiveLanguage);
+  const projectPath = useWorkspaceStore((s) => s.projectPath);
+  const families = useRegistryStore((s) => s.registry.families);
+  const projectLabel =
+    families.find((family) => family.conlang_file_path.startsWith(projectPath))?.name ??
+    projectPath.split("/").filter(Boolean).pop() ??
+    "";
 
   const navRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -54,11 +66,6 @@ export function AppNav() {
       to: "/grammar",
       icon: <ScrollText className="w-4 h-4" />,
       label: t("nav.grammar"),
-    },
-    {
-      to: "/cognates",
-      icon: <Table2 className="w-4 h-4" />,
-      label: t("nav.cognates"),
     },
     {
       to: "/corpus",
@@ -131,16 +138,46 @@ export function AppNav() {
 
   return (
     <nav className="bg-base-300 text-base-content flex items-center h-10 px-2 shrink-0 select-none relative">
-      {/* ── Language Name ── */}
-      <NavLink
-        to="/tree"
-        className="flex items-center gap-1.5 px-2 shrink-0"
-        title={activeLang?.name ?? "Conlang"}
-      >
-        <span className="font-semibold text-sm tracking-wide truncate max-w-[7rem]">
-          {activeLang?.name ?? "Conlang"}
-        </span>
-      </NavLink>
+      {/* ── 当前语言（点击展开切换，保持顶栏紧凑） ── */}
+      <div className="dropdown shrink-0">
+        <button
+          tabIndex={0}
+          className="flex items-center gap-1 rounded px-2 py-1 hover:bg-base-content/10"
+          title={`${projectLabel} ▸ ${activeLang?.name ?? "Conlang"}`}
+        >
+          <span className="max-w-[9rem] truncate text-sm font-semibold tracking-wide">
+            {activeLang?.name ?? "Conlang"}
+          </span>
+          <ChevronDown size={13} className="shrink-0 text-base-content/50" />
+        </button>
+        <ul
+          tabIndex={0}
+          className="dropdown-content menu z-50 mt-1 w-52 rounded-box bg-base-200 p-1 shadow-lg"
+        >
+          <li className="menu-title py-0 text-[10px]">{projectLabel}</li>
+          {languages.map((language) => (
+            <li key={language.language_id}>
+              <button
+                type="button"
+                className={language.language_id === activeLanguageId ? NAV_ACTIVE : NAV_INACTIVE}
+                onClick={() => {
+                  if (language.language_id === activeLanguageId) return;
+                  saveLanguageViewMemory(activeLanguageId, {
+                    activeWordId: useLexiconStore.getState().activeWordId,
+                    activeCorpusId: useCorpusStore.getState().activeCorpus?.corpus_id ?? null,
+                  });
+                  setActiveLanguage(language.language_id);
+                  // daisyUI dropdown 需要主动失焦才会收起
+                  (document.activeElement as HTMLElement | null)?.blur();
+                }}
+              >
+                <span className="flex-1 truncate text-left">{language.name}</span>
+                {language.language_id === activeLanguageId && <Check size={12} />}
+              </button>
+            </li>
+          ))}
+        </ul>
+      </div>
 
       <div className="w-px h-5 bg-base-content/20 mx-1" />
       {/* Hidden measurement row — measures natural width of all items */}

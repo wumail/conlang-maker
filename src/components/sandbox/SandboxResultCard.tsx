@@ -5,9 +5,18 @@ import type {
   PhrasePlan,
   PhraseTreeNode,
 } from "../../core/engines/phraseSandbox";
+import type { InflectionStepTrace } from "../../types";
 import type { SandboxResult } from "../../utils/sandbox";
 import { useFontStore } from "../../store/fontStore";
 import { ScriptLine } from "../writing/ScriptText";
+
+const MORPH_STAGE_KEYS: Record<InflectionStepTrace["stage"], string> = {
+  irregular: "grammar.morphologyV3.stageIrregular",
+  class_select: "grammar.morphologyV3.stageClass",
+  affix: "grammar.morphologyV3.stageAffix",
+  morphophonology: "grammar.morphologyV3.stageMorphophonology",
+  ipa: "grammar.morphologyV3.stageIpa",
+};
 
 const TreeNode: React.FC<{ node: PhraseTreeNode; depth?: number }> = ({
   node,
@@ -41,16 +50,23 @@ export const SandboxResultCard: React.FC<SandboxResultCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const fontLoaded = useFontStore((state) => state.loaded);
-  const surfaceSentence = tokens.map((token) => token.conlang).join(" ");
+  const isUnresolved = (token: SandboxResult): boolean =>
+    Boolean(token.unresolved) ||
+    (token.conlang.startsWith("?") && token.conlang.endsWith("?"));
+  const hasResolved = tokens.some((token) => !isUnresolved(token));
+  const hasUnresolved = tokens.some((token) => isUnresolved(token));
+  const nativeSentence = tokens
+    .map((token) => (isUnresolved(token) ? "—" : token.conlang))
+    .join(" ");
 
   return (
     <div className="rounded-lg border border-base-200 bg-base-200/50 p-3 space-y-3">
-      {fontLoaded && surfaceSentence.trim() && (
+      {fontLoaded && hasResolved && nativeSentence.trim() && (
         <div className="space-y-0.5" data-testid="clause-native-script">
           <span className="block text-[10px] uppercase tracking-wide text-base-content/50">
             {t("sandbox.clause.nativeScript")}
           </span>
-          <ScriptLine text={surfaceSentence} className="block text-xl" />
+          <ScriptLine text={nativeSentence} className="block text-xl" />
         </div>
       )}
 
@@ -61,7 +77,9 @@ export const SandboxResultCard: React.FC<SandboxResultCardProps> = ({
               {tokens.map((token, index) => (
                 <td
                   key={`s:${index}`}
-                  className="pr-5 pb-0.5 font-mono font-bold text-primary text-lg whitespace-nowrap"
+                  className={`pr-5 pb-0.5 font-mono font-bold text-lg whitespace-nowrap ${
+                    isUnresolved(token) ? "text-warning/80" : "text-primary"
+                  }`}
                 >
                   {token.conlang}
                 </td>
@@ -97,9 +115,16 @@ export const SandboxResultCard: React.FC<SandboxResultCardProps> = ({
         </table>
       </div>
 
+      {hasUnresolved && (
+        <p className="text-xs text-base-content/60 flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-warning" />
+          {t("sandbox.unresolvedHint")}
+        </p>
+      )}
+
       {plan.warnings.map((warning) => (
         <p key={warning} className="text-xs text-warning flex items-center gap-1.5">
-          <AlertTriangle className="w-3.5 h-3.5" />
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
           {warning}
         </p>
       ))}
@@ -115,6 +140,38 @@ export const SandboxResultCard: React.FC<SandboxResultCardProps> = ({
               <li key={step}>{step}</li>
             ))}
           </ol>
+
+          {tokens.some((token) => (token.inflectionSteps?.length ?? 0) > 0) && (
+            <div className="mt-1.5 space-y-1">
+              <h5 className="text-[11px] font-semibold text-base-content/70">
+                {t("sandbox.clause.morphSteps")}
+              </h5>
+              {tokens.map((token, index) =>
+                (token.inflectionSteps?.length ?? 0) > 0 ? (
+                  <div
+                    key={`morph:${index}`}
+                    className="rounded border border-base-300 bg-base-100 px-1.5 py-1 text-[10px] font-mono"
+                  >
+                    <span className="text-primary">{token.original}</span>
+                    {token.inflectionSteps?.map((step, stepIndex) => (
+                      <div key={`${step.stage}:${stepIndex}`} className="text-base-content/60">
+                        {t(MORPH_STAGE_KEYS[step.stage])} · {step.label}: {step.before}{" "}
+                        <span className="opacity-40">→</span> {step.after}
+                      </div>
+                    ))}
+                    {(token.conflicts?.length ?? 0) > 0 && (
+                      <div className="text-error">
+                        {t("grammar.morphologyV3.conflictDetected")}:{" "}
+                        {token.conflicts
+                          ?.map((conflict) => conflict.winner_rule_id)
+                          .join(", ")}
+                      </div>
+                    )}
+                  </div>
+                ) : null,
+              )}
+            </div>
+          )}
         </div>
         <div>
           <h4 className="text-xs font-semibold text-base-content/70 mb-1 flex items-center gap-1.5">

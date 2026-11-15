@@ -1,20 +1,42 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLexiconStore } from "../../store/lexiconStore";
 import { usePhonoStore } from "../../store/phonoStore";
 import { useGrammarStore } from "../../store/grammarStore";
-import { processSandboxText, type SandboxResult } from "../../utils/sandbox";
+import {
+  buildSampleGlossInput,
+  lookupSandboxWord,
+  processSandboxText,
+  type SandboxResult,
+} from "../../utils/sandbox";
 import { BTN_PRIMARY, TEXTAREA } from "../../lib/ui";
 
 /** 标签屈折模式：`gloss-TAG1-TAG2` 逐词翻译 + 三行对齐 */
 export function GlossSandboxCard() {
   const { t } = useTranslation();
-  const { wordsMap } = useLexiconStore();
+  const wordsMap = useLexiconStore((state) => state.wordsMap);
   const phonoConfig = usePhonoStore((state) => state.config);
   const grammarConfig = useGrammarStore((state) => state.config);
 
-  const [inputText, setInputText] = useState("[star-PL] shine-PAST in void");
+  const wordCount = Object.keys(wordsMap).length;
+  const seedKey = `${grammarConfig.language_id}:${wordCount > 0 ? "loaded" : "empty"}`;
+  const lastSeedKeyRef = useRef(seedKey);
+
+  const [inputText, setInputText] = useState(() =>
+    wordCount > 0
+      ? buildSampleGlossInput(wordsMap, grammarConfig)
+      : "[star-PL] shine-PAST in void",
+  );
   const [results, setResults] = useState<SandboxResult[]>([]);
+
+  useEffect(() => {
+    if (lastSeedKeyRef.current === seedKey) return;
+    lastSeedKeyRef.current = seedKey;
+    if (wordCount > 0) {
+      setInputText(buildSampleGlossInput(wordsMap, grammarConfig));
+      setResults([]);
+    }
+  }, [seedKey, wordCount, wordsMap, grammarConfig]);
 
   const handleTranslate = (): void => {
     const cleanText = inputText.replace(/[\[\]]/g, "");
@@ -68,14 +90,11 @@ export function GlossSandboxCard() {
                     const extraLabel =
                       grammarConfig.typology.morphological_type === "isolating"
                         ? (() => {
-                            const entry = Object.values(wordsMap).find((word) =>
-                              word.senses.some(
-                                (sense) =>
-                                  sense.gloss.toLowerCase() ===
-                                  result.original.split("-")[0].toLowerCase(),
-                              ),
+                            const found = lookupSandboxWord(
+                              result.original.split("-")[0],
+                              wordsMap,
                             );
-                            const fn = entry?.senses[0]?.grammatical_function;
+                            const fn = found?.word.senses[0]?.grammatical_function;
                             return fn ? ` [${fn}]` : "";
                           })()
                         : "";

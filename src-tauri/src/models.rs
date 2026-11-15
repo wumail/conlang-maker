@@ -248,6 +248,47 @@ pub struct Sense {
     pub grammatical_function: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub concept_id: Option<String>,
+    /// 义项级用法/语域说明（Roadmap v3 / Pillar 4）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage_note: Option<String>,
+    /// 义项级变位类覆盖（Roadmap v3 / Pillar 3）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inflection_class_id: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
+/// 跨项目/跨语系借词的供语来源快照（Roadmap v3 / Pillar 1）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct BorrowedSourceSnapshot {
+    /// 跨项目借入时记录供语所在项目的 .conlang 路径（同项目内借词可省略）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_conlang_path: Option<String>,
+    /// 供语所在语系/项目显示名称快照
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_family_name: Option<String>,
+    /// 供语 language_id
+    #[serde(default)]
+    pub source_language_id: String,
+    /// 供语显示名称快照
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_language_name: Option<String>,
+    /// 供语词条稳定 entry_id
+    #[serde(default)]
+    pub source_entry_id: String,
+    /// 供语具体义项 sense_id（精确到义项借入）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sense_id: Option<String>,
+    /// 借入瞬间的供语罗马字词形快照
+    #[serde(default)]
+    pub borrowed_form: String,
+    /// 借入瞬间的供语 IPA 快照
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub borrowed_ipa: Option<String>,
+    /// 借入瞬间的供语释义快照
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub borrowed_gloss: Option<String>,
+    /// 未知扩展字段原样保留，避免 Rust 侧读改写丢弃未来版本写入的快照字段
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -264,6 +305,12 @@ pub struct Etymology {
     pub applied_sound_changes: Vec<String>,
     #[serde(default)]
     pub semantic_shift_note: String,
+    /// 语义变化分类（与音变分离记录，Roadmap v3 / Pillar 1）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub semantic_change_kind: Option<String>,
+    /// 借词来源快照（origin_type === "borrowed" 时写入，Roadmap v3 / Pillar 1）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub borrowed_source: Option<BorrowedSourceSnapshot>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub components: Vec<MorphemeComponent>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -284,6 +331,8 @@ impl Default for Etymology {
             source_language_id: None,
             applied_sound_changes: Vec::new(),
             semantic_shift_note: String::new(),
+            semantic_change_kind: None,
+            borrowed_source: None,
             components: Vec::new(),
             compounds_stale_digest: None,
             extra: ExtraFields::new(),
@@ -326,6 +375,9 @@ pub struct WordEntry {
     pub phonetic_ipa: String,
     #[serde(default)]
     pub phonetic_override: bool,
+    /// 词条默认屈折变位类 ID（Roadmap v3 / Pillar 3）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inflection_class_id: Option<String>,
     #[serde(default)]
     pub senses: Vec<Sense>,
     #[serde(default)]
@@ -519,6 +571,9 @@ pub struct InflectionRule {
     pub conjugation_class_id: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fused_dimensions: Option<Vec<HashMap<String, String>>>,
+    /// 显式规则优先级（升序：数值越小越优先；未设时默认 0，Roadmap v3 / Pillar 3）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub priority: Option<i32>,
     #[serde(default)]
     pub sca_mutable: bool,
     #[serde(default, flatten)]
@@ -548,6 +603,7 @@ impl Default for InflectionRule {
             slot_id: None,
             conjugation_class_id: None,
             fused_dimensions: None,
+            priority: None,
             sca_mutable: false,
             extra: ExtraFields::new(),
         }
@@ -786,6 +842,9 @@ pub struct ConceptDefinition {
     pub concepticon_id: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub standard_lists: Vec<String>,
+    /// 同义词/近义检索别名（Roadmap v3 / Pillar 4）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -838,6 +897,64 @@ pub struct MorphophonologyRule {
     pub extra: ExtraFields,
 }
 
+/// 词汇空缺状态（Roadmap v3 / Pillar 4）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct LexicalGap {
+    #[serde(default)]
+    pub language_id: String,
+    #[serde(default)]
+    pub concept_id: String,
+    /// "unrecorded" | "tbd" | "periphrastic" | "confirmed_absent"
+    #[serde(default)]
+    pub status: String,
+    /// 短语表达形式或备注说明
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub note: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
+/// 同源矩阵单元格的人工主词指定（Roadmap v3 / Pillar 5）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct PrimaryCognateOverride {
+    #[serde(default)]
+    pub language_id: String,
+    #[serde(default)]
+    pub concept_id: String,
+    #[serde(default)]
+    pub entry_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sense_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
+/// 用户保存的词典筛选预设（Roadmap v3 / Pillar 4）
+#[derive(Debug, Serialize, Deserialize, Clone, Default, PartialEq)]
+pub struct SavedLexiconFilter {
+    #[serde(default)]
+    pub filter_id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub search_term: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pos_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub origin_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// "unbound_concept" | "missing_examples" | "tbd_gloss" | "borrowed_needs_review" | "deprecated" | ""
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quick_kind: Option<String>,
+    #[serde(default, flatten)]
+    pub extra: ExtraFields,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct WorkspaceConfig {
     #[serde(default = "default_workspace_version")]
@@ -846,6 +963,15 @@ pub struct WorkspaceConfig {
     pub languages: Vec<LanguageEntry>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub custom_concepts: Vec<ConceptDefinition>,
+    /// 词汇空缺状态表（Roadmap v3 / Pillar 4）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub lexical_gaps: Vec<LexicalGap>,
+    /// 同源矩阵人工主词指定表（Roadmap v3 / Pillar 5）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub primary_cognate_overrides: Vec<PrimaryCognateOverride>,
+    /// 常用筛选预设表（Roadmap v3 / Pillar 4）
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub saved_lexicon_filters: Vec<SavedLexiconFilter>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }
@@ -866,6 +992,9 @@ impl Default for WorkspaceConfig {
                 extra: ExtraFields::new(),
             }],
             custom_concepts: Vec::new(),
+            lexical_gaps: Vec::new(),
+            primary_cognate_overrides: Vec::new(),
+            saved_lexicon_filters: Vec::new(),
             extra: ExtraFields::new(),
         }
     }
@@ -969,8 +1098,14 @@ pub struct GlossToken {
     pub gloss_labels: String,
     #[serde(default)]
     pub linked_entry_id: String,
+    /// 精确绑定到词条内的具体义项（Roadmap v3 / Pillar 6）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub linked_sense_id: Option<String>,
     #[serde(default)]
     pub ipa: String,
+    /// 标注来源与锁定状态："auto" | "edited" | "verified"（Roadmap v3 / Pillar 2）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
     #[serde(default, flatten)]
     pub extra: ExtraFields,
 }

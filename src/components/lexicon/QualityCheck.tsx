@@ -42,6 +42,7 @@ export const QualityCheck: React.FC<QualityCheckProps> = ({ onNavigateToWord }) 
     count: issues?.length ?? 0,
     getScrollElement: () => listRef.current,
     estimateSize: () => 44,
+    initialRect: { width: 640, height: 320 },
     overscan: 10,
   });
 
@@ -114,13 +115,13 @@ export const QualityCheck: React.FC<QualityCheckProps> = ({ onNavigateToWord }) 
           <p className="text-sm text-base-content/70 mb-2">
             {t("qc.issueCount", { count: issues.length })}
           </p>
-          <div className={`${ISSUE_GRID} px-2 pb-1 text-xs font-semibold text-base-content/60`}>
+          <div className={`${ISSUE_GRID} px-2 pb-1 text-xs font-semibold text-base-content/60 border-b border-base-300`}>
             <div>{t("lexicon.word")}</div>
             <div>{t("qc.rule")}</div>
             <div>{t("grammar.test.detail")}</div>
             <div />
           </div>
-          <div ref={listRef} className="max-h-[60vh] overflow-y-auto contain-strict">
+          <div ref={listRef} className="max-h-[55vh] overflow-y-auto">
             <div
               style={{
                 height: `${virtualizer.getTotalSize()}px`,

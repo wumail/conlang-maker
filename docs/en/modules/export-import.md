@@ -1,75 +1,29 @@
 # Export & Import
 
-**Navigate**: click `Export / Import` in the sidebar.
+Publish reference grammar books, multi-format lexicons, spell-check dictionaries, AI language briefs, and portable workspace bundles — all backed by native OS save dialogs.
 
-## Export Formats
+**Navigate**: click `Export / Import` in the top navigation bar.
+
+## Export Presets & Formats
 
 | Format | Content | Use Case |
 |--------|---------|----------|
-| **PDF** | Complete language reference | Print a beautiful reference book (cover, orthography, paradigms, grammar manual, lexicon) |
-| **Excel** | Multi-sheet workbook | Analyze with Excel (phoneme table, romanization mappings, full lexicon) |
-| **Hunspell (.dic/.aff)** | Spell-check dictionary | Enable spell-check in LibreOffice (base forms + all inflected forms) |
-| **CSV** | Lexicon table | Backup or import into other tools (Unicode BOM, CJK-compatible) |
-| **LLM Prompt (.md)** | AI dialogue prompt | Let AI learn your language (complete language description + 5 suggested prompts) |
+| **Reference Grammar Book (`HTML` / Typst `.typ`)** | Cover, phonology & orthography, embedded `@font-face` custom script font, paradigms & conjugation classes, grammar chapters, **bidirectional dictionary (Conlang→Gloss & Gloss→Conlang with sense-specific corpus citations)**, and full Leipzig-glossed corpus anthology | Share a self-contained single-file HTML book, print to PDF, or typeset publication-grade layouts with Typst |
+| **PDF** | Complete language reference | Quick printable reference document |
+| **Excel (`.xlsx`)** | Multi-sheet workbook | Spreadsheet analysis (phoneme inventory, romanization tables, full lexicon) |
+| **Hunspell (`.dic` + `.aff`)** | Spell-checker dictionary pair | Pick a `.dic` destination and Conlang Maker **automatically writes the companion `.aff` file** in the same folder using the unified 6-step morphology engine |
+| **CSV** | UTF-8 BOM lexicon table | Lightweight tabular exchange (CJK and IPA safe) |
+| **LLM Prompt (`.md`)** | AI language brief | Copy or save a complete Markdown reference + starter prompts for ChatGPT, Claude, or local LLMs |
+| **Workspace Bundle** | Portable archive of `.conlang`, all family languages, and custom `.ttf`/`.otf` fonts | Full-family backups, cross-machine migration, and collaborator handoffs |
 
-### Steps
+## Reference Grammar Book Builder
 
-1. Select a format
-2. Click the export button
-3. Choose save location
+Open the **Reference Grammar Book** modal to customize included sections (phonology, writing system, morphology & manual chapters, bidirectional dictionary, and corpus texts):
 
-### Step-by-step: Publish-ready export pack
+- **Single-File HTML**: Automatically embeds your language's effective `.ttf`/`.otf` script font via `@font-face` so readers see authentic native script glyphs with zero font installation.
+- **Typst Source (`.typ`)**: Exports clean Typst markup ready for academic typesetting.
 
-1. Export PDF for documentation readers.
-2. Export Excel for data reviewers.
-3. Export LLM Prompt for AI-assisted testing.
-4. Keep CSV as a lightweight backup snapshot.
+## Import & Workspace Restore
 
-## LLM Prompt
-
-Generate a Markdown file with a complete language description for AI assistants:
-
-- Copy to clipboard
-- Download as `.md`
-- Includes 5 recommended prompt questions
-
-:::tip
-Paste the LLM Prompt into ChatGPT, Claude, or other AI conversations — the AI will be able to construct sentences, translate, and even write stories in your language.
-:::
-
-### Step-by-step: AI validation loop
-
-1. Export LLM Prompt.
-2. Ask AI to translate 10 basic sentences.
-3. Compare AI outputs with your sandbox outputs.
-4. Refine grammar/lexicon where mismatches are systematic.
-
-## Import
-
-- **CSV import**: Auto-detects format (PolyGlot / Vulgarlang / generic)
-- Auto-maps columns (word / ipa / pos / gloss / definition)
-- Auto-standardizes POS
-- Preview before batch import
-
-### Step-by-step: Safe CSV import
-
-1. Choose CSV file.
-2. Check detected schema (PolyGlot/Vulgarlang/generic).
-3. Review column mapping preview.
-4. Select conflict strategy.
-5. Confirm import and run QC immediately.
-
-## Advanced examples
-
-### Example A: Team collaboration package
-
-1. Share Excel with collaborators.
-2. Share PDF with non-technical readers.
-3. Re-import collaborator CSV edits.
-4. Run QC + statistics after merge.
-
-### Example B: Versioned backups
-
-1. Export CSV weekly.
-2. Export PDF monthly milestones.
-3. Tag release in Git and archive exports together.
+- **CSV Import**: Auto-detects PolyGlot, Vulgarlang, and generic CSV schemas, previews every addition/conflict in the unified **Batch Diff Preview** modal, and imports atomically with undo support.
+- **Workspace Bundle Restore**: Takes an automatic project-level snapshot first, then restores the bundle inside a single atomic transaction.

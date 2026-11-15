@@ -1,7 +1,9 @@
 import {
   CorpusText,
+  GlossCandidate,
   GlossedLine,
   GlossToken,
+  GlossTokenStatus,
   GrammarConfig,
   InflectionRule,
   MorphophonologyRule,
@@ -211,14 +213,29 @@ export function buildParsedCandidate(
   };
 }
 
-function parseHyphenatedAffixes(
+/**
+ * 同一词形可能对应多个词条（同形词）：逐桶筛选「词性与 match_regex 都满足」的词条，
+ * 不再静默取 `bucket[0]`，从而让「同形名词 / 动词只有动词匹配该词缀」的场景正确落到动词。
+ */
+function matchAffixableEntries(
+  bucket: readonly WordEntry[] | undefined,
+  stem: string,
+  rules: AffixRuleInfo[],
+): WordEntry[] {
+  if (!bucket || bucket.length === 0) return [];
+  return bucket.filter((entry) =>
+    rules.every((r) => matchesRuleRegex(r.rule, stem) && matchesPos(r.rule, entry)),
+  );
+}
+
+function collectHyphenatedAffixes(
   token: string,
-  wordsMap: Map<string, WordEntry>,
+  wordsByForm: ReadonlyMap<string, WordEntry[]>,
   prefixRules: AffixRuleInfo[],
   suffixRules: AffixRuleInfo[],
-): ParsedInflection | null {
+): ParsedInflection[] {
   const parts = token.split("-").filter(Boolean);
-  if (parts.length < 2) return null;
+  if (parts.length < 2) return [];
 
   const prefixByAffix = new Map(prefixRules.map((r) => [r.affix, r]));
   const suffixByAffix = new Map(suffixRules.map((r) => [r.affix, r]));
@@ -257,37 +274,30 @@ function parseHyphenatedAffixes(
       if (prefixes.length === 0 && suffixes.length === 0) continue;
 
       const stem = stemParts.join("-");
-      const entry = wordsMap.get(stem);
-      if (!entry) continue;
-
-      const allRules = [...prefixes, ...suffixes];
-      if (
-        !allRules.every(
-          (r) => matchesRuleRegex(r.rule, stem) && matchesPos(r.rule, entry),
-        )
-      ) {
-        continue;
+      const entries = matchAffixableEntries(
+        wordsByForm.get(stem),
+        stem,
+        [...prefixes, ...suffixes],
+      );
+      for (const entry of entries) {
+        const candidate = buildParsedCandidate(entry, stem, prefixes, suffixes);
+        candidate.stemStart = (candidate.stemStart ?? 0) + prefixes.length;
+        candidate.score += 1000;
+        candidate.trace += ":hyphen";
+        candidates.push(candidate);
       }
-
-      const candidate = buildParsedCandidate(entry, stem, prefixes, suffixes);
-      candidate.stemStart = (candidate.stemStart ?? 0) + prefixes.length;
-      candidate.score += 1000;
-      candidate.trace += ":hyphen";
-      candidates.push(candidate);
     }
   }
 
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates[0];
+  return candidates;
 }
 
-function parseContinuousAffixes(
+function collectContinuousAffixes(
   token: string,
-  wordsMap: Map<string, WordEntry>,
+  wordsByForm: ReadonlyMap<string, WordEntry[]>,
   prefixRules: AffixRuleInfo[],
   suffixRules: AffixRuleInfo[],
-): ParsedInflection | null {
+): ParsedInflection[] {
   const candidates: ParsedInflection[] = [];
   const seen = new Set<string>();
 
@@ -304,17 +314,16 @@ function parseContinuousAffixes(
     if (seen.has(key)) return;
     seen.add(key);
 
-    const entry = wordsMap.get(rest);
-    if (entry && (prefixes.length > 0 || suffixes.length > 0)) {
-      const allRules = [...prefixes, ...suffixes];
-      if (
-        allRules.every(
-          (r) => matchesRuleRegex(r.rule, rest) && matchesPos(r.rule, entry),
-        )
-      ) {
-        const c = buildParsedCandidate(entry, rest, prefixes, suffixes);
-        c.trace += ":continuous";
-        candidates.push(c);
+    if (prefixes.length > 0 || suffixes.length > 0) {
+      const entries = matchAffixableEntries(
+        wordsByForm.get(rest),
+        rest,
+        [...prefixes, ...suffixes],
+      );
+      for (const entry of entries) {
+        const candidate = buildParsedCandidate(entry, rest, prefixes, suffixes);
+        candidate.trace += ":continuous";
+        candidates.push(candidate);
       }
     }
 
@@ -336,53 +345,61 @@ function parseContinuousAffixes(
 
   walk(token, [], [], 0);
 
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b.score - a.score);
-  return candidates[0];
+  return candidates;
+}
+
+function buildAffixRules(
+  rules: InflectionRule[],
+  type: "prefix" | "suffix",
+  valueGlossMap: Map<string, string>,
+): AffixRuleInfo[] {
+  return rules
+    .filter((r) => r.type === type)
+    .map((r) => ({
+      rule: r,
+      affix: (r.affix || "").normalize("NFC").toLowerCase().trim(),
+      label: buildRuleLabel(r, valueGlossMap),
+    }))
+    .filter((r) => r.affix);
+}
+
+/**
+ * 汇总黏着拆解的全部候选（含前缀/后缀、连字符与连写两种切分方式），
+ * 按得分降序返回，供主流程检测「同分并列的多词条」歧义。
+ */
+function rankConcatenativeCandidates(
+  token: string,
+  wordsByForm: ReadonlyMap<string, WordEntry[]>,
+  rules: InflectionRule[],
+  valueGlossMap: Map<string, string>,
+): ParsedInflection[] {
+  const prefixRules = buildAffixRules(rules, "prefix", valueGlossMap);
+  const suffixRules = buildAffixRules(rules, "suffix", valueGlossMap);
+
+  const merged = [
+    ...collectHyphenatedAffixes(token, wordsByForm, prefixRules, suffixRules),
+    ...collectContinuousAffixes(token, wordsByForm, prefixRules, suffixRules),
+  ];
+
+  const seen = new Set<string>();
+  const unique: ParsedInflection[] = [];
+  for (const candidate of merged) {
+    const key = `${candidate.entry.entry_id}:${candidate.morphemeBreak}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(candidate);
+  }
+  unique.sort((a, b) => b.score - a.score || b.confidence - a.confidence);
+  return unique;
 }
 
 export function parseConcatenativeByRules(
   token: string,
-  wordsMap: Map<string, WordEntry>,
+  wordsByForm: ReadonlyMap<string, WordEntry[]>,
   rules: InflectionRule[],
   valueGlossMap: Map<string, string>,
 ): ParsedInflection | null {
-  const prefixRules = rules
-    .filter((r) => r.type === "prefix")
-    .map((r) => ({
-      rule: r,
-      affix: (r.affix || "").normalize("NFC").toLowerCase().trim(),
-      label: buildRuleLabel(r, valueGlossMap),
-    }))
-    .filter((r) => r.affix);
-
-  const suffixRules = rules
-    .filter((r) => r.type === "suffix")
-    .map((r) => ({
-      rule: r,
-      affix: (r.affix || "").normalize("NFC").toLowerCase().trim(),
-      label: buildRuleLabel(r, valueGlossMap),
-    }))
-    .filter((r) => r.affix);
-
-  const hyphenCandidate = parseHyphenatedAffixes(
-    token,
-    wordsMap,
-    prefixRules,
-    suffixRules,
-  );
-  const continuousCandidate = parseContinuousAffixes(
-    token,
-    wordsMap,
-    prefixRules,
-    suffixRules,
-  );
-
-  if (!hyphenCandidate) return continuousCandidate;
-  if (!continuousCandidate) return hyphenCandidate;
-  return hyphenCandidate.score >= continuousCandidate.score
-    ? hyphenCandidate
-    : continuousCandidate;
+  return rankConcatenativeCandidates(token, wordsByForm, rules, valueGlossMap)[0] ?? null;
 }
 
 function buildTransformativeCandidate(
@@ -493,8 +510,16 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
   }
 
   const sentences = originalText.split(/[.!?。！？]+/).filter((s) => s.trim());
-  const wordsMap = new Map(
-    wordsList.map((w) => [w.con_word_romanized.normalize("NFC").toLowerCase(), w]),
+  // 按归一化词形聚合为数组：同形词条不再互相静默覆盖（Roadmap v3 / Pillar 6）
+  const wordsByForm = new Map<string, WordEntry[]>();
+  for (const entry of wordsList) {
+    const key = entry.con_word_romanized.normalize("NFC").toLowerCase();
+    const bucket = wordsByForm.get(key);
+    if (bucket) bucket.push(entry);
+    else wordsByForm.set(key, [entry]);
+  }
+  const homographForms = new Set(
+    [...wordsByForm].filter(([, bucket]) => bucket.length > 1).map(([key]) => key),
   );
 
   const activeRules = grammarConfig.inflection_rules.filter((r) => !r.disabled);
@@ -533,6 +558,8 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
   }
 
   const tokenParseCache = new Map<string, ParsedInflection | null>();
+  /** 同形词条以相同最高分并列的屈折形式：主流程降入 pending 供人工确认 */
+  const ambiguousParses = new Map<string, ParsedInflection>();
   const entriesById = new Map(wordsList.map((entry) => [entry.entry_id, entry]));
   const ambiguousForms = new Set<string>();
   for (const form of grammarConfig.irregular_overrides) {
@@ -573,9 +600,9 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
       total += 1;
       const tokenId = createTokenId(i, tokenIdx);
       const clean = normalizeToken(word);
-      const entry = wordsMap.get(clean);
+      const entry = wordsByForm.get(clean)?.[0];
 
-      if (entry) {
+      if (entry && !homographForms.has(clean)) {
         autoApplied += 1;
         return {
           token_id: tokenId,
@@ -587,26 +614,66 @@ export function autoGloss(input: AutoGlossInput): AutoGlossResult {
         };
       }
 
+      if (entry && homographForms.has(clean)) {
+        // 同形多词条：不静默择一，作为待消歧候选交给 UI / MCP
+        const representative = buildParsedCandidate(entry, clean, [], []);
+        representative.confidence = 1;
+        representative.score = clean.length;
+        representative.trace = "homograph";
+        pending.push({ lineId, tokenId, surfaceForm: word, suggestion: representative });
+        return {
+          token_id: tokenId,
+          surface_form: word,
+          morpheme_break: entry.con_word_romanized,
+          gloss_labels: "",
+          linked_entry_id: "",
+          ipa: "",
+        };
+      }
+
       let picked = tokenParseCache.get(clean);
       if (picked === undefined) {
-        const concatCandidate = parseConcatenativeByRules(
-          clean,
-          wordsMap,
-          concatRules,
-          valueGlossMap,
-        );
-
-        const transformCandidates = transformativeIndex.get(clean) || [];
-        const transformCandidate = transformCandidates[0] || null;
-
-        const both: ParsedInflection[] = [];
-        if (concatCandidate) both.push(concatCandidate);
-        if (transformCandidate) both.push(transformCandidate);
+        const both: ParsedInflection[] = [
+          ...rankConcatenativeCandidates(clean, wordsByForm, concatRules, valueGlossMap),
+          ...(transformativeIndex.get(clean) ?? []),
+        ];
         both.sort(
           (a, b) => b.confidence - a.confidence || b.score - a.score,
         );
-        picked = both[0] ?? null;
+        const top = both[0] ?? null;
+        if (top) {
+          // 不同词条以相同的最高分并列时不做静默择一，交由人工在候选器中确认
+          const tiedEntryIds = new Set(
+            both
+              .filter(
+                (candidate) =>
+                  candidate.confidence === top.confidence &&
+                  candidate.score === top.score,
+              )
+              .map((candidate) => candidate.entry.entry_id),
+          );
+          if (tiedEntryIds.size > 1) ambiguousParses.set(clean, top);
+        }
+        picked = top;
         tokenParseCache.set(clean, picked);
+      }
+
+      const ambiguous = ambiguousParses.get(clean);
+      if (ambiguous) {
+        pending.push({
+          lineId,
+          tokenId,
+          surfaceForm: word,
+          suggestion: ambiguous,
+        });
+        return {
+          token_id: tokenId,
+          surface_form: word,
+          morpheme_break: ambiguous.morphemeBreak,
+          gloss_labels: "",
+          linked_entry_id: "",
+          ipa: "",
+        };
       }
 
       if (picked && picked.confidence >= AUTO_APPLY_CONFIDENCE) {
@@ -697,8 +764,8 @@ export function resolveInflectedIpa(
 /**
  * 只重标一行里「尚未解析」的 token（F1.5）。
  *
- * 已经绑定词条且带非空标注（且不是 `?`）的 token 原样保留，避免新建词条时
- * 把整篇手工标注推倒重算。
+ * 已经绑定词条（`linked_entry_id` 非空）或已被人工锁定（`verified`）的 token 原样保留，
+ * 避免新建词条时把整篇手工标注推倒重算。
  */
 export function reGlossLineUnresolvedTokens(
   line: GlossedLine,
@@ -708,8 +775,7 @@ export function reGlossLineUnresolvedTokens(
   cache?: AutoGlossCache,
 ): GlossedLine {
   const tokens = line.tokens.map((token) => {
-    const labels = (token.gloss_labels ?? "").trim();
-    const bound = Boolean(token.linked_entry_id) && labels !== "" && labels !== "?";
+    const bound = Boolean(token.linked_entry_id?.trim()) || token.status === "verified";
     if (bound) return token;
     const surface = (token.surface_form ?? "").trim();
     if (!surface) return token;
@@ -864,13 +930,16 @@ export function applySelectedCorpusScaDiffs(
     const nextTokens = line.tokens.map((token) => {
       const tokenDiff = tokenDiffMap.get(token.token_id);
       if (!tokenDiff) return token;
+      // 表层形式被音变改写后，旧的标注与锁定状态已不再对应新词形，重置为待标注
       return {
         ...token,
         surface_form: tokenDiff.after,
         morpheme_break: "",
         gloss_labels: "",
         linked_entry_id: "",
+        linked_sense_id: undefined,
         ipa: "",
+        status: undefined,
       };
     });
 
@@ -890,4 +959,253 @@ export function applySelectedCorpusScaDiffs(
       updated_at: updatedAt,
     },
   };
+}
+
+// ── Roadmap v3 / Pillar 6：同形词安全的多候选词法分析 ──────────────
+
+/** 自动标注处理范围（Roadmap v3 / Pillar 2） */
+export type AutoGlossScopeMode = "fill_empty" | "recompute_auto" | "reanalyze_selected";
+
+/**
+ * 对给定表层形式生成按置信度排序的多候选列表：覆盖同形不同词条、
+ * 同一词条的不同义项（sense_id）以及不同屈折规则拆解方案。
+ * 词形索引按归一化形式聚合为数组，彻底消除后加载同形词静默覆盖前词的问题。
+ */
+export function rankTokenCandidates(
+  surfaceForm: string,
+  words: WordEntry[],
+  grammar: GrammarConfig,
+  phono: PhonologyConfig,
+): GlossCandidate[] {
+  const clean = normalizeToken(surfaceForm);
+  if (!clean) return [];
+
+  const candidates: ParsedInflection[] = [];
+  const activeRules = grammar.inflection_rules.filter((r) => !r.disabled);
+  const concatRules = activeRules.filter(
+    (r) => r.type === "prefix" || r.type === "suffix",
+  );
+  const valueGlossMap = new Map<string, string>();
+  for (const dim of grammar.inflection_dimensions) {
+    for (const v of dim.values) {
+      valueGlossMap.set(v.val_id, v.gloss || v.name);
+    }
+  }
+
+  for (const entry of words) {
+    const stem = (entry.con_word_romanized || "").normalize("NFC").toLowerCase();
+    if (!stem) continue;
+
+    // 精确词形匹配（该词条本身即此形式）
+    if (normalizeToken(stem) === clean) {
+      candidates.push({
+        entry,
+        morphemeBreak: entry.con_word_romanized,
+        glossLabels: getEntryGloss(entry),
+        score: stem.length,
+        confidence: 1,
+        trace: "exact_form",
+      });
+    }
+
+    // 黏着前后缀拆解候选（单值视图逐词条调用，同形词互不覆盖）
+    const singleMap = new Map<string, WordEntry[]>([[stem, [entry]]]);
+    const concat = parseConcatenativeByRules(
+      clean,
+      singleMap,
+      concatRules,
+      valueGlossMap,
+    );
+    if (concat) candidates.push(concat);
+
+    // 非黏着型屈折（中缀/环缀/重叠/元音交替）逐个规则试算
+    for (const rule of activeRules) {
+      if (["prefix", "suffix"].includes(rule.type)) continue;
+      if (!matchesPos(rule, entry)) continue;
+      const { result, applied, stem_start } = applyInflection(
+        stem,
+        rule,
+        phono,
+        grammar.morphophonology_rules ?? [],
+      );
+      if (!applied) continue;
+      if (normalizeToken(result) !== clean) continue;
+      const label = buildRuleLabel(rule, valueGlossMap);
+      const candidate = buildTransformativeCandidate(entry, rule, label, clean);
+      candidate.stemStart = normalizedStemStart(result, stem_start);
+      candidates.push(candidate);
+    }
+  }
+
+  candidates.sort(
+    (a, b) => b.confidence - a.confidence || b.score - a.score ||
+      a.entry.entry_id.localeCompare(b.entry.entry_id),
+  );
+
+  const seen = new Set<string>();
+  const out: GlossCandidate[] = [];
+  for (const candidate of candidates) {
+    // 一词多义：每个义项各产出一项候选，第 2..N 个义项不再被候选器吞掉
+    const senses = candidate.entry.senses.length > 0 ? candidate.entry.senses : [undefined];
+    const baseGloss = getEntryGloss(candidate.entry);
+    for (const sense of senses) {
+      const key = `${candidate.entry.entry_id}:${sense?.sense_id ?? ""}:${candidate.morphemeBreak}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const senseGloss = sense?.gloss ?? "";
+      out.push({
+        candidate_id: `cand_${out.length}_${candidate.entry.entry_id}`,
+        entry_id: candidate.entry.entry_id,
+        sense_id: sense?.sense_id ?? "",
+        romanized: candidate.entry.con_word_romanized,
+        pos_id: sense?.pos_id ?? "",
+        morpheme_break: candidate.morphemeBreak,
+        gloss_labels:
+          baseGloss && senseGloss && senseGloss !== baseGloss
+            ? candidate.glossLabels.replace(baseGloss, senseGloss)
+            : candidate.glossLabels,
+        ipa: candidate.entry.phonetic_override
+          ? candidate.entry.phonetic_ipa
+          : resolveInflectedIpa(clean, candidate.stemStart, phono),
+        confidence: candidate.confidence,
+        trace: candidate.trace,
+      });
+    }
+  }
+  return out;
+}
+
+/** 旧数据兼容：无 status 但已有非空人工标注视为 edited */
+function effectiveTokenStatus(token: GlossToken): GlossTokenStatus | "blank" {
+  if (token.status) return token.status;
+  if (token.gloss_labels.trim() && token.linked_entry_id.trim()) return "edited";
+  return "blank";
+}
+
+/** 自动分析产出的 token：只有真正标注出内容才标记 auto，未解析保持 blank 以便后续重试 */
+function withAutoStatus(token: GlossToken): GlossToken {
+  const hasContent = Boolean(token.gloss_labels.trim() || token.linked_entry_id.trim());
+  return {
+    ...token,
+    // 显式写入自有属性：重算后旧的 linked_sense_id 会在 mergeById 浅合并中被清空
+    linked_sense_id: token.linked_sense_id ?? undefined,
+    status: hasContent ? "auto" : undefined,
+  };
+}
+
+/**
+ * 将新一轮自动分析结果非破坏性合并回语料（Roadmap v3 / Pillar 2）。
+ *
+ * 以 `freshLines` 为主序列遍历：语料还没有任何行、或 `original_text` 追加了新句子时，
+ * 新分析出的行会完整生成（旧实现以 `corpus.glossed_lines` 为主序列，会整体丢弃这些行）。
+ * 不变量：任何模式下 100% 保留旧 `line.translation`。
+ */
+export function mergeAutoGlossIntoCorpus(params: {
+  corpus: CorpusText;
+  freshLines: GlossedLine[];
+  mode: AutoGlossScopeMode;
+  selectedLineIds?: Set<string>;
+}): {
+  nextLines: GlossedLine[];
+  replacedProtectedTokens: Array<{
+    lineId: string;
+    tokenId: string;
+    surface: string;
+    beforeGloss: string;
+    afterGloss: string;
+  }>;
+} {
+  const { corpus, freshLines, mode, selectedLineIds } = params;
+  const oldLines = corpus.glossed_lines;
+  const oldById = new Map(oldLines.map((line) => [line.line_id, line]));
+  // 已被某个 fresh 行按 ID 匹配的旧行：位置兜底时不得重复占用
+  const claimedOldIds = new Set(
+    freshLines.map((line) => line.line_id).filter((id) => oldById.has(id)),
+  );
+  const usedOldIds = new Set<string>();
+  const replacedProtectedTokens: Array<{
+    lineId: string;
+    tokenId: string;
+    surface: string;
+    beforeGloss: string;
+    afterGloss: string;
+  }> = [];
+
+  const nextLines = freshLines.map((fresh, lineIdx) => {
+    const positional = oldLines[lineIdx];
+    const oldLine =
+      oldById.get(fresh.line_id) ??
+      (positional && !claimedOldIds.has(positional.line_id) ? positional : undefined);
+
+    if (!oldLine) {
+      // 全新语料或新增句子行：该行没有可保护的人工标注，直接采用新结果并落 auto 状态
+      return { ...fresh, tokens: fresh.tokens.map(withAutoStatus) };
+    }
+
+    usedOldIds.add(oldLine.line_id);
+
+    const targetSelected =
+      mode !== "reanalyze_selected" ||
+      Boolean(selectedLineIds?.has(fresh.line_id)) ||
+      Boolean(selectedLineIds?.has(oldLine.line_id));
+    if (!targetSelected) return oldLine;
+
+    const oldTokensById = new Map(oldLine.tokens.map((t) => [t.token_id, t]));
+    // 新分析可能重新生成 token_id：token 数量一致时按位置对齐，保证人工标注仍能被识别
+    const alignedFreshTokens =
+      fresh.tokens.length === oldLine.tokens.length &&
+      !fresh.tokens.some((token) => oldTokensById.has(token.token_id))
+        ? fresh.tokens.map((token, index) => ({
+            ...token,
+            token_id: oldLine.tokens[index]?.token_id ?? token.token_id,
+          }))
+        : fresh.tokens;
+    // 以新分析结果驱动 token 序列：新出现的 token 追加，消失的 token 不再保留
+    const nextTokens = alignedFreshTokens.map((freshToken) => {
+      const token = oldTokensById.get(freshToken.token_id);
+      if (!token) return withAutoStatus(freshToken);
+
+      const status = effectiveTokenStatus(token);
+      const protectedToken = status === "edited" || status === "verified";
+
+      if (mode === "fill_empty") {
+        const hasContent = status !== "blank";
+        if (hasContent || protectedToken) return token;
+        return withAutoStatus(freshToken);
+      }
+
+      if (mode === "recompute_auto") {
+        if (protectedToken) return token;
+        return withAutoStatus(freshToken);
+      }
+
+      // reanalyze_selected：强制重算，但记录被替换的人工 token 供预览
+      if (protectedToken) {
+        replacedProtectedTokens.push({
+          lineId: oldLine.line_id,
+          tokenId: token.token_id,
+          surface: token.surface_form,
+          beforeGloss: token.gloss_labels,
+          afterGloss: freshToken.gloss_labels,
+        });
+      }
+      return withAutoStatus(freshToken);
+    });
+
+    return {
+      ...oldLine,
+      // 行原文以最新分析为准（SCA 改写 / 原文追加后不再保留旧行文本）
+      original: fresh.original,
+      tokens: nextTokens,
+      // 100% 保留旧句译
+      translation: oldLine.translation,
+    };
+  });
+
+  // 本次分析未覆盖到的旧行（例如手工新增的空行）原样保留，避免静默丢失
+  for (const line of oldLines) {
+    if (!usedOldIds.has(line.line_id)) nextLines.push(line);
+  }
+
+  return { nextLines, replacedProtectedTokens };
 }

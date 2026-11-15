@@ -182,7 +182,9 @@ export const GlyphGridSection: React.FC<GlyphGridSectionProps> = ({
                       : annotated
                         ? "border-base-300 bg-base-100 hover:border-primary/60"
                         : "border-base-200 bg-base-200/20 hover:border-base-300"
-                  } ${!inFont && hasFontPresent ? "opacity-60 border-dashed" : ""}`}
+                  } ${!inFont && hasFontPresent ? "opacity-60 border-dashed" : ""} ${
+                    showRulers && metrics ? "bg-primary/5" : ""
+                  }`}
                   data-testid="glyph-cell"
                   data-annotate-anchor
                   data-cp={codepoint}

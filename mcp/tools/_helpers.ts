@@ -176,6 +176,22 @@ export function serializeBucketWords(words: WordEntry[]): Buffer {
   return Buffer.from(lines.join("\n") + "\n", "utf-8");
 }
 
+/**
+ * 清掉值为 `undefined` 的自有属性。
+ *
+ * 调用方用 `key: undefined` 显式表达「置空」：浅合并（`{ ...prev, ...next }`）时它能覆盖
+ * 旧值，但落盘前必须删掉，否则 NDJSON 里会出现 `"usage_note": null` 之类的脏字段。
+ */
+function dropUndefinedKeys<T extends object>(value: T): T {
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (record[key] === undefined) {
+      delete record[key];
+    }
+  }
+  return value;
+}
+
 export function mergeWordPreservingUnknown(
   existing: WordEntry | undefined,
   incoming: WordEntry,
@@ -186,9 +202,11 @@ export function mergeWordPreservingUnknown(
   const existingSensesById = new Map(
     existing.senses.map((s) => [s.sense_id, s]),
   );
+  // 义项合并后统一清理 undefined：concept_id / usage_note / inflection_class_id
+  // 等可选字段一旦被显式置空，不得再从 existing 复活
   const mergedSenses = incoming.senses.map((s) => {
     const prev = existingSensesById.get(s.sense_id);
-    return prev ? { ...prev, ...s } : s;
+    return prev ? dropUndefinedKeys({ ...prev, ...s }) : dropUndefinedKeys({ ...s });
   });
 
   const mergedEvolution =
@@ -207,20 +225,20 @@ export function mergeWordPreservingUnknown(
         }
       : undefined;
 
-  return {
+  return dropUndefinedKeys({
     ...existing,
     ...incoming,
     senses: mergedSenses,
-    etymology: {
+    etymology: dropUndefinedKeys({
       ...existing.etymology,
       ...incoming.etymology,
-    },
+    }),
     metadata: {
       ...existing.metadata,
       ...incoming.metadata,
     },
     ...(mergedEvolution ? { evolution: mergedEvolution } : {}),
-  };
+  });
 }
 
 export function validateWordStrictOrThrow(word: WordEntry, index?: number): void {
@@ -504,6 +522,35 @@ export function currentLexiconRevUnlocked(
 ): string {
   const langDir = assertSafeRelativeLanguagePath(projectDir, language.path);
   return computeLexiconRevision(path.join(langDir, "lexicon"));
+}
+
+/**
+ * Roadmap v3 / Pillar 1：一次读全语系各语言词典，构建
+ * `Record<language_id, Record<entry_id, WordEntry>>` 索引供词源追溯链使用。
+ * 返回 lexicon 目录缺失语言的 revision 为 MISSING_REVISION 的占位。
+ */
+export function readAllLexiconsByLanguageUnlocked(
+  projectDir: string,
+  languages: readonly LanguageEntry[],
+): {
+  wordsByLanguage: Record<string, Record<string, WordEntry>>;
+  revisions: Record<string, string>;
+} {
+  const wordsByLanguage: Record<string, Record<string, WordEntry>> = {};
+  const revisions: Record<string, string> = {};
+  for (const language of languages) {
+    const lex = readLexiconBucketsPreserveUnknownUnlocked(projectDir, language);
+    const dict: Record<string, WordEntry> = {};
+    for (const words of lex.values()) {
+      for (const word of words) dict[word.entry_id] = word;
+    }
+    wordsByLanguage[language.language_id] = dict;
+    revisions[language.language_id] = currentLexiconRevUnlocked(
+      projectDir,
+      language,
+    );
+  }
+  return { wordsByLanguage, revisions };
 }
 
 export function currentFileRevUnlocked(

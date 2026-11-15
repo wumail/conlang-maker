@@ -30,7 +30,6 @@ import { WordGenerator } from "./components/wordgen/WordGenerator";
 import { LexiconPage } from "./pages/LexiconPage";
 import { SCAEditor } from "./pages/SCAEditor";
 import { FamilyTree } from "./pages/FamilyTree";
-import CognateMatrixPage from "./pages/CognateMatrix";
 import { ExportImport } from "./pages/ExportImport";
 import { CorpusPage } from "./pages/CorpusPage";
 import { WelcomePage } from "./pages/WelcomePage";
@@ -46,6 +45,7 @@ import { useRegistryStore } from "./store/registryStore";
 import { useFontStore } from "./store/fontStore";
 import { useConlangFont } from "./utils/conlangFont";
 import { useProjectWatcher } from "./utils/externalChanges";
+import { restoreLanguageViewMemory } from "./lib/languageViewMemory";
 import "./App.css";
 
 /** Routes that don't require a loaded workspace */
@@ -114,7 +114,10 @@ function App() {
           scaLoadConfig(projectPath, activeLanguagePath),
           corpusLoadIndex(projectPath, activeLanguagePath),
         ]);
-        if (!cancelled) setLoadedLanguage(languageKey);
+        if (cancelled) return;
+        // 恢复该语言上次查看的词条 / 语料上下文（目标不存在则回落到首个词条）
+        restoreLanguageViewMemory(activeLanguageId);
+        setLoadedLanguage(languageKey);
       } catch (error) {
         if (!cancelled) setLoadError(String(error));
       }
@@ -261,31 +264,18 @@ function App() {
               <Route path="derivation" element={<DerivationEditor />} />
               <Route path="reference" element={<ReferenceSection />} />
             </Route>
-            <Route
-              path="/sandbox"
-              element={<div className="flex-1 p-8 overflow-y-auto"><Sandbox /></div>}
-            />
-            <Route
-              path="/wordgen"
-              element={<div className="flex-1 p-8 overflow-y-auto"><WordGenerator /></div>}
-            />
-            <Route
-              path="/sca"
-              element={<div className="flex-1 p-8 overflow-y-auto"><SCAEditor /></div>}
-            />
+            <Route path="/sandbox" element={<div className="flex-1 p-8 overflow-y-auto"><Sandbox /></div>} />
+            <Route path="/wordgen" element={<div className="flex-1 p-8 overflow-y-auto"><WordGenerator /></div>} />
+            <Route path="/sca" element={<div className="flex-1 p-8 overflow-y-auto"><SCAEditor /></div>} />
             <Route
               path="/tree"
               element={<div className="flex-1 p-8 overflow-y-auto flex min-h-0"><FamilyTree /></div>}
             />
-            <Route path="/cognates" element={<CognateMatrixPage />} />
             <Route
               path="/corpus"
               element={<div className="flex-1 flex overflow-hidden"><CorpusPage /></div>}
             />
-            <Route
-              path="/export"
-              element={<div className="flex-1 p-8 overflow-y-auto"><ExportImport /></div>}
-            />
+            <Route path="/export" element={<div className="flex-1 p-8 overflow-y-auto"><ExportImport /></div>} />
           </Routes>
         )}
       </main>

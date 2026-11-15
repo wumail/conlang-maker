@@ -193,10 +193,10 @@ Tools are grouped into modular toolsets so you can keep your AI assistant's cont
 
 | Toolset | Enabled by Default | Focus Area |
 |---------|--------------------|------------|
-| `core` | Yes | Workspace discovery, language trees, reading phonology/romanization/lexicon/grammar/SCA/corpus/fonts, and listing snapshots/trash. |
-| `audit` | Yes | Single-language and family-wide OpenType font coverage audits (`font_audit_coverage`, `font_audit_family`) and glyph shaping diagnostics. |
-| `compute` | Yes | Linguistic computation & QA: `phono_to_ipa` (with trace), `phono_tokenize`, `romanization_analyze`, `lex_stats`, `lex_quality_check`, `wordgen_*`, `gram_inflect`, `gram_paradigm`, `gram_derive`, `gram_analyze_typology`, `sandbox_translate`, `sca_simulate`, `sca_parse_rules_text`, `sca_feature_query`. |
-| `write` | No | Standard data editing across phonology, romanization, glyph annotations, fonts, lexicon, grammar, SCA, corpus, and manual snapshots. |
+| `core` | Yes | Workspace discovery, language trees, reading phonology/romanization/lexicon/concepts/cognate matrix/word families/etymology lineages/grammar/SCA/corpus/concordance/fonts, and listing snapshots/trash. |
+| `audit` | Yes | Single-language and family-wide OpenType font coverage audits (`font_audit_coverage`, `font_audit_family`), glyph geometry & metrics auditing (`font_audit_geometry`), and glyph shaping diagnostics (`font_shape`). |
+| `compute` | Yes | Linguistic computation & QA: `phono_to_ipa` (with trace), `phono_tokenize`, `romanization_analyze`, `lex_stats`, `lex_quality_check`, `lex_word_family`, `lex_etymology_lineage`, `concept_list`, `family_cognate_matrix`, `wordgen_*`, `gram_inflect`, `gram_paradigm`, `gram_derive`, `gram_analyze_typology`, `gram_pull_sync` (preview), `sandbox_translate`, `corpus_concordance`, `sca_simulate`, `sca_parse_rules_text`, `sca_feature_query`, `sca_export_rules_text`. |
+| `write` | No | Standard data editing across phonology, romanization, glyph annotations, fonts, lexicon, custom concepts & lexical gaps/primary overrides (`concept_upsert`), grammar & parent-affix sync (`gram_pull_sync`), SCA, corpus, and manual snapshots. |
 | `evolution` | No | Diachronic family workflows: `language_fork`, `language_update`, `lex_parent_diff`, `lex_pull_sync`, `lex_borrow`, `lexicon_migrate_inherited_links`. |
 | `admin` | No | Registry management (`family_*`, `project_*`), workspace bundle/CSV/Hunspell/LLM exports & imports, language trash deletion/restore, and `snapshot_rollback` / `snapshot_diff`. |
 | `all` | — | Shorthand enabling every toolset permitted by the active `--mode`. |
@@ -212,7 +212,7 @@ Tools are grouped into modular toolsets so you can keep your AI assistant's cont
 
 ## 4. Tool, Resource & Prompt Catalog by Domain
 
-`conlang-mcp` defines **76 tools** across 10 domains, **10 `conlang://` resource templates**, and **4 guided prompts**.
+`conlang-mcp` defines **84 tools** across 10 domains, **10 `conlang://` resource templates**, and **4 guided prompts**.
 
 ### 4.1 System & Language Family (14 Tools)
 
@@ -249,15 +249,16 @@ Tools are grouped into modular toolsets so you can keep your AI assistant's cont
 | `phono_presets_list` | Read | `core` | List built-in phonological style presets. |
 | `phono_apply_preset` | Write | `write` | Apply a built-in phonological preset to a language (supports `dry_run`). |
 
-### 4.3 Font & Writing System (11 Tools)
+### 4.3 Font & Writing System (12 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
+|---|---|---|---|
 | `font_list` | Read | `core` | List font status across every language in the family: `own`, `inherited`, or `none`, effective owner language, filename, and SHA-256 hash. |
 | `font_inspect` | Read | `core` | Inspect a language's effective font: owner, inheritance status, family/version, glyph count, compressed `cmap` ranges, Unicode block stats, and `GSUB`/`GPOS` feature tags. |
 | `font_shape` | Read | `audit` | Run HarfBuzz shaping on sample text (matching GUI `.conlang-script` defaults or custom OpenType features/normalization) to inspect `gid`, glyph names, clusters, codepoint spans, and `.notdef`. |
 | `font_audit_coverage` | Read | `audit` | Comprehensive single-language font coverage & OpenType shaping audit across romanization, lexicon, corpus, and tones. |
 | `font_audit_family` | Read | `audit` | Whole-family (or subtree) coverage matrix deduplicated by font SHA-256 hash, reporting per-language gaps, font owners, and `union_missing`. |
+| `font_audit_geometry` | Read | `audit` | Extract true glyph outlines via HarfBuzz and audit baseline/ascender alignment, mark-to-base optical gaps, and stem weight uniformity. |
 | `font_import` | Write | `write` | Validate (≤ 20 MB, TrueType/`OTTO` magic bytes, HarfBuzz loadable, non-empty `cmap`) and import a `.ttf`/`.otf` font into a language after snapshotting. |
 | `font_import_batch` | Write | `write` | Atomically import fonts across multiple languages in one project transaction (`dry_run` compares old vs. new fonts and before/after coverage summaries). |
 | `font_clear` | Write | `write` | Remove a language's own font file (reverting it to ancestor font inheritance) after creating a snapshot. |
@@ -265,45 +266,51 @@ Tools are grouped into modular toolsets so you can keep your AI assistant's cont
 | `glyph_annotations_delete` | Write | `write` | Delete local character reference annotations by codepoint. |
 | `glyph_annotations_sync_parent` | Write | `write` | Copy missing glyph annotations from the parent language into local configuration. |
 
-### 4.4 Lexicon (11 Tools)
+### 4.4 Lexicon, Concepts & Cognates (16 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
-| `lex_search` | Read | `core` | Search words by spelling/gloss/definition/example/tag (prefix, exact, substring, regex, or `mode: "ipa_fuzzy"`), with POS/origin/tag/parent-diff filters, sorting, pagination, and field projection. |
+|---|---|---|---|
+| `lex_search` | Read | `core` | Search words by spelling/gloss/definition/example/tag (prefix, exact, substring, regex, or `mode: "ipa_fuzzy"`), with POS/origin/concept/tag/parent-diff filters, sorting, pagination, and field projection. |
 | `lex_get` | Read | `core` | Fetch full lexicon entries by `entry_id` list or exact spelling, optionally attaching parent-language cognates and diffs (`with_parent: true`). |
 | `lex_stats` | Read | `compute` | Compute lexicon statistics: total entries, POS distribution, phoneme frequency, and syllable distribution. |
-| `lex_quality_check` | Read | `compute` | Run configurable lexicon QA checks (missing POS, unmapped spelling characters, empty IPA, phonotactic violations, missing required fields, duplicate words). |
-| `lex_upsert` | Write | `write` | Batch create or update entries (≤ 500): auto-generates IDs/timestamps, auto-computes IPA when `phonetic_override` is `false`, preserves bucket ordering and unknown fields, and validates all items atomically. |
+| `lex_quality_check` | Read | `compute` | Run 11 configurable lexicon QA checks (missing POS, unmapped spelling characters, empty IPA, phonotactic violations, blacklist hits, vowel harmony, homophones, stale compound IPA, duplicates). |
+| `lex_word_family` | Read | `core` / `compute` | Inspect the morpheme-component DAG around an entry: upstream components, downstream derivatives/compounds, pronunciation digest drift, and cycle checks. |
+| `lex_etymology_lineage` | Read | `core` / `compute` | Trace the complete upward etymology lineage across the family: diachronic inheritance steps (sound + semantic shifts), synchronic components, loanword donor snapshots, and broken-link IDs. |
+| `lex_upsert` | Write | `write` | Batch create or update entries (≤ 500): supports per-sense `concept_id` bindings, morpheme components, and loanword snapshots; auto-computes IPA and preserves bucket ordering. |
 | `lex_delete` | Write | `write` | Batch delete lexicon entries by `entry_id` after snapshotting. |
 | `lex_regenerate_ipa` | Write | `write` | Recompute IPA for all non-override entries after romanization or allophony changes (`dry_run` lists every word whose IPA will change). |
 | `lex_parent_diff` | Read | `evolution` | Preview Pull Sync candidates between parent and child language after applying child SCA rules (`add`, `update`, and `conflicts`). |
 | `lex_pull_sync` | Write | `evolution` | Execute Pull Sync for all or selected `entry_id` items after snapshotting, recording `parent_entry_id` and `applied_sound_changes`. |
-| `lex_borrow` | Write | `evolution` | Borrow entries from another language in the family (`origin_type: "borrowed"` with provenance links). |
+| `lex_borrow` | Write | `evolution` | Borrow entries from another language in the family or an external project (`origin_type: "borrowed"` with donor snapshot and provenance links). |
 | `lex_import_csv` | Write | `admin` | Preview (`dry_run` / schema detection) and batch import lexicon entries from CSV. |
+| `concept_list` | Read | `core` / `compute` | Search built-in Swadesh-100 / Leipzig-Jakarta core concepts plus workspace custom concepts by gloss, `concept_id`, alias, or semantic field. |
+| `concept_upsert` | Write | `core` / `write` | Create/update/delete custom concepts, atomically merge duplicate concepts (`merge_from_id` rewrites bound senses across all languages), and manage `lexical_gaps` and `primary_cognate_overrides`. |
+| `family_cognate_matrix` | Read | `core` / `compute` | Build the cross-family cognate matrix by concept: separates inherited cognate sets, borrowings, and independent innovations, returning sense-level candidates, lexical gaps, and unbound word counts. |
 
 ### 4.5 Word Generation (2 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
+|---|---|---|---|
 | `wordgen_generate` | Read | `compute` | Generate phonotactically valid candidate words (configurable count, syllable range, structure templates, existing-word exclusion, typology hints). Save chosen words via `lex_upsert`. |
 | `wordgen_swadesh_gaps` | Read | `compute` | Identify Swadesh-100 core concepts not yet covered in the language's lexicon. |
 
-### 4.6 Grammar & Translation Sandbox (7 Tools)
+### 4.6 Grammar & Translation Sandbox (8 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
-| `gram_get` | Read | `core` | Read grammar sections: `typology`, `syntax`, `pos`, `inflection` (dimensions, rules, affix slots, conjugation classes, irregular overrides), `derivation`, and `chapters`. |
-| `gram_inflect` | Read | `compute` | Inflect a word (by spelling or `entry_id`) for given dimension values using typology-aware morphology, returning the surface form and matched rules. |
+|---|---|---|---|
+| `gram_get` | Read | `core` | Read grammar sections: `typology`, `syntax`, `pos`, `inflection` (dimensions, rules, affix slots, conjugation classes, irregular overrides), `morphophonology`, `derivation`, and `chapters`. |
+| `gram_inflect` | Read | `compute` | Run the unified 6-step morphology pipeline (irregular overrides → conjugation class → rules → `+` morphophonology → IPA), returning step-by-step derivation traces and missing obligatory feature warnings. |
 | `gram_paradigm` | Read | `compute` | Generate a complete inflection paradigm table for a word across selected grammatical dimensions. |
-| `gram_derive` | Read | `compute` | Preview derived words produced by morphological derivation rules (commit selected forms via `lex_upsert`). |
+| `gram_derive` | Read | `compute` | Preview derived words produced by morphological derivation and morphophonology rules (commit selected forms via `lex_upsert`). |
 | `gram_analyze_typology` | Read | `compute` | Analyze morphological and syntactic typology consistency across grammar rules. |
-| `sandbox_translate` | Read | `compute` | Run the Translation Sandbox pipeline: convert glossed source tokens into inflected, syntax-reordered target-language sentences. |
+| `gram_pull_sync` | Read / Write | `compute` / `write` | Evolve parent inflection/derivation affixes and irregular forms through child sound changes and report syncretism collisions (`apply: false` preview by default; `apply: true` writes). |
+| `sandbox_translate` | Read | `compute` | Run the Translation Sandbox pipeline: supports `gloss-TAG` strings and recursive clause structures (`nom_acc` / `erg_abs`), outputting 4-tier interlinear glossing and derivation steps. |
 | `gram_update` | Write | `write` | Update grammar configuration by section with `expected_revision` and `dry_run` support. |
 
 ### 4.7 Sound Change Applier — SCA (6 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
+|---|---|---|---|
 | `sca_get` | Read | `core` | Read diachronic sound change rulesets and rules (both character-mode and phonetic feature-mode). |
 | `sca_simulate` | Read | `compute` | Simulate SCA rules on a custom word list or an entire language lexicon — supports passing unsaved **ad-hoc rulesets** and returns step-by-step changelogs. |
 | `sca_parse_rules_text` | Read | `compute` | Parse plain-text SCA notation (arrow, pipe-delimited, or `@feature` syntax) into structured rules with line-by-line error reporting. |
@@ -311,15 +318,16 @@ Tools are grouped into modular toolsets so you can keep your AI assistant's cont
 | `sca_update` | Write | `write` | Create, modify, reorder, or delete SCA rulesets and rules (accepts either structured JSON or plain-text rule syntax). |
 | `sca_export_rules_text` | Read | `compute` | Serialize SCA rulesets into portable, round-trip-compatible plain text. |
 
-### 4.8 Corpus (5 Tools)
+### 4.8 Corpus & Concordance (6 Tools)
 
 | Tool | Access | Toolset | Description |
-|------|--------|---------|-------------|
+|---|---|---|---|
 | `corpus_list` | Read | `core` | List corpus texts from `corpus_index.json` with metadata and revisions. |
 | `corpus_get` | Read | `core` | Read a corpus text and its Leipzig interlinear gloss lines (paginated by line). |
-| `corpus_save` | Write | `write` | Create or update a corpus text and synchronize `corpus_index.json` in a single atomic transaction. |
+| `corpus_save` | Write | `write` | Create or update a corpus text and synchronize `corpus_index.json` in a single atomic transaction (supports token provenance `status`). |
 | `corpus_delete` | Destructive | `admin` | Delete a corpus text and update `corpus_index.json` after creating a snapshot (`confirm: true`). |
-| `corpus_auto_gloss` | Read / Write | `compute` / `write` | Run morphological auto-glossing on corpus text; defaults to preview-only (`apply: false`) and writes only when `apply: true`. |
+| `corpus_auto_gloss` | Read / Write | `compute` / `write` | Run non-destructive morphological auto-glossing (`fill_empty`, `recompute_auto`, or `reanalyze_selected`, 100% preserving line translations); defaults to preview-only (`apply: false`). |
+| `corpus_concordance` | Read | `core` / `compute` | Reverse-index every corpus occurrence of a lexicon entry across explicit links, stems, and inflected forms (with homograph protection). |
 
 ### 4.9 Import & Export (5 Tools)
 

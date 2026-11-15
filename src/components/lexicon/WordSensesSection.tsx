@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
-import type { ConceptDefinition, PartOfSpeech, Sense } from "../../types";
+import type { ConceptDefinition, ConjugationClass, PartOfSpeech, Sense } from "../../types";
 import { ConceptPicker } from "../common/ConceptPicker";
 import { INPUT, SELECT, TEXTAREA, BTN_ERROR, BTN_LINK } from "../../lib/ui";
 
@@ -13,6 +13,8 @@ interface WordSensesSectionProps {
   /** 工作区自定义概念（概念选择器用） */
   customConcepts?: readonly ConceptDefinition[];
   onCreateConcept?: (concept: ConceptDefinition) => void;
+  /** 变位类（仅融合语显示义项级覆盖） */
+  conjugationClasses?: readonly ConjugationClass[];
 }
 
 /** 多义项编辑区：词性 / 释义 / 定义 / 例句 */
@@ -24,6 +26,7 @@ export const WordSensesSection: React.FC<WordSensesSectionProps> = ({
   onRequestDeleteSense,
   customConcepts = [],
   onCreateConcept,
+  conjugationClasses = [],
 }) => {
   const { t } = useTranslation();
 
@@ -82,6 +85,31 @@ export const WordSensesSection: React.FC<WordSensesSectionProps> = ({
           </div>
 
           <div className="mb-4 flex flex-wrap items-center gap-2">
+            {conjugationClasses.length > 0 && (
+              <span className="flex items-center gap-1">
+                <span className="text-xs font-medium text-base-content/60">
+                  {t("lexicon.table.senseOverrideClass")}
+                </span>
+                <select
+                  className={`${SELECT} select-xs`}
+                  value={sense.inflection_class_id ?? ""}
+                  onChange={(event) =>
+                    onChangeSense(
+                      index,
+                      "inflection_class_id",
+                      event.target.value || undefined,
+                    )
+                  }
+                >
+                  <option value="">—</option>
+                  {conjugationClasses.map((cls) => (
+                    <option key={cls.class_id} value={cls.class_id}>
+                      {cls.name || cls.class_id}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            )}
             <span className="text-xs font-medium text-base-content/60">
               {t("lexicon.concept.pick")}
             </span>
@@ -105,6 +133,19 @@ export const WordSensesSection: React.FC<WordSensesSectionProps> = ({
               }
               className={`w-full ${TEXTAREA} min-h-[60px]`}
               placeholder={t("lexicon.definitions")}
+            />
+          </div>
+
+          <div className="mb-4">
+            <label className="block text-xs font-medium text-base-content/60 mb-1">
+              {t("lexicon.table.usageNote")}
+            </label>
+            <input
+              type="text"
+              value={sense.usage_note ?? ""}
+              onChange={(event) => onChangeSense(index, "usage_note", event.target.value)}
+              className={`w-full ${INPUT}`}
+              placeholder={t("lexicon.table.usageNote")}
             />
           </div>
 

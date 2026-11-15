@@ -62,6 +62,8 @@ export interface ConceptDefinition {
   semantic_field: string;
   concepticon_id?: string;
   standard_lists?: ("swadesh_100" | "leipzig_jakarta_100")[];
+  /** 同义词/近义检索别名（用于概念对齐自动建议与词典搜索，Roadmap v3 / Pillar 4） */
+  aliases?: string[];
 }
 
 /** 多词素构词成分的关系类型 */
@@ -185,6 +187,10 @@ export interface Sense {
   grammatical_function?: string; // 孤立语虚词功能标签（如 particle / topic / aspect_marker）
   /** 绑定跨语言概念锚点（T2.2） */
   concept_id?: string;
+  /** 义项级用法/语域说明（Roadmap v3 / Pillar 4） */
+  usage_note?: string;
+  /** 义项级变位类覆盖（同一词形名词义属第 I 变格、动词义属第 II 变位，Roadmap v3 / Pillar 3） */
+  inflection_class_id?: string;
 }
 
 export type OriginType =
@@ -192,8 +198,41 @@ export type OriginType =
   | "a_posteriori"
   | "mixed"
   | "derived"
+  | "compound"
   | "borrowed"
   | "evolved";
+
+/** 与音变（applied_sound_changes）分离记录的语义变化分类（Roadmap v3 / Pillar 1） */
+export type SemanticChangeKind =
+  | "unchanged"
+  | "narrowing"
+  | "broadening"
+  | "shift"
+  | "metaphor"
+  | "added_sense"
+  | "replaced_sense";
+
+/** 跨项目/跨语系借词的供语来源快照（借入瞬间的完整历史依据，Roadmap v3 / Pillar 1） */
+export interface BorrowedSourceSnapshot {
+  /** 跨项目借入时记录供语所在项目的 .conlang 路径（同项目内借词可省略） */
+  source_conlang_path?: string;
+  /** 供语所在语系/项目显示名称快照 */
+  source_family_name?: string;
+  /** 供语 language_id */
+  source_language_id: string;
+  /** 供语显示名称快照 */
+  source_language_name?: string;
+  /** 供语词条稳定 entry_id */
+  source_entry_id: string;
+  /** 供语具体义项 sense_id（精确到义项借入） */
+  source_sense_id?: string;
+  /** 借入瞬间的供语罗马字词形快照（供语后续改词形时历史依据不丢失） */
+  borrowed_form: string;
+  /** 借入瞬间的供语 IPA 快照 */
+  borrowed_ipa?: string;
+  /** 借入瞬间的供语释义快照 */
+  borrowed_gloss?: string;
+}
 
 export interface Etymology {
   origin_type: OriginType;
@@ -201,6 +240,10 @@ export interface Etymology {
   source_language_id: string | null;
   applied_sound_changes: string[];
   semantic_shift_note: string;
+  /** 语义变化分类（与音变分离记录，Roadmap v3 / Pillar 1） */
+  semantic_change_kind?: SemanticChangeKind;
+  /** 借词来源快照（origin_type === "borrowed" 时必填，Roadmap v3 / Pillar 1） */
+  borrowed_source?: BorrowedSourceSnapshot;
   /** 共时构词成分（DAG 多词素，T2.4） */
   components?: MorphemeComponent[];
   /** 上次核验时各成分词根读音摘要（级联过期检测） */
@@ -226,6 +269,8 @@ export interface WordEntry {
   con_word_romanized: string;
   phonetic_ipa: string;
   phonetic_override: boolean;
+  /** 词条默认屈折变位类 ID（对应 GrammarConfig.conjugation_classes[].class_id，Roadmap v3 / Pillar 3） */
+  inflection_class_id?: string;
   senses: Sense[];
   etymology: Etymology;
   metadata: EntryMetadata;
@@ -337,6 +382,8 @@ export interface InflectionRule {
   conjugation_class_id?: string; // 屈折语：关联的变位类
   fused_dimensions?: Record<string, string>[]; // 屈折语：融合规则映射多组维度值
   sca_mutable?: boolean; // 是否允许被 SCA 批量改写
+  /** 显式规则优先级（升序：数值越小越优先；未设时默认 0，消除数组拖拽顺序隐式覆盖，Roadmap v3 / Pillar 3） */
+  priority?: number;
 }
 
 // ── 派生规则 (Phase 2) ───────────────────────────────────
@@ -431,6 +478,49 @@ export interface GrammarConfig {
   morphophonology_rules?: MorphophonologyRule[];
 }
 
+// ── 统一形态推导结果与冲突/缺省诊断（Roadmap v3 / Pillar 3）──────────
+
+/** 形态推导单步记录（词干选择 → 词缀挂载 → 形态音位 → IPA） */
+export interface InflectionStepTrace {
+  stage: "irregular" | "class_select" | "affix" | "morphophonology" | "ipa";
+  rule_id?: string;
+  label: string;
+  before: string;
+  after: string;
+}
+
+/** 同一槽位/维度集下多条规则并列命中时的冲突记录 */
+export interface InflectionConflict {
+  dimension_key: string;
+  slot_id?: string;
+  candidate_rule_ids: string[];
+  winner_rule_id: string;
+  reason: string;
+}
+
+/** 请求特征完整性诊断（缺失必要维度、解析出的变位类及来源） */
+export interface InflectionRequestDiagnosis {
+  pos_id: string;
+  provided_dimensions: Record<string, string>;
+  missing_obligatory_dimensions: string[];
+  resolved_class_id: string | null;
+  resolved_class_source: "sense" | "word" | "stem_pattern" | "none";
+}
+
+/** 统一形态推导结果（inflectWord 的完整输出契约） */
+export interface InflectionResult {
+  surface_form: string;
+  morpheme_break: string;
+  gloss_labels: string;
+  phonetic_ipa: string;
+  stem_start: number;
+  applied_rule_ids: string[];
+  used_irregular: boolean;
+  diagnosis: InflectionRequestDiagnosis;
+  conflicts: InflectionConflict[];
+  steps: InflectionStepTrace[];
+}
+
 // ── Workspace & Language Registry (Phase 2 Sprint 6) ─────
 
 export interface LanguageEntry {
@@ -482,11 +572,63 @@ export interface ResolvedFontBytes {
   revision?: string;
 }
 
+// ── 工作区级概念扩展、空缺状态、同源主词覆盖与保存筛选（Roadmap v3 / Pillars 4 & 5）──
+
+/** 词汇空缺状态：区分「待造词空缺」与「已确认无独立词」 */
+export type LexicalGapStatus =
+  | "unrecorded" // 尚未收录
+  | "tbd" // 词义待定
+  | "periphrastic" // 通过短语表达
+  | "confirmed_absent"; // 已确认该语言无独立词
+
+export interface LexicalGap {
+  language_id: string;
+  concept_id: string;
+  status: LexicalGapStatus;
+  /** 短语表达形式或备注说明 */
+  note?: string;
+  updated_at?: string;
+}
+
+/** 同源矩阵单元格的人工主词指定 */
+export interface PrimaryCognateOverride {
+  language_id: string;
+  concept_id: string;
+  entry_id: string;
+  sense_id?: string;
+  reason?: string;
+}
+
+/** 词典常用筛选预设的内置快捷类型 */
+export type BuiltinQuickFilterKind =
+  | "unbound_concept"
+  | "missing_examples"
+  | "tbd_gloss"
+  | "borrowed_needs_review"
+  | "deprecated";
+
+/** 用户保存的词典筛选预设 */
+export interface SavedLexiconFilter {
+  filter_id: string;
+  name: string;
+  search_term?: string;
+  pos_id?: string;
+  origin_type?: OriginType | "";
+  tag?: string;
+  quick_kind?: BuiltinQuickFilterKind | "";
+}
+
 export interface WorkspaceConfig {
   workspace_version: string;
   languages: LanguageEntry[];
   /** 用户自定义概念表（T2.2） */
   custom_concepts?: ConceptDefinition[];
+  /** 词汇空缺状态表（Roadmap v3 / Pillar 4） */
+  lexical_gaps?: LexicalGap[];
+  /** 同源矩阵人工主词指定表（Roadmap v3 / Pillar 5） */
+  primary_cognate_overrides?: PrimaryCognateOverride[];
+  /** 常用筛选预设表（Roadmap v3 / Pillar 4） */
+  saved_lexicon_filters?: SavedLexiconFilter[];
 }
 
 // ── Global Registry ──────────────────────────────────────
@@ -614,6 +756,9 @@ export interface SCAStepLog {
 
 // ── 语料库 (Phase 3) ────────────────────────────────────
 
+/** 标注来源与锁定状态：verified 锁定后默认不被自动标注覆盖（Roadmap v3 / Pillar 2） */
+export type GlossTokenStatus = "auto" | "edited" | "verified";
+
 /** 单个 token 的莱比锡标注 */
 export interface GlossToken {
   token_id: string;
@@ -625,8 +770,26 @@ export interface GlossToken {
   gloss_labels: string;
   /** 关联词典 entry_id（可选） */
   linked_entry_id: string;
+  /** 精确绑定到词条内的具体义项（消解一词多义，Roadmap v3 / Pillar 6） */
+  linked_sense_id?: string;
   /** IPA 发音 */
   ipa: string;
+  /** 标注来源与锁定状态（Roadmap v3 / Pillar 2） */
+  status?: GlossTokenStatus;
+}
+
+/** 多候选词法消歧候选（同形词条 / 义项 / 屈折拆解方案，Roadmap v3 / Pillar 6） */
+export interface GlossCandidate {
+  candidate_id: string;
+  entry_id: string;
+  sense_id: string;
+  romanized: string;
+  pos_id: string;
+  morpheme_break: string;
+  gloss_labels: string;
+  ipa: string;
+  confidence: number;
+  trace: string;
 }
 
 /** 一行注释数据（对应一个句子/从句） */

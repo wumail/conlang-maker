@@ -1,7 +1,7 @@
 {
   "name": "conlang-maker",
   "private": true,
-  "version": "1.0.7",
+  "version": "1.0.8",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -18,7 +18,8 @@
     "mcp:check": "tsc -p mcp/tsconfig.json",
     "mcp:test": "bun test mcp/tests",
     "mcp:build": "node scripts/build-mcp.mjs",
-    "postinstall": "rm -rf node_modules/@rsbuild/plugin-react/node_modules/react-refresh"
+    "postinstall": "rm -rf node_modules/@rsbuild/plugin-react/node_modules/react-refresh",
+    "e2e:v3": "bun scripts/e2e-v3-smoke.mts"
   },
   "dependencies": {
     "@dagrejs/dagre": "^2.0.4",

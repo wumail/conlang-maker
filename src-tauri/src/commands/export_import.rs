@@ -598,6 +598,31 @@ pub fn write_text_file(
     })
 }
 
+/// Write base64-encoded bytes to a file path (xlsx / zip exports opened via native dialog).
+#[command]
+pub fn write_binary_file_base64(
+    file_path: String,
+    base64: String,
+) -> Result<WriteResult, String> {
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(base64.as_bytes())
+        .map_err(|e| e.to_string())?;
+    let path = Path::new(&file_path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    // 原子写盘（同目录临时文件 + rename），避免导出大文件时留下半截目标文件
+    super::font::atomic_write_bytes(path, &bytes)?;
+    let rev = file_revision(path)?;
+    Ok(WriteResult {
+        operation_id: crate::utils::fs_util::generate_uuid_v4(),
+        revision: rev,
+        revisions: None,
+        snapshot_id: None,
+        warnings: Vec::new(),
+    })
+}
+
 #[command]
 pub fn save_text_file_atomic(
     file_path: String,

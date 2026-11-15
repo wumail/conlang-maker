@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { recordConfigChange } from "./configHistory";
 import type { HistoryOpts } from "./undoManager";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import { invoke } from "@tauri-apps/api/core";
 import {
   SCAConfig,
@@ -237,6 +238,7 @@ export const useSCAStore = create<SCAStore>((set, get) => {
               dirty: queued !== undefined || latestVer > next.version,
             });
           }
+          reportSaveSuccess("sca");
         } catch (err) {
           if (isConflictError(err)) {
             pendingSaves.set(key, next);
@@ -249,6 +251,7 @@ export const useSCAStore = create<SCAStore>((set, get) => {
             return;
           }
           console.warn(`SCA 配置保存失败：${err}`);
+          reportSaveError("sca", err instanceof Error ? err.message : String(err));
           const latestVersion = saveVersions.get(key) ?? 0;
           if (!pendingSaves.has(key) && latestVersion === next.version) {
             pendingSaves.set(key, next);

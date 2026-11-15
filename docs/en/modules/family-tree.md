@@ -61,28 +61,30 @@ If old projects miss inherited-link fields (`parent_entry_id`, `source_language_
 5. Review new item count.
 6. Click `Pull & Apply Sound Changes`.
 
-## Borrowing
+## Borrowing & Cross-Project Loans
 
-Borrow vocabulary from any other language:
+Borrow vocabulary from any language in the current family **or from another registered Conlang Maker project**:
 
-1. Click **"Borrow"**
-2. Select the source language
-3. Browse/search the source lexicon
-4. Select words to borrow, auto-marked as "Borrowed" origin
+1. Click **"Borrow"** in the Family Tree header
+2. Select the donor via **Project → Language → Entry → Sense**
+3. Import selected entries — each loan records stable provenance IDs plus an immutable **Borrowing Source Snapshot** (donor form, gloss, language, and family name at the time of borrowing)
 
-### Step-by-step: Borrow with control
+## Diachronic Grammar Affix Sync
 
-1. Open borrowing panel in the target language.
-2. Select source language.
-3. Search by spelling/gloss.
-4. Select target entries (single or multi).
-5. Confirm import and verify etymology marker.
+Alongside lexicon Pull Sync, daughter languages can pull and evolve inflection/derivation affixes from their parent language through local SCA rules, complete with automatic **homophone neutralization warnings** when sound changes cause distinct grammatical endings to merge.
 
-## Multi-Language Workspace
+## Cross-Family Cognate Matrix
 
-- **Language switcher**: Click the language name (top-left) to enter the family tree
-- **Independent data**: Each language has its own phonology, grammar, lexicon, SCA, and corpus
-- **Genealogy**: Languages linked via parent_id
+Click **"Cognate Matrix"** in the Family Tree header to open the cross-language comparison modal:
+
+- **Concept-centric grid**: Compare 158 CLDF/Concepticon core concepts plus custom concepts across every language in the family, color-coding shared cognate sets vs. borrowings and independent innovations.
+- **Targeted filters**: Filter by semantic field, filled-only rows, borrowing replacements, form changes, multi-candidate cells (`+1`), or broken chains without layout shift.
+- **Candidate drawer & lexical gaps**: Click any cell to inspect all candidate senses, pin a primary representative, bind an existing word, create a new word in place, or record structured lexical gap statuses (`unrecorded`, `tbd`, `periphrastic`, `confirmed_absent`).
+
+## Multi-Language Workspace & View Memory
+
+- **Compact top-bar language switcher**: Click the active language name in the top bar to switch languages directly; Conlang Maker remembers your active word and corpus per language and restores them when switching back
+- **Language trash & restore**: Deleting a leaf language moves it into `.conlang-maker/trash/` inside an atomic transaction for safe recovery
 
 ## Advanced examples
 

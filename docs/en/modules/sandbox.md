@@ -1,46 +1,35 @@
 # Translation Sandbox
 
-An interactive translation and annotation workbench with two modes.
+An interactive sentence-building, morphological inflection, and syntax-reordering workbench for testing how your lexicon, grammar, and native script work together.
 
-**Navigate**: click `Translation Sandbox` in the sidebar.
+**Navigate**: click `Sandbox` in the top navigation bar.
 
-## Gloss-Tag Inflection Mode
+## How It Works: Gloss Lookup → Morphology → Syntax
 
-Input text in `gloss-TAG1-TAG2` format (e.g., `star-PL shine-PAST in void`):
+The Translation Sandbox takes **glosses / concepts** that exist in your language's lexicon (such as `dog` or `bite`), rather than transliterating arbitrary unlinked English text:
 
-1. Looks up each gloss in the lexicon
-2. Auto-applies inflection rules by tag
-3. Generates IPA
-4. Outputs an interlinear table (conlang form / gloss tags / IPA)
+1. **Lexicon Lookup**: Resolves each gloss token against your current language's lexicon senses and bound concepts. Any gloss missing from your lexicon is explicitly flagged as `?word?` with `/?/` IPA so you immediately see vocabulary gaps to coin.
+2. **Unified 6-Step Morphology**: Runs the exact same inflection pipeline as the Grammar module (irregular overrides → conjugation class → affix rules → cross-boundary `+` morphophonology → IPA).
+3. **4-Tier Output**: Displays **Native Script** (`.conlang-script` shaped via your custom font), **Romanized Surface Form**, **Leipzig Morpheme Gloss**, and **IPA**, alongside derivation steps and alignment diagnostics.
 
-### Step-by-step
+## 1. Gloss-Tag Inflection Card
 
-1. Enter a tagged string like `star-PL shine-PAST`.
-2. Run translation.
-3. Inspect generated forms and tags.
-4. If output is wrong, adjust lexicon gloss or grammar rules.
+Enter tagged gloss strings in `gloss-TAG1-TAG2` format (e.g., `star-PL shine-PST`):
 
-## Syntax Reordering Mode
+- Looks up each base gloss in the lexicon
+- Applies inflection and morphophonological rules for the requested tags
+- Outputs a complete interlinear breakdown with per-token derivation traces
 
-1. Add tokens with syntactic roles (S / V / O / Mod / Adp / Other)
-2. Auto-reorders by your grammar's word order setting
-3. Auto-infers inflection tags (e.g., S → NOM, O → ACC)
-4. Applies inflection and outputs the interlinear table
+## 2. Recursive Clause Builder
 
-### Step-by-step
+Build structured clauses to verify word order, phrase structure, and case alignment:
 
-1. Add tokens with roles (S/V/O/Mod).
-2. Run reorder.
-3. Check whether word order matches syntax settings.
-4. Verify case/tense tags are inferred correctly.
+- **Arguments, Modifiers & Nested Clauses**: Specify Subject, Verb, Object, noun modifiers/determiners, adpositional phrases (PP), and **recursive embedded subclauses**.
+- **Alignment-Aware Case Inference**:
+  - **Nominative-Accusative (`nom_acc`)**: Assigns Nominative to `S`/`A` and Accusative to `P`.
+  - **Ergative-Absolutive (`erg_abs`)**: Assigns Ergative to transitive `A` and Absolutive to intransitive `S` and patient `P`. If your grammar has not yet defined matching case values for `S`/`A`/`P`, an explicit warning banner tells you which arguments remain unmarked.
+- **Automatic Reordering & Phrase Tree**: Linearizes constituents according to your configured base word order (`SVO`, `SOV`, `VSO`, etc.), modifier placement, and preposition/postposition type, rendering both numbered **Derivation Steps** and a visual **Phrase Tree**.
 
-## Word Form Helper
+## 3. Quick Single-Form Checks
 
-Input a test word + select POS + select dimension values → instant preview of inflected form and IPA.
-
-### Advanced example: regression check after grammar edit
-
-1. Prepare 10 frequently used stems.
-2. Run Word Form Helper for each stem.
-3. Compare with previous expected forms.
-4. Fix rule ordering if regressions appear.
+For rapid single-stem paradigm checks, use `Grammar -> Inflection Test` or open the Command Palette (`⌘K` / `Ctrl+K`) and type `=` for instant inline evaluation.

@@ -1,8 +1,29 @@
 import { useTranslation } from "react-i18next";
-import type { LanguageEntry, OriginType, WordEntry, WordEvolution } from "../../types";
+import type {
+  LanguageEntry,
+  OriginType,
+  SemanticChangeKind,
+  WordEntry,
+  WordEvolution,
+} from "../../types";
 import { INPUT, SELECT, TOGGLE } from "../../lib/ui";
 import { WordComponentsEditor } from "./WordComponentsEditor";
 import { WordFamilyPanel } from "./WordFamilyPanel";
+import { EtymologyChainView } from "./EtymologyChainView";
+
+/** 语义变化类型 → 已预置翻译键（顺序即下拉顺序） */
+const SEMANTIC_CHANGE_OPTIONS: Array<{
+  kind: SemanticChangeKind;
+  labelKey: string;
+}> = [
+  { kind: "unchanged", labelKey: "lexicon.etymologyV3.kindUnchanged" },
+  { kind: "narrowing", labelKey: "lexicon.etymologyV3.kindNarrowing" },
+  { kind: "broadening", labelKey: "lexicon.etymologyV3.kindBroadening" },
+  { kind: "shift", labelKey: "lexicon.etymologyV3.kindShift" },
+  { kind: "metaphor", labelKey: "lexicon.etymologyV3.kindMetaphor" },
+  { kind: "added_sense", labelKey: "lexicon.etymologyV3.kindAddedSense" },
+  { kind: "replaced_sense", labelKey: "lexicon.etymologyV3.kindReplacedSense" },
+];
 
 interface WordEtymologySectionProps {
   word: WordEntry;
@@ -53,6 +74,7 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
             <option value="borrowed">{t("lexicon.originBorrowed")}</option>
             <option value="derived">{t("lexicon.originDerived")}</option>
             <option value="mixed">{t("lexicon.originMixed")}</option>
+            <option value="compound">{t("lexicon.etymologyV3.originCompound")}</option>
           </select>
         </div>
         <div>
@@ -76,6 +98,36 @@ export const WordEtymologySection: React.FC<WordEtymologySectionProps> = ({
           />
         </div>
       </div>
+
+      {/* 语义变化类型（与来源类型正交） */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-xs font-medium text-base-content/60 mb-1">
+            {t("lexicon.etymologyV3.semanticChangeKind")}
+          </label>
+          <select
+            value={etymology?.semantic_change_kind ?? "unchanged"}
+            onChange={(event) =>
+              onChange("etymology", {
+                ...(etymology ?? {}),
+                semantic_change_kind: event.target.value as SemanticChangeKind,
+              })
+            }
+            className={`w-full ${SELECT}`}
+          >
+            {SEMANTIC_CHANGE_OPTIONS.map((option) => (
+              <option key={option.kind} value={option.kind}>
+                {t(option.labelKey)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <EtymologyChainView
+        word={word}
+        onChangeEtymology={(next) => onChange("etymology", next)}
+      />
 
       <WordComponentsEditor word={word} wordsMap={wordsMap} onChange={onChange} />
 

@@ -113,7 +113,8 @@ describe("T2.8 Pure Romanization Health Analysis (6 Lint Categories)", () => {
     const phono: PhonologyConfig = {
       language_id: "lang_lint",
       phoneme_inventory: {
-        consonants: ["p", "t", "k", "tʃ", "x", "ɬ"], // "ɬ" is unreachable
+        // "ɬ" 的字形被规则改写且无规则生成回来 → 真正不可达
+        consonants: ["p", "t", "k", "tʃ", "x", "ɬ"],
         vowels: ["a", "i"],
       },
       romanization_maps: [
@@ -154,6 +155,13 @@ describe("T2.8 Pure Romanization Health Analysis (6 Lint Categories)", () => {
               rule_id: "r_unknown",
               input: "q",
               output_phoneme: "ɢ", // not in phoneme_inventory
+              context_before: "",
+              context_after: "",
+            },
+            {
+              rule_id: "r_eng_l",
+              input: "ɬ",
+              output_phoneme: "t", // 键入 ɬ 只会得到 t，且没有规则生成 ɬ
               context_before: "",
               context_after: "",
             },

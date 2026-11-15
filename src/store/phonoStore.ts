@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { recordConfigChange } from "./configHistory";
 import { invalidateLineageLexicon } from "./lineageLexiconStore";
+import { reportSaveError, reportSaveSuccess } from "./saveStatusTracker";
 import { invoke } from "@tauri-apps/api/core";
 import {
   AllophonyRule,
@@ -376,7 +377,9 @@ async function flushSave(key: string): Promise<void> {
   recordGuiOperationId(pending.operationId);
 
   const write = (writes.get(key) ?? Promise.resolve())
-    .catch(() => {})
+    .catch((err: unknown) => {
+      console.warn("Previous phonology write failed:", err);
+    })
     .then(async () => {
       const args: {
         projectPath: string;
@@ -412,6 +415,7 @@ async function flushSave(key: string): Promise<void> {
   try {
     await write;
     saveErrors.delete(key);
+    reportSaveSuccess("phonology");
     // 音系落盘成功：谱系词库快照内嵌了 phonoConfig，必须失效以免父/子语言推演用旧读音
     invalidateLineageLexicon(pending.projectPath, pending.languagePath);
   } catch (error) {
@@ -429,6 +433,7 @@ async function flushSave(key: string): Promise<void> {
       return;
     }
     saveErrors.set(key, `${pending.languagePath}: ${String(error)}`);
+    reportSaveError("phonology", `${pending.languagePath}: ${String(error)}`);
     throw error;
   } finally {
     if (writes.get(key) === write) writes.delete(key);
@@ -459,7 +464,9 @@ const debouncedSave = (
   const timer = pausedKeys.has(key)
     ? null
     : setTimeout(() => {
-        void flushSave(key).catch(() => {});
+        void flushSave(key).catch((err: unknown) => {
+          console.warn("Debounced phonology save failed:", err);
+        });
       }, 500);
   pendingSaves.set(key, {
     projectPath,

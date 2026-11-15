@@ -9,6 +9,7 @@ import type {
   Etymology,
   GlyphAnnotation,
   GlyphAnnotationsSource,
+  GlossTokenStatus,
   GrammarConfig,
   GrammarLoadResult,
   InflectionRule,
@@ -146,6 +147,17 @@ export function readWorkspaceUnlocked(conlangFilePath: string): WorkspaceLoadRes
   };
   if (Array.isArray(config.custom_concepts) && config.custom_concepts.length === 0) {
     delete config.custom_concepts;
+  }
+  // Roadmap v3：空数组集合不落空键（与 Rust skip_serializing_if = "Vec::is_empty" 对齐）
+  for (const gapKey of [
+    "lexical_gaps",
+    "primary_cognate_overrides",
+    "saved_lexicon_filters",
+  ] as const) {
+    const value = config[gapKey];
+    if (Array.isArray(value) && value.length === 0) {
+      delete config[gapKey];
+    }
   }
   return { config, revision };
 }
@@ -506,6 +518,13 @@ export function normalizeWordEntryFromRaw(
     if (copy.concept_id === null || copy.concept_id === undefined) {
       delete copy.concept_id;
     }
+    // Roadmap v3：义项级用法说明与变位类覆盖，空值不落键（与 Rust skip_serializing_if 对齐）
+    if (copy.usage_note === null || copy.usage_note === undefined) {
+      delete copy.usage_note;
+    }
+    if (copy.inflection_class_id === null || copy.inflection_class_id === undefined) {
+      delete copy.inflection_class_id;
+    }
     return {
       ...(copy as unknown as Sense),
       sense_id: typeof s.sense_id === "string" ? s.sense_id : "",
@@ -544,6 +563,16 @@ export function normalizeWordEntryFromRaw(
   if (etymology.compounds_stale_digest == null) {
     delete etymology.compounds_stale_digest;
   }
+  // Roadmap v3：语义变化分类与借词快照，空值不落键
+  if (etymology.semantic_change_kind == null) {
+    delete etymology.semantic_change_kind;
+  }
+  if (
+    etymology.borrowed_source == null ||
+    typeof etymology.borrowed_source !== "object"
+  ) {
+    delete etymology.borrowed_source;
+  }
 
   const rawMeta = (raw.metadata ?? {}) as Record<string, unknown>;
   const metadata: EntryMetadata = {
@@ -571,7 +600,7 @@ export function normalizeWordEntryFromRaw(
         : null,
   };
 
-  return {
+  const entry: WordEntry = {
     ...(raw as unknown as WordEntry),
     entry_id: typeof raw.entry_id === "string" ? raw.entry_id : "",
     language_id:
@@ -587,6 +616,11 @@ export function normalizeWordEntryFromRaw(
     metadata,
     evolution,
   };
+  // Roadmap v3：词条级变位类绑定，空值不落键（与 Rust skip_serializing_if 对齐）
+  if (entry.inflection_class_id == null) {
+    delete entry.inflection_class_id;
+  }
+  return entry;
 }
 
 export function readLexiconUnlocked(
@@ -689,6 +723,10 @@ function normalizeInflectionRuleFromRaw(raw: Record<string, unknown>): Inflectio
     if (copy[optKey] === null || copy[optKey] === undefined) {
       delete copy[optKey];
     }
+  }
+  // Roadmap v3：显式规则优先级，仅保留合法数字（与 Rust skip_serializing_if 对齐）
+  if (typeof copy.priority !== "number" || !Number.isFinite(copy.priority)) {
+    delete copy.priority;
   }
   return {
     ...(copy as unknown as InflectionRule),
@@ -950,24 +988,70 @@ export async function readCorpusIndex(
   );
 }
 
+/**
+ * `corpus_id` 必须是单层安全标识符：禁止空串、`.`、`..`、`corpus_index`、
+ * 路径分隔符与 NUL，避免 `<corpus_id>.json` 逃逸出 corpus 目录或命中索引文件。
+ */
+function assertSafeCorpusTextId(rawId: string): string {
+  const id = rawId.trim().replace(/\.json$/i, "");
+  if (
+    !id ||
+    id === "." ||
+    id === ".." ||
+    id === "corpus_index" ||
+    id.includes("/") ||
+    id.includes("\\") ||
+    id.includes("\0") ||
+    id.includes("..")
+  ) {
+    throw new McpError(
+      "VALIDATION",
+      `Invalid corpus_id "${rawId}". Must be a single safe identifier (not "corpus_index" or a path).`,
+    );
+  }
+  return id;
+}
+
+/**
+ * 可选字段若以 `null` 落盘（旧版 MCP 写入），读侧统一删除该键，
+ * 保证 GUI 侧的可选类型不会被 `null` 污染（`linked_sense_id` / `status`）。
+ */
+function stripNullTokenOptionals(corpus: CorpusText): void {
+  if (!Array.isArray(corpus.glossed_lines)) return;
+  for (const line of corpus.glossed_lines) {
+    if (!line || !Array.isArray(line.tokens)) continue;
+    for (const token of line.tokens) {
+      if (!token) continue;
+      if ((token.linked_sense_id as string | null | undefined) === null) {
+        delete token.linked_sense_id;
+      }
+      if ((token.status as GlossTokenStatus | null | undefined) === null) {
+        delete token.status;
+      }
+    }
+  }
+}
+
 export function readCorpusTextUnlocked(
   projectDir: string,
   language: LanguageEntry,
   corpusId: string,
 ): CorpusTextLoadResult {
+  const safeCorpusId = assertSafeCorpusTextId(corpusId);
   const langDir = assertSafeRelativeLanguagePath(projectDir, language.path);
   const corpusDir = path.join(langDir, "corpus");
-  const filePath = path.join(corpusDir, `${corpusId}.json`);
+  const filePath = path.join(corpusDir, `${safeCorpusId}.json`);
   if (!fs.existsSync(filePath)) {
     throw new McpError(
       "NOT_FOUND",
-      `Corpus text "${corpusId}" not found in language "${language.name}".`,
+      `Corpus text "${safeCorpusId}" not found in language "${language.name}".`,
     );
   }
   const indexPath = path.join(corpusDir, "corpus_index.json");
   const revision = computeFileRevision(filePath);
   const index_revision = computeFileRevision(indexPath);
   const corpus = JSON.parse(fs.readFileSync(filePath, "utf-8")) as CorpusText;
+  stripNullTokenOptionals(corpus);
   return { corpus, revision, index_revision };
 }
 

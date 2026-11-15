@@ -11,9 +11,11 @@ The core module, with a sidebar + editor panel split-view for managing all word 
 | Add entry | Click the `+` button in the sidebar |
 | Edit entry | Real-time editing in the right panel, auto-saves with debounce |
 | Delete entry | Delete button at the top of the editor, requires confirmation |
-| Search | Filter by romanization or gloss text |
+| Search | Filter by romanization, gloss, definition, usage note, tag, or bound concept gloss |
 | IPA fuzzy search | Toggle IPA search mode, results sorted by phonetic similarity |
-| Tags | Free-form comma-separated tag system |
+| Advanced & Quick filters | Combine POS, all 7 origin types, tags, lifecycle flags, and 5 built-in quick filters (`No concept bound`, `Missing examples`, `TBD gloss`, `Borrowed, needs review`, `Deprecated`) |
+| Table View Modal | Click the table icon right next to the `Lexicon` header to open a virtualized `Word × Sense` spreadsheet modal with column toggles, keyboard navigation (`Enter / ↑ / ↓`), row-level locate-in-detail, and TSV/CSV paste import preview |
+| Sense-scoped batch edit | Choose whether batch edits apply to `All senses`, `Only empty target fields`, or `First sense only`, with a hidden-selection warning banner and before/after diff preview |
 
 ## Lifecycle Labels
 
@@ -43,8 +45,10 @@ Each entry supports multiple senses, each containing:
 
 - **POS** — selected from the grammar module's POS list
 - **Gloss** — short translation for interlinear annotation
-- **Definition** — full multi-line definition
-- **Examples** — multi-line usage examples
+- **Core Concept (`concept_id`)** — bind to any of the 158 built-in CLDF/Concepticon concepts (covering Swadesh-100 and Leipzig-Jakarta-100) or project custom concepts for cross-family cognate alignment
+- **Sense-level Inflection Class Override** — override the word's conjugation class for a specific sense
+- **Usage Note** — register, collocation, or pragmatic notes
+- **Definition & Examples** — full multi-line definitions and usage sentences
 
 ## Auto IPA Generation
 
@@ -67,17 +71,18 @@ Click the ⚡ button (top-right) for a popup: word → gloss → POS → **Enter
 
 Use Quick Entry when collecting many roots during brainstorming sessions.
 
-## Evolution Path
+## Structured Etymology & Clickable Lineage Chain
 
-For entries with `Evolved` / `Borrowed` origin and a parent reference, the editor shows an evolution path.
+Etymology distinguishes 7 origin types (`A priori`, `A posteriori`, `Evolved`, `Borrowed`, `Derived`, `Multi-part compound`, and `Mixed`):
 
-- Supports full multi-generation lineage display (for example `a → ab → abc`)
-- Adjacent repeated forms are automatically deduplicated (for example `a → a` becomes `a`)
-- Applied sound change badges remain visible below the path (when present)
+- **DAG Multi-Morpheme Components**: Record ordered root/affix components from the lexicon for derived and compound entries, with automatic stale-IPA detection when component forms change.
+- **Semantic Change Classification**: Track sound changes separately from semantic shifts (`unchanged`, `narrowing`, `broadening`, `shift`, `metaphor`, `added_sense`, `replaced_sense`).
+- **Borrowing Source Snapshots**: Preserve the donor form, gloss, sense ID, and language/family name at the moment of borrowing (including cross-project loans), even if the donor entry is later edited or removed.
+- **Clickable Etymology Chain & Inline Cards**: Expand the lineage chain to inspect and jump to ancestor/donor/component entries across languages (broken references are flagged with one-click cleanup). The detail pane also embeds **Word Family**, **Inflection Paradigm**, and **Corpus Concordance** backlink cards.
 
 ## Quality Check
 
-6 automated check rules:
+10 automated check rules powered by dynamic-programming maximal-onset syllabification:
 
 | Rule | Severity | Description |
 |------|----------|------------|
@@ -87,6 +92,10 @@ For entries with `Evolved` / `Borrowed` origin and a parent reference, the edito
 | Pattern mismatch | 🟡 Warning | Word form doesn't match POS regex pattern |
 | Missing required field | 🔴 Error | Missing POS-required fields |
 | Duplicate form | 🟡 Warning | Duplicate romanization in lexicon |
+| Syllable structure violation | 🟡 Warning | IPA cannot be parsed into valid syllables under current templates |
+| Blacklist hit | 🔴 Error | Form or phoneme sequence matches a forbidden regex |
+| Vowel harmony conflict | 🟡 Warning | Mixes vowels from incompatible harmony groups |
+| Homophone collision / Stale compound | 🟡 Warning | Distinct entries share identical phonemic IPA, or a compound's component IPA changed |
 
 ### Step-by-step: QC cleanup pass
 

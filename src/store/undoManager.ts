@@ -118,6 +118,53 @@ function findLastMatchingIndex(
   return -1;
 }
 
+// ── Roadmap v3 / Pillar 2：跨 Store 组合整体撤销 ──────────────
+
+/** 组合撤销的单个原子步骤（词典 + 语料等跨 Store 写入的最小单元） */
+export interface CompositeUndoStep {
+  undo: () => void | Promise<void>;
+  redo: () => void | Promise<void>;
+}
+
+/**
+ * 一次批量操作同时涉及多个 Store 时（例如语料收词同时写词典与语料），
+ * 按逆序整体回滚全部步骤；redo 按正序重放。失败时尽力执行剩余步骤。
+ */
+export function pushCompositeUndoEntry(params: {
+  languageId: string;
+  domain?: UndoDomain;
+  labelKey: string;
+  steps: CompositeUndoStep[];
+}): void {
+  const { languageId, domain, labelKey, steps } = params;
+  if (steps.length === 0) return;
+  pushUndoEntry({
+    languageId,
+    domain: domain ?? "lexicon",
+    labelKey,
+    undo: async () => {
+      for (let index = steps.length - 1; index >= 0; index -= 1) {
+        const step = steps[index];
+        if (!step) continue;
+        try {
+          await step.undo();
+        } catch (err) {
+          console.warn("composite undo step failed:", err);
+        }
+      }
+    },
+    redo: async () => {
+      for (const step of steps) {
+        try {
+          await step.redo();
+        } catch (err) {
+          console.warn("composite redo step failed:", err);
+        }
+      }
+    },
+  });
+}
+
 /** 撤销；传 `activeLanguageId` 时只在该语言的历史中回退（跨语言隔离） */
 export async function performUndo(activeLanguageId?: string): Promise<UndoEntry | null> {
   const index = activeLanguageId

@@ -26,6 +26,7 @@ function UpstreamTree({
   onNavigate: (entryId: string) => void;
   relationLabel: (relation: string) => string;
 }) {
+  const { t } = useTranslation();
   return (
     <ul className={depth > 0 ? "ml-3 border-l border-base-300 pl-2" : ""}>
       {nodes.map((node, index) => (
@@ -44,7 +45,9 @@ function UpstreamTree({
             <span className={`${BADGE} badge-xs badge-ghost`}>
               {relationLabel(node.relation)}
             </span>
-            {node.missing && <span className="text-[10px]">missing</span>}
+            {node.missing && (
+              <span className="text-[10px]">{t("lexicon.family.missing")}</span>
+            )}
           </button>
           {node.children.length > 0 && (
             <UpstreamTree

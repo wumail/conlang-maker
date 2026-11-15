@@ -13,6 +13,7 @@ import { QuickEntry } from "../common/QuickEntry";
 import { Search } from "lucide-react";
 import { LanguageToggle } from "../common/LanguageToggle";
 import { UndoRedoButtons } from "./UndoRedoButtons";
+import { SaveStatusPill } from "./SaveStatusPill";
 import { useTheme } from "../../lib/useTheme";
 
 const appWindow = getCurrentWindow();
@@ -93,6 +94,7 @@ export function TitleBar({
 
       {/* ── Right: Utility Actions ── */}
       <div className="flex items-center gap-1 shrink-0">
+        {!isWelcome && <SaveStatusPill />}
         {!isWelcome && <UndoRedoButtons />}
         {!isWelcome && onOpenCommandPalette && (
           <button
